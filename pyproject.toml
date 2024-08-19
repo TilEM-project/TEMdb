@@ -1,0 +1,24 @@
+[project]
+name = "TEMdb"
+version = "0.1.0""
+authors = [
+    { name="Derrick Brittain", email="derrickb@alleninstitute.org" }
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "beanie",
+    "pydantic",
+    "pydantic-settings",
+    "jinja2"
+]
+
+[project.optional-dependencies]
+testing = [
+    "pytest",
+    "pytest-asyncio"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

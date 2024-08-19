@@ -1,0 +1,43 @@
+services:
+
+  mongo:
+    image: mongo:latest
+    env_file:
+      - ./dev.env    
+    environment:
+      - MONGO_DATA_DIR=/usr/data/db
+      - MONGO_LOG_DIR=/dev/null
+    volumes:
+      - testdb_data:/usr/data/db
+    ports:
+      - 27017:27017
+
+  mongo-express:
+    image: mongo-express
+    env_file:
+      - ./dev.env    
+    depends_on:
+        - mongo
+    ports:
+        - 8081:8081
+    command: ["bash", "-c", "sleep 10 && /docker-entrypoint.sh"]   
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 80:80
+    volumes:
+      - .:/app
+    env_file:
+      - ./dev.env            
+    environment:
+      - DB_TYPE=mongo
+    links:
+      - mongo   
+    depends_on:
+      - mongo
+  
+volumes:
+  testdb_data:
