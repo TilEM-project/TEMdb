@@ -1,7 +1,5 @@
 # TEMdb
 
-# TEM Data Management System
-
 This repository contains a data management system designed to handle data related to the openTEM pipeline. The system manages metadata for specimens, blocks, cutting sessions, sections, regions of interest (ROIs), imaging sessions, acquisitions and tiles.
 
 ## Project Overview
