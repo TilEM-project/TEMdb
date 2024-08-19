@@ -1,0 +1,165 @@
+from typing import List, Optional
+from fastapi import APIRouter, Body, Query, HTTPException
+from beanie import PydanticObjectId
+
+from temdb.models.section import Section, SectionCreate, SectionUpdate
+from temdb.models.cutting_session import CuttingSession
+from temdb.models.enum_schemas import MediaType
+
+section_api = APIRouter(
+    prefix="/api",
+    tags=["Sections"],
+)
+
+
+@section_api.get("/sections", response_model=List[Section])
+async def list_sections(
+    skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)
+):
+    return await Section.find_all().skip(skip).limit(limit).to_list()
+
+
+@section_api.get("/sections/cutting-session/{session_id}", response_model=List[Section])
+async def list_cutting_session_sections(
+    session_id: PydanticObjectId,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+):
+    cut_session = await CuttingSession.get(session_id)
+    if not cut_session:
+        raise HTTPException(status_code=404, detail="Cutting session not found")
+
+    return (
+        await Section.find(Section.cut_session.id == session_id)
+        .skip(skip)
+        .limit(limit)
+        .to_list()
+    )
+
+
+@section_api.get("/sections/block/{block_id}", response_model=List[Section])
+async def list_block_sections(
+    block_id: PydanticObjectId,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+):
+    return (
+        await Section.find({"cut_session.block.id": block_id})
+        .skip(skip)
+        .limit(limit)
+        .to_list()
+    )
+
+
+@section_api.get("/sections/specimen/{specimen_name}", response_model=List[Section])
+async def list_specimen_sections(
+    specimen_name: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+):
+    return (
+        await Section.find({"cut_session.block.specimen.name": specimen_name})
+        .skip(skip)
+        .limit(limit)
+        .to_list()
+    )
+
+
+@section_api.get(
+    "/sections/cutting-session/{session_id}/section/{section_id}",
+    response_model=Section,
+)
+async def get_section(session_id: PydanticObjectId, section_id: str):
+    section = await Section.find_one(
+        {"section_id": section_id, "cut_session.id": session_id}
+    )
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+    return section
+
+
+@section_api.post(
+    "/sections/cutting-session/{session_id}/section", response_model=Section
+)
+async def create_section(session_id: PydanticObjectId, section: SectionCreate):
+    cut_session = await CuttingSession.get(session_id)
+    if not cut_session:
+        raise HTTPException(status_code=404, detail="Cutting session not found")
+
+    new_section = Section(
+        section_id=section.section_id,
+        number=section.number,
+        optical_image=section.optical_image,
+        section_metrics=section.section_metrics,
+        media_type=section.media_type,
+        media_id=section.media_id,
+        relative_position=section.relative_position,
+        barcode=section.barcode,
+        cut_session=cut_session,
+    )
+    await new_section.insert()
+    return new_section
+
+
+@section_api.patch(
+    "/sections/cutting-session/{session_id}/section/{section_id}",
+    response_model=Section,
+)
+async def update_section(
+    session_id: PydanticObjectId,
+    section_id: str,
+    updated_fields: SectionUpdate = Body(...),
+):
+    existing_section = await Section.find_one(
+        {"section_id": section_id, "cut_session.id": session_id}
+    )
+    if not existing_section:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    update_data = updated_fields.model_dump(exclude_unset=True)
+
+    if update_data:
+        for field, value in update_data.items():
+            setattr(existing_section, field, value)
+
+        await existing_section.save()
+
+    return existing_section
+
+
+@section_api.delete(
+    "/sections/cutting-session/{session_id}/section/{section_id}", response_model=dict
+)
+async def delete_section(session_id: PydanticObjectId, section_id: str):
+    section = await Section.find_one(
+        {"section_id": section_id, "cut_session.id": session_id}
+    )
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    await section.delete()
+    return {"message": "Section deleted successfully"}
+
+
+@section_api.get(
+    "/sections/media/{media_type}/{media_id}", response_model=List[Section]
+)
+async def list_sections_by_media(
+    media_type: MediaType,
+    media_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    relative_position: Optional[int] = None,
+):
+    query = {"media_type": media_type, "media_id": media_id}
+    if relative_position is not None:
+        query["relative_position"] = relative_position
+
+    return await Section.find(query).skip(skip).limit(limit).to_list()
+
+
+@section_api.get("/sections/barcode/{barcode}", response_model=List[Section])
+async def get_sections_by_barcode(
+    barcode: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)
+):
+    return await Section.find({"barcode": barcode}).skip(skip).limit(limit).to_list()
