@@ -4,14 +4,16 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
 
-from temdb.models.specimen import Specimen
-from temdb.models.block import Block
-from temdb.models.cutting_session import CuttingSession
-from temdb.models.section import Section
-from temdb.models.roi import ROI
-from temdb.models.imaging_session import ImagingSession
-from temdb.models.acquisition import Acquisition
-from temdb.models.tile import Tile
+from temdb.models.v1.grids import Grid
+
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.block import Block
+from temdb.models.v2.cutting_session import CuttingSession
+from temdb.models.v2.section import Section
+from temdb.models.v2.roi import ROI
+from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.acquisition import Acquisition
+from temdb.models.v2.tile import Tile
 
 
 logging.basicConfig(level=logging.INFO)
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 async def init_db(mongo_url: str, db_name: str):
 
     document_models = [
+        Grid, # original metadata schema
         Specimen,
         Block,
         CuttingSession,

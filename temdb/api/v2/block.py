@@ -1,12 +1,11 @@
 from fastapi import HTTPException, Query, Body, APIRouter
 from typing import List
 
-from temdb.models.block import Block, BlockCreate, BlockUpdate
-from temdb.models.specimen import Specimen
-from temdb.models.cutting_session import CuttingSession
+from temdb.models.v2.block import Block, BlockCreate, BlockUpdate
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.cutting_session import CuttingSession
 
 block_api = APIRouter(
-    prefix="/api",
     tags=["Blocks"],
 )
 

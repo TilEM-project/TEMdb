@@ -2,12 +2,11 @@ from fastapi import HTTPException, Query, APIRouter, Body
 from typing import List
 from datetime import datetime
 
-from temdb.models.specimen import Specimen, SpecimenUpdate
-from temdb.models.block import Block
-from temdb.models.imaging_session import ImagingSession
+from temdb.models.v2.specimen import Specimen, SpecimenUpdate
+from temdb.models.v2.block import Block
+from temdb.models.v2.imaging_session import ImagingSession
 
 specimen_api = APIRouter(
-    prefix="/api",
     tags=["Specimens"],
 )
 

@@ -3,10 +3,9 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
 
-from temdb.models.acquisition import Acquisition
+from temdb.models.v2.acquisition import Acquisition
 
 analysis_api = APIRouter(
-    prefix="/api",
     tags=["Analysis"],
 )
 

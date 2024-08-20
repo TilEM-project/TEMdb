@@ -1,21 +1,20 @@
 from typing import List, Dict
-import datetime
+from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException, Body
 from beanie import PydanticObjectId
 
-from temdb.models.imaging_session import (
+from temdb.models.v2.imaging_session import (
     ImagingSession,
     ImagingSessionCreate,
     ImagingSessionUpdate,
     ImagingSessionStatus,
 )
-from temdb.models.section import Section
-from temdb.models.roi import ROI
-from temdb.models.specimen import Specimen
-from temdb.models.block import Block
+from temdb.models.v2.section import Section
+from temdb.models.v2.roi import ROI
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.block import Block
 
 imaging_session_api = APIRouter(
-    prefix="/api",
     tags=["Imaging Sessions"],
 )
 
