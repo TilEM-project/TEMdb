@@ -4,19 +4,18 @@ from typing import List, Optional, Dict
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from temdb.models.acquisition import (
+from temdb.models.v2.acquisition import (
     Acquisition,
     AcquisitionCreate,
     AcquisitionUpdate,
-    ImagingSession,
     StorageLocation,
     StorageLocationCreate,
 )
-from temdb.models.roi import ROI
-from temdb.models.tile import Tile, TileCreate
+from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.roi import ROI
+from temdb.models.v2.tile import Tile, TileCreate
 
 acquisition_api = APIRouter(
-    prefix="/api",
     tags=["Acquisitions"],
 )
 

@@ -2,12 +2,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, Query, HTTPException
 from beanie import PydanticObjectId
 
-from temdb.models.section import Section, SectionCreate, SectionUpdate
-from temdb.models.cutting_session import CuttingSession
-from temdb.models.enum_schemas import MediaType
+from temdb.models.v2.section import Section, SectionCreate, SectionUpdate
+from temdb.models.v2.cutting_session import CuttingSession
+from temdb.models.v2.enum_schemas import MediaType
 
 section_api = APIRouter(
-    prefix="/api",
     tags=["Sections"],
 )
 

@@ -10,7 +10,8 @@ dependencies = [
     "beanie",
     "pydantic",
     "pydantic-settings",
-    "jinja2"
+    "jinja2",
+    "python-multipart",
 ]
 
 [project.optional-dependencies]

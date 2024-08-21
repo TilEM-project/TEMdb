@@ -5,10 +5,10 @@ from beanie import Document, Link, PydanticObjectId
 
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
-from temdb.models.enum_schemas import AcquisitionStatus
-from temdb.models.roi import ROI
-from temdb.models.imaging_session import ImagingSession
-from temdb.models.tile import Tile
+from temdb.models.v2.enum_schemas import AcquisitionStatus
+from temdb.models.v2.roi import ROI
+from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.tile import Tile
 
 
 class StorageLocation(BaseModel):

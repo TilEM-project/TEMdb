@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from beanie import Document, Link, PydanticObjectId
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
-from temdb.models.cutting_session import CuttingSession
-from temdb.models.enum_schemas import MediaType, SectionQuality
+from temdb.models.v2.cutting_session import CuttingSession
+from temdb.models.v2.enum_schemas import MediaType, SectionQuality
 
 
 class SectionMetrics(BaseModel):

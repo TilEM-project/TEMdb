@@ -4,7 +4,7 @@ from beanie import Document, Link, PydanticObjectId
 
 from pymongo import IndexModel, ASCENDING
 
-from temdb.models.specimen import Specimen
+from temdb.models.v2.specimen import Specimen
 
 
 class BlockCreate(BaseModel):

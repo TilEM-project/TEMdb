@@ -5,14 +5,17 @@ from fastapi import FastAPI
 
 from temdb.database import init_db
 from temdb.config import Config
-from temdb.api.roi import roi_api
-from temdb.api.specimen import specimen_api
-from temdb.api.block import block_api
-from temdb.api.cutting_session import cutting_session_api
-from temdb.api.section import section_api
-from temdb.api.imaging_session import imaging_session_api
-from temdb.api.acquisition import acquisition_api
-from temdb.api.analysis import analysis_api
+
+from temdb.api.v1.grids import grid_api
+
+from temdb.api.v2.roi import roi_api
+from temdb.api.v2.specimen import specimen_api
+from temdb.api.v2.block import block_api
+from temdb.api.v2.cutting_session import cutting_session_api
+from temdb.api.v2.section import section_api
+from temdb.api.v2.imaging_session import imaging_session_api
+from temdb.api.v2.acquisition import acquisition_api
+from temdb.api.v2.analysis import analysis_api
 
 
 __version__ = "0.1.0"
@@ -37,17 +40,22 @@ def create_app():
     app.config = Config()
     logging.info(f"Mongo URL: {app.config.MONGODB_URL}")
     logging.info(f"Database name: {app.config.DB_NAME}")
-    app.state.mongo_url = os.getenv("MONGODB_URL", "mongodb://mongo:27017/")
-    app.state.db_name = os.getenv("DB_NAME", "testdb")
+    app.state.mongo_url = app.config.MONGODB_URL
+    app.state.db_name = app.config.DB_NAME
 
-    app.include_router(specimen_api)
-    app.include_router(block_api)
-    app.include_router(cutting_session_api)
-    app.include_router(section_api)
-    app.include_router(roi_api)
-    app.include_router(imaging_session_api)
-    app.include_router(acquisition_api)
-    app.include_router(analysis_api)
+    v1_prefix = "/api/v1"
+    app.include_router(grid_api, prefix=v1_prefix)
+
+    v2_prefix = "/api/v2"
+
+    app.include_router(specimen_api, prefix=v2_prefix)
+    app.include_router(block_api, prefix=v2_prefix)
+    app.include_router(cutting_session_api, prefix=v2_prefix)
+    app.include_router(section_api, prefix=v2_prefix)
+    app.include_router(roi_api, prefix=v2_prefix)
+    app.include_router(imaging_session_api, prefix=v2_prefix)
+    app.include_router(acquisition_api, prefix=v2_prefix)
+    app.include_router(analysis_api, prefix=v2_prefix)
 
     @app.get("/")
     async def root():

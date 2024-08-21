@@ -4,8 +4,8 @@ from pydantic import BaseModel
 from beanie import PydanticObjectId, Document, Link
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
-from temdb.models.block import Block
-from temdb.models.enum_schemas import MediaType
+from temdb.models.v2.block import Block
+from temdb.models.v2.enum_schemas import MediaType
 
 
 class CuttingSessionCreate(BaseModel):

@@ -1,21 +1,14 @@
-# Use the official Python image
-FROM python:3.11
+FROM python:3.11-slim-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Set working directory in the container
+COPY . /app
+
 WORKDIR /app
+RUN pip install .
 
-# Copy the dependencies file to the working directory
-COPY requirements.txt .
-
-# Install dependencies
-RUN pip install -r requirements.txt
-
-# Copy the rest of the application code to the working directory
-COPY . .
 
 EXPOSE 8000
 

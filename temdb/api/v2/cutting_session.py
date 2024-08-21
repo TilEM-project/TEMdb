@@ -3,17 +3,16 @@ from typing import List
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from temdb.models.specimen import Specimen
-from temdb.models.block import Block
-from temdb.models.section import Section
-from temdb.models.cutting_session import (
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.block import Block
+from temdb.models.v2.section import Section
+from temdb.models.v2.cutting_session import (
     CuttingSession,
     CuttingSessionCreate,
     CuttingSessionUpdate,
 )
 
 cutting_session_api = APIRouter(
-    prefix="/api",
     tags=["Cutting Sessions"],
 )
 

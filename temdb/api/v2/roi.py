@@ -2,12 +2,11 @@ from fastapi import APIRouter, Body, Query, HTTPException
 from beanie import PydanticObjectId
 from typing import List, Optional
 
-from temdb.models.roi import ROI, ROICreate, ROIUpdate
-from temdb.models.section import Section
-from temdb.models.acquisition import Acquisition
+from temdb.models.v2.roi import ROI, ROICreate, ROIUpdate
+from temdb.models.v2.section import Section
+from temdb.models.v2.acquisition import Acquisition
 
 roi_api = APIRouter(
-    prefix="/api",
     tags=["ROIs"],
 )
 

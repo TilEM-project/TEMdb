@@ -5,10 +5,10 @@ from beanie import Document, Link, PydanticObjectId
 
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
-from temdb.models.enum_schemas import ImagingSessionStatus, MediaType
-from temdb.models.specimen import Specimen
-from temdb.models.roi import ROI
-from temdb.models.block import Block
+from temdb.models.v2.enum_schemas import ImagingSessionStatus, MediaType
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.roi import ROI
+from temdb.models.v2.block import Block
 
 
 class ImagingSessionCreate(BaseModel):

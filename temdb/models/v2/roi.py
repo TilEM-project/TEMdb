@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from beanie import Document, Link, PydanticObjectId
 from pymongo import IndexModel, ASCENDING
 
-from temdb.models.section import Section
+from temdb.models.v2.section import Section
 
 
 class ROICreate(BaseModel):
