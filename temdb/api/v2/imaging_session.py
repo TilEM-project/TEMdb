@@ -1,5 +1,5 @@
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, Body
 from beanie import PydanticObjectId
 
@@ -30,7 +30,7 @@ async def list_imaging_sessions(
     "/imaging-sessions/{session_id}/section-rois", response_model=List[Dict]
 )
 async def get_imaging_session_section_rois(
-    session_id: PydanticObjectId,
+    session_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
@@ -59,13 +59,13 @@ async def get_imaging_session_section_rois(
 
 @imaging_session_api.post("/imaging-sessions", response_model=ImagingSession)
 async def create_imaging_session(
-    session: ImagingSessionCreate, start_time: datetime = Body(...)
+    session: ImagingSessionCreate, start_time: datetime = None
 ):
-    specimen = await Specimen.get(session.specimen_id)
+    specimen = await Specimen.find_one(Specimen.specimen_id == session.specimen_id)
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
 
-    block = await Block.get(session.block_id)
+    block = await Block.find_one(Block.block_id == session.block_id)
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
@@ -76,20 +76,19 @@ async def create_imaging_session(
             "media_id": session.media_id,
         }
     ).to_list()
-
-    session_number = len(existing_sessions) + 1
+    session_number = len(existing_sessions) + 1 if existing_sessions else 0
     session_id = (
         f"{session.specimen_id}_{session.block_id}_{session.media_id}_{session_number}"
     )
 
     new_session = ImagingSession(
         session_id=session_id,
-        specimen_id=specimen,
-        block=block,
+        specimen_id=specimen.id,
+        block=block.id,
         media_type=session.media_type,
         media_id=session.media_id,
         status=ImagingSessionStatus.PLANNED,
-        start_time=start_time or datetime.datetime.now(datetime.timezone.utc),
+        start_time=start_time or datetime.now(timezone.utc),
         end_time=None,
         rois=[],
     )
@@ -100,7 +99,7 @@ async def create_imaging_session(
 @imaging_session_api.get(
     "/imaging-sessions/{session_id}", response_model=ImagingSession
 )
-async def get_imaging_session(session_id: PydanticObjectId):
+async def get_imaging_session(session_id: str):
     session = await ImagingSession.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Imaging session not found")
@@ -111,7 +110,7 @@ async def get_imaging_session(session_id: PydanticObjectId):
     "/imaging-sessions/{session_id}", response_model=ImagingSession
 )
 async def update_imaging_session(
-    session_id: PydanticObjectId, updated_fields: ImagingSessionUpdate = Body(...)
+    session_id: str, updated_fields: ImagingSessionUpdate = Body(...)
 ):
     existing_session = await ImagingSession.get(session_id)
     if not existing_session:
@@ -129,7 +128,7 @@ async def update_imaging_session(
 
 
 @imaging_session_api.delete("/imaging-sessions/{session_id}", response_model=dict)
-async def delete_imaging_session(session_id: PydanticObjectId):
+async def delete_imaging_session(session_id: str):
     session = await ImagingSession.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Imaging session not found")
@@ -142,7 +141,7 @@ async def delete_imaging_session(session_id: PydanticObjectId):
     "/imaging-sessions/{session_id}/sections", response_model=ImagingSession
 )
 async def add_sections_to_session(
-    session_id: PydanticObjectId, section_ids: List[PydanticObjectId]
+    session_id: str, section_ids: List
 ):
     session = await ImagingSession.get(session_id)
     if not session:
@@ -161,7 +160,7 @@ async def add_sections_to_session(
     "/imaging-sessions/{session_id}/add-rois", response_model=ImagingSession
 )
 async def add_rois_to_imaging_session(
-    session_id: PydanticObjectId, roi_ids: List[PydanticObjectId]
+    session_id: str, roi_ids: List
 ):
     session = await ImagingSession.get(session_id)
     if not session:
@@ -181,7 +180,7 @@ async def add_rois_to_imaging_session(
     response_model=List[ImagingSession],
 )
 async def get_specimen_imaging_sessions(
-    specimen_id: PydanticObjectId,
+    specimen_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):

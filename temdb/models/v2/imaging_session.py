@@ -1,7 +1,7 @@
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from beanie import Document, Link, PydanticObjectId
+from beanie import Document, Link
 
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
@@ -13,8 +13,8 @@ from temdb.models.v2.block import Block
 
 class ImagingSessionCreate(BaseModel):
     session_id: str
-    specimen_id: PydanticObjectId
-    block_id: PydanticObjectId
+    specimen_id: str
+    block_id: str
     media_type: MediaType
     media_id: str
 
@@ -36,15 +36,15 @@ class ImagingSession(Document):
     status: ImagingSessionStatus = ImagingSessionStatus.PLANNED
     rois: List[ROI] = []
 
-    class Settings:
-        name = "imaging_sessions"
+    class Settings:    
+        name = "imaging_sessions"   
         indexes = [
             IndexModel(
                 [("session_id", ASCENDING)], unique=True, name="session_id_index"
             ),
             IndexModel(
                 [
-                    ("specimen.id", ASCENDING),
+                    ("specimen_id.id", ASCENDING),
                     ("block.id", ASCENDING),
                     ("media_id", ASCENDING),
                 ],
