@@ -6,6 +6,7 @@ class MediaType(str, Enum):
     GRID = "grid"
     SLED = "sled"
     STICK = "stick"
+    STICK16 = "stick16"
 
 
 class SectionQuality(str, Enum):
@@ -24,6 +25,7 @@ class ImagingSessionStatus(str, Enum):
 
 
 class AcquisitionStatus(str, Enum):
+    PLANNED = "planned"
     ACQUIRED = "acquired"
     ABORTED = "aborted"
     QC_FAILED = "failed"
