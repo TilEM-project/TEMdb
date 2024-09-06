@@ -1,9 +1,11 @@
 import os
 from contextlib import asynccontextmanager
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
-from temdb.database import init_db
+from temdb.database import DatabaseManager
 from temdb.config import Config
 
 from temdb.api.v1.grids import grid_api
@@ -31,7 +33,9 @@ async def lifespan(app: FastAPI):
     db_name = app.state.db_name
 
     logger.info(f"Connecting to database: {mongo_url}, database name: {db_name}")
-    await init_db(mongo_url, db_name)
+    db_manager = DatabaseManager(mongo_url, db_name)
+    app.state.db_manager = db_manager
+    await db_manager.initialize()
     yield
 
 
@@ -65,4 +69,19 @@ def create_app():
     def health():
         return {"status": "ok"}
 
+    register_exception(app)
     return app
+
+
+def register_exception(app: FastAPI):
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ):
+
+        exc_str = f"{exc}".replace("\n", " ").replace("   ", " ")
+        logger.error(f"RequestValidationError for {request.url}: {exc_str}")
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": exc.errors(), "body": exc.body},
+        )
