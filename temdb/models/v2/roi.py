@@ -1,44 +1,58 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Union, List
 from pydantic import BaseModel
-from beanie import Document, Link, PydanticObjectId
+from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING
 
 from temdb.models.v2.section import Section
 
 
 class ROICreate(BaseModel):
-    roi_id: str
-    name: str
-    aperture_centroid: Dict
-    brightfield_center: Dict
-    barcode: Optional[int] = None
-    parameters: Dict
-    is_lens_correction_roi: bool = False
-    section_id: PydanticObjectId
-    parent_roi_id: Optional[PydanticObjectId] = None
+    roi_id: int
+    aperture_width_height: Optional[List] = None
+    aperture_centroid: Optional[List] = None
+    aperture_bounding_box: Optional[List] = None
+    optical_nm_per_pixel: Optional[float] = None
+    scale_y: Optional[float] = None
+    barcode: Optional[Union[int, str]] = None
+    rois: Optional[List] = None
+    bucket: Optional[str] = None
+    aperture_image: Optional[str] = None
+    roi_mask: Optional[str] = None
+    roi_mask_bucket: Optional[str] = None
+    corners: Optional[Dict] = None
+    corners_perpendicular: Optional[Dict] = None
+    rule: Optional[str] = None
+    edits: Optional[List] = None
+    updated_at: Optional[str] = None
+    auto_roi: Optional[bool] = None
+    section_number: int
+    parent_roi_id: Optional[int] = None
+    roi_parameters: Optional[Dict] = None
 
 
 class ROIUpdate(BaseModel):
-    name: Optional[str] = None
-    aperture_centroid: Optional[Dict] = None
-    brightfield_center: Optional[Dict] = None
-    barcode: Optional[int] = None
-    parameters: Optional[Dict] = None
-    is_lens_correction_roi: Optional[bool] = None
-    thumbnail: str = None
+    aperture_width_height: Optional[List] = None
+    aperture_centroid: Optional[List] = None
+    aperture_bounding_box: Optional[List] = None
+    optical_nm_per_pixel: Optional[float] = None
+    scale_y: Optional[float] = None
+    barcode: Optional[Union[int, str]] = None
+    rois: Optional[List] = None
+    bucket: Optional[str] = None
+    aperture_image: Optional[str] = None
+    roi_mask: Optional[str] = None
+    roi_mask_bucket: Optional[str] = None
+    corners: Optional[Dict] = None
+    corners_perpendicular: Optional[Dict] = None
+    rule: Optional[str] = None
+    edits: Optional[List] = None
+    updated_at: Optional[str] = None
+    auto_roi: Optional[bool] = None
+    parent_roi_id: Optional[str] = None
+    roi_parameters: Optional[Dict] = None
 
-
-class ROI(Document):
-    roi_id: str
-    name: str
-    aperture_centroid: Dict
-    brightfield_center: Dict
-    barcode: Optional[int]
-    parent_roi: Optional[Link["ROI"]]
-    parameters: Dict
-    is_lens_correction_roi: bool = False
-    section: Link[Section]
-    thumbnail: Optional[str] = None
+class ROI(ROICreate, Document):
+    parent_roi_id: Optional[Link["ROI"]]
 
     class Settings:
         name = "rois"
@@ -53,3 +67,12 @@ class ROI(Document):
                 [("is_lens_correction_roi", ASCENDING)], name="lens_correction_index"
             ),
         ]
+
+    @classmethod
+    async def create_roi(cls, **kwargs):
+        # Ensure ROIs are correctly linked to multiple sections
+        section_id = kwargs.get("section_id", [])
+        for section in section_id:
+            if not await Section.exists(section.id):
+                raise ValueError(f"Section with id {section.id} does not exist.")
+        return await cls(**kwargs).insert()
