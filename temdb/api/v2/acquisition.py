@@ -1,7 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict
 
-from beanie import PydanticObjectId
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from temdb.models.v2.acquisition import (
@@ -38,27 +37,30 @@ async def list_acquisitions(
 
 @acquisition_api.post("/acquisitions", response_model=Acquisition)
 async def create_acquisition(acquisition: AcquisitionCreate):
-    roi = await ROI.get(acquisition.roi_id)
+    roi = await ROI.find_one(ROI.roi_id == acquisition.roi_id)
     if not roi:
         raise HTTPException(status_code=404, detail="ROI not found")
 
-    imaging_session = await ImagingSession.get(acquisition.imaging_session_id)
+    imaging_session = await ImagingSession.find_one(
+        ImagingSession.session_id == acquisition.imaging_session_id
+    )
     if not imaging_session:
         raise HTTPException(status_code=404, detail="Imaging session not found")
 
     new_acquisition = Acquisition(
         version=acquisition.version,
         montage_id=acquisition.montage_id,
+        specimen_id=imaging_session.specimen_id,
         acquisition_id=acquisition.acquisition_id,
-        roi=roi,
-        imaging_session=imaging_session,
+        roi_id=roi.id,
+        imaging_session_id=imaging_session.id,
         hardware_settings=acquisition.hardware_settings,
         acquisition_settings=acquisition.acquisition_settings,  # Contains magnification
         calibration_info=acquisition.calibration_info,
         status=acquisition.status,
         tilt_angle=acquisition.tilt_angle,
         lens_correction=acquisition.lens_correction,
-        start_time=datetime.now(datetime.timezone.utc),
+        start_time=datetime.now(timezone.utc),
         montage_set_name=acquisition.montage_set_name,
         sub_region=acquisition.sub_region,
         replaces_acquisition_id=acquisition.replaces_acquisition_id,
@@ -68,7 +70,7 @@ async def create_acquisition(acquisition: AcquisitionCreate):
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}", response_model=Acquisition)
-async def get_acquisition(acquisition_id: PydanticObjectId):
+async def get_acquisition(acquisition_id: str):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -77,7 +79,7 @@ async def get_acquisition(acquisition_id: PydanticObjectId):
 
 @acquisition_api.patch("/acquisitions/{acquisition_id}", response_model=Acquisition)
 async def update_acquisition(
-    acquisition_id: PydanticObjectId, updated_fields: AcquisitionUpdate = Body(...)
+    acquisition_id: str, updated_fields: AcquisitionUpdate = Body(...)
 ):
     existing_acquisition = await Acquisition.get(acquisition_id)
     if not existing_acquisition:
@@ -95,7 +97,7 @@ async def update_acquisition(
 
 
 @acquisition_api.delete("/acquisitions/{acquisition_id}", response_model=dict)
-async def delete_acquisition(acquisition_id: PydanticObjectId):
+async def delete_acquisition(acquisition_id: str):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -105,7 +107,7 @@ async def delete_acquisition(acquisition_id: PydanticObjectId):
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles", response_model=Tile)
-async def add_tile_to_acquisition(acquisition_id: PydanticObjectId, tile: TileCreate):
+async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -113,7 +115,7 @@ async def add_tile_to_acquisition(acquisition_id: PydanticObjectId, tile: TileCr
     # Create and insert the tile
     new_tile = Tile(
         tile_id=tile.tile_id,
-        # acquisition_id=acquisition.id,
+        acquisition_id=acquisition.id,
         stage_position=tile.stage_position,
         raster_position=tile.raster_position,
         focus_score=tile.focus_score,
@@ -138,9 +140,7 @@ async def add_tile_to_acquisition(acquisition_id: PydanticObjectId, tile: TileCr
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=Tile
 )
-async def get_tile_from_acquisition(
-    acquisition_id: PydanticObjectId, tile_id: PydanticObjectId
-):
+async def get_tile_from_acquisition(acquisition_id: str, tile_id: int):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -161,7 +161,7 @@ async def get_tile_from_acquisition(
     "/acquisitions/{acquisition_id}/storage-locations", response_model=Acquisition
 )
 async def add_storage_location(
-    acquisition_id: PydanticObjectId, storage_location: StorageLocationCreate
+    acquisition_id: str, storage_location: StorageLocationCreate
 ):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
@@ -177,7 +177,7 @@ async def add_storage_location(
     "/acquisitions/{acquisition_id}/current-storage",
     response_model=Optional[StorageLocation],
 )
-async def get_current_storage_location(acquisition_id: PydanticObjectId):
+async def get_current_storage_location(acquisition_id: str):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -189,7 +189,7 @@ async def get_current_storage_location(acquisition_id: PydanticObjectId):
     "/acquisitions/{acquisition_id}/minimap-uri",
     response_model=Dict[str, Optional[str]],
 )
-async def get_minimap_uri(acquisition_id: PydanticObjectId):
+async def get_minimap_uri(acquisition_id: str):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -200,7 +200,7 @@ async def get_minimap_uri(acquisition_id: PydanticObjectId):
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/tile-count", response_model=Dict[str, int]
 )
-async def get_tile_count(acquisition_id: PydanticObjectId):
+async def get_tile_count(acquisition_id: str):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -212,9 +212,7 @@ async def get_tile_count(acquisition_id: PydanticObjectId):
     "/acquisitions/{acquisition_id}/tiles/{tile_id}/storage-path",
     response_model=Dict[str, Optional[str]],
 )
-async def get_tile_storage_path(
-    acquisition_id: PydanticObjectId, tile_id: PydanticObjectId
-):
+async def get_tile_storage_path(acquisition_id: str, tile_id: int):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
@@ -239,9 +237,7 @@ async def get_tile_storage_path(
 @acquisition_api.delete(
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=dict
 )
-async def delete_tile_from_acquisition(
-    acquisition_id: PydanticObjectId, tile_id: PydanticObjectId
-):
+async def delete_tile_from_acquisition(acquisition_id: str, tile_id: int):
     acquisition = await Acquisition.get(acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
