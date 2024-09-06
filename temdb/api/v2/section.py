@@ -77,31 +77,31 @@ async def get_section(session_id: PydanticObjectId, section_id: str):
     return section
 
 
-@section_api.post(
-    "/sections/cutting-session/{session_id}/section", response_model=Section
-)
-async def create_section(session_id: PydanticObjectId, section: SectionCreate):
-    cut_session = await CuttingSession.get(session_id)
+@section_api.post("/sections", response_model=Section)
+async def create_section(section: SectionCreate):
+    cut_session = await CuttingSession.find_one(
+        {"cutting_session_id": section.cutting_session_id}
+    )
     if not cut_session:
         raise HTTPException(status_code=404, detail="Cutting session not found")
 
     new_section = Section(
         section_id=section.section_id,
-        number=section.number,
+        section_number=section.section_number,
         optical_image=section.optical_image,
         section_metrics=section.section_metrics,
         media_type=section.media_type,
         media_id=section.media_id,
         relative_position=section.relative_position,
         barcode=section.barcode,
-        cut_session=cut_session,
+        cutting_session_id=cut_session.id,
     )
     await new_section.insert()
     return new_section
 
 
 @section_api.patch(
-    "/sections/cutting-session/{session_id}/section/{section_id}",
+    "/sections",
     response_model=Section,
 )
 async def update_section(
