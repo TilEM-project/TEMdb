@@ -1,21 +1,22 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
-from beanie import PydanticObjectId, Document, Link
+from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
 from temdb.models.v2.block import Block
+from temdb.models.v2.specimen import Specimen
 from temdb.models.v2.enum_schemas import MediaType
 
 
 class CuttingSessionCreate(BaseModel):
-    session_id: str
+    cutting_session_id: str
     start_time: datetime
-    end_time: datetime
+    end_time: Optional[datetime] = None
     operator: str
     sectioning_device: str
     media_type: MediaType
-    block_id: PydanticObjectId
+    block_id: str
 
 
 class CuttingSessionUpdate(BaseModel):
@@ -27,13 +28,14 @@ class CuttingSessionUpdate(BaseModel):
 
 
 class CuttingSession(Document):
-    session_id: str
+    cutting_session_id: str
     start_time: datetime
     end_time: datetime
     operator: str
     sectioning_device: str
     media_type: MediaType
-    block: Link[Block]
+    specimen_id: Link[Specimen]
+    block_id: Link[Block]
 
     class Settings:
         name = "cutting_sessions"
