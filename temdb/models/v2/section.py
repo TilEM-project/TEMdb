@@ -8,25 +8,25 @@ from temdb.models.v2.enum_schemas import MediaType, SectionQuality
 
 
 class SectionMetrics(BaseModel):
-    sectioning_metadata: Optional[Dict]
-    quality: Optional[SectionQuality]
-    tissue_confidence_score: Optional[float]
+    sectioning_metadata: Optional[Dict] = None
+    quality: Optional[SectionQuality] = None 
+    tissue_confidence_score: Optional[float] = None
 
 
 class SectionCreate(BaseModel):
     section_id: str
-    number: int
+    section_number: int
     optical_image: Optional[Dict] = None
-    section_metrics: Optional[SectionMetrics]
+    section_metrics: Optional[SectionMetrics] = None
     media_type: MediaType
     media_id: str
     relative_position: Optional[int] = None
     barcode: Optional[str] = None
-    cut_session_id: PydanticObjectId
+    cutting_session_id: str
 
 
 class SectionUpdate(BaseModel):
-    number: Optional[int] = None
+    section_number: Optional[int] = None
     optical_image: Optional[Dict] = None
     sectioning_metadata: Optional[Dict] = None
     quality: Optional[SectionQuality] = None
@@ -37,14 +37,14 @@ class SectionUpdate(BaseModel):
 
 class Section(Document):
     section_id: str
-    number: int
+    section_number: int
     optical_image: Optional[Dict]
     section_metrics: Optional[SectionMetrics]
     media_type: MediaType
     media_id: str
     relative_position: Optional[int]
     barcode: Optional[str]
-    cut_session: Link[CuttingSession]
+    cutting_session_id: Link[CuttingSession]
 
     class Settings:
         name = "sections"

@@ -8,8 +8,7 @@ from pymongo import IndexModel, ASCENDING, DESCENDING
 from temdb.models.v2.enum_schemas import AcquisitionStatus
 from temdb.models.v2.roi import ROI
 from temdb.models.v2.imaging_session import ImagingSession
-from temdb.models.v2.tile import Tile
-
+from temdb.models.v2.specimen import Specimen
 
 class StorageLocation(BaseModel):
     location_type: str
@@ -33,10 +32,10 @@ class LensCorrectionModel(BaseModel):
 
 
 class Calibration(BaseModel):
-    pixel_size: List[float]
+    pixel_size: float
     stig_angle: float
     lens_model: Optional[LensCorrectionModel]
-    aperture_centroid: List[float]
+    aperture_centroid: Optional[List[float]] = None
 
 
 class HardwareParams(BaseModel):
@@ -44,7 +43,7 @@ class HardwareParams(BaseModel):
     camera_model: str
     camera_serial: str
     bit_depth: int
-    media: str
+    media_type: str
 
 
 class AcquisitionParams(BaseModel):
@@ -52,23 +51,26 @@ class AcquisitionParams(BaseModel):
     spot_size: int
     exposure_time: int
     tile_size: List[int]
-    tile_overlap: List[int]
+    tile_overlap: float
 
 
 class AcquisitionCreate(BaseModel):
-    version: str
+    version: str = "1.0"
     montage_id: str
     acquisition_id: str
-    roi_id: PydanticObjectId
-    imaging_session_id: PydanticObjectId
+    roi_id: int
+    imaging_session_id: str
     hardware_settings: HardwareParams
     acquisition_settings: AcquisitionParams
-    status: AcquisitionStatus
+    calibration_info: Optional[Calibration] = None
+    status: AcquisitionStatus = AcquisitionStatus.PLANNED
     tilt_angle: float
     lens_correction: bool
+    start_time: datetime
+    end_time: Optional[datetime] = None
     montage_set_name: Optional[str] = None
     sub_region: Optional[Dict[str, int]] = None
-    replaces_acquisition_id: Optional[PydanticObjectId] = None
+    replaces_acquisition_id: Optional[int] = None
 
 
 class AcquisitionUpdate(BaseModel):
@@ -81,11 +83,12 @@ class AcquisitionUpdate(BaseModel):
     end_time: Optional[datetime] = None
     montage_set_name: Optional[str] = None
     sub_region: Optional[Dict[str, int]] = None
-    replaces_acquisition_id: Optional[PydanticObjectId] = None
+    replaces_acquisition_id: Optional[int] = None
 
 
 class Acquisition(Document):
     metadata_version: str = "1.0"
+    specimen_id: Link[Specimen]
     montage_id: str
     acquisition_id: str
     roi_id: Link[ROI]
@@ -99,13 +102,13 @@ class Acquisition(Document):
     start_time: datetime = None
     end_time: Optional[datetime] = None
     storage_locations: Optional[List[StorageLocation]] = Field(default_factory=list)
-    tile_ids: Optional[List[Tile]] = Field(default_factory=list)
     montage_set_name: Optional[str] = None
     sub_region: Optional[Dict[str, int]] = None
-    replaces_acquisition_id: Optional[PydanticObjectId] = None
+    replaces_acquisition_id: Optional[int] = None
+    version: int = 1
 
-    class Settings:
-        name = "acquisitions"
+    class Settings:    
+        name = "acquisitions"  
         indexes = [
             IndexModel(
                 [("acquisition_id", ASCENDING)],
@@ -141,18 +144,13 @@ class Acquisition(Document):
             return f"{current_location.base_path}/minimap.png"
         return None
 
-    def get_tile_count(self) -> int:
-        return len(self.tile_ids)
-
-    async def get_tile_storage_path(self, tile_id: str):
-        current_location = self.get_current_storage_location()
-        tile = await Tile.get(tile_id)
-        if current_location and tile:
-            return f"{current_location.base_path}/{tile.relative_path}"
-        return None
-
-    def add_tile(self, tile_id: str):
-        self.tile_ids.append(tile_id)
-
-    async def get_tile(self, tile_id: str) -> Optional[Tile]:
-        return await Tile.get(tile_id)
+    @classmethod
+    async def create_acquisition(cls, **kwargs):
+        roi = kwargs.get("roi_id")
+        latest_acquisition = await cls.find(
+            Acquisition.roi_id == roi.id
+        ).sort(-cls.version).first()
+        if latest_acquisition:
+            kwargs["version"] = latest_acquisition.version + 1
+            kwargs["replaces_acquisition_id"] = latest_acquisition.id
+        return await cls(**kwargs).insert()

@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 from pydantic import BaseModel
-from beanie import Document, Link, PydanticObjectId
+from beanie import Document, Link
 
 from pymongo import IndexModel, ASCENDING
 
@@ -9,21 +9,19 @@ from temdb.models.v2.specimen import Specimen
 
 class BlockCreate(BaseModel):
     block_id: str
-    name: str
-    microCT_Info: Dict
-    specimen_id: PydanticObjectId
+    microCT_info: Dict
+    specimen_id: str
 
 
 class BlockUpdate(BaseModel):
-    name: Optional[str] = None
-    microCT_Info: Optional[Dict] = None
+    block_id: Optional[str] = None
+    microCT_info: Optional[Dict] = None
 
 
 class Block(Document):
     block_id: str
-    name: str
-    microCT_Info: Dict
-    specimen: Link[Specimen]
+    microCT_info:Optional[Dict]
+    specimen_id: Link[Specimen]
 
     class Settings:
         name = "blocks"
