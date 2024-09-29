@@ -1,51 +1,48 @@
-import os
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from temdb.database import DatabaseManager
-from temdb.config import Config
-
 from temdb.api.v1.grids import grid_api
-
-from temdb.api.v2.roi import roi_api
-from temdb.api.v2.specimen import specimen_api
-from temdb.api.v2.block import block_api
-from temdb.api.v2.cutting_session import cutting_session_api
-from temdb.api.v2.section import section_api
-from temdb.api.v2.imaging_session import imaging_session_api
 from temdb.api.v2.acquisition import acquisition_api
 from temdb.api.v2.analysis import analysis_api
-
+from temdb.api.v2.block import block_api
+from temdb.api.v2.cutting_session import cutting_session_api
+from temdb.api.v2.imaging_session import imaging_session_api
+from temdb.api.v2.roi import roi_api
+from temdb.api.v2.section import section_api
+from temdb.api.v2.specimen import specimen_api
+from temdb.config import config
+from temdb.database import DatabaseManager
 
 __version__ = "0.1.0"
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG if config.debug else logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongo_url = app.state.mongo_url
-    db_name = app.state.db_name
+    mongodb_uri = app.state.mongodb_uri
+    mongodb_name = app.state.mongodb_name
 
-    logger.info(f"Connecting to database: {mongo_url}, database name: {db_name}")
-    db_manager = DatabaseManager(mongo_url, db_name)
+    logger.info(f"Connecting to database: {mongodb_uri}, database name: {mongodb_name}")
+    db_manager = DatabaseManager(mongodb_uri, mongodb_name)
     app.state.db_manager = db_manager
     await db_manager.initialize()
     yield
 
 
 def create_app():
-    app = FastAPI(title="TEMDB", version=__version__, lifespan=lifespan)
-    app.config = Config()
-    logging.info(f"Mongo URL: {app.config.MONGODB_URL}")
-    logging.info(f"Database name: {app.config.DB_NAME}")
-    app.state.mongo_url = app.config.MONGODB_URL
-    app.state.db_name = app.config.DB_NAME
+    app = FastAPI(title=config.app_name, version=__version__, lifespan=lifespan)
+    app.config = config
+    logging.info(f"Mongo URI: {app.config.mongodb_uri}")
+    logging.info(f"Database name: {app.config.mongodb_name}")
+    app.state.mongodb_uri = app.config.mongodb_uri
+    app.state.mongodb_name = app.config.mongodb_name
 
     v1_prefix = "/api/v1"
     app.include_router(grid_api, prefix=v1_prefix)

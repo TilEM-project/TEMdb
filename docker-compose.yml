@@ -30,12 +30,8 @@ services:
       - 80:80
     volumes:
       - .:/app
-    env_file:
-      - ./dev.env            
     environment:
-      - DB_TYPE=mongo
-    links:
-      - mongo   
+      - TEMDB_ENV=dev
     depends_on:
       - mongo
   
