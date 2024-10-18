@@ -1,4 +1,5 @@
 from typing import List, Dict, Optional
+from enum import Enum
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
 
@@ -25,48 +26,41 @@ class MatcherStats(BaseModel):
     max_match_quality: float
 
 
-class HeatMapData(BaseModel):
+class Heatmaps(BaseModel):
     focus_scores: List[List[float]]
     std_dev: List[List[float]]
     matcher_row_quality: List[List[float]]
     matcher_col_quality: List[List[float]]
     raster_positions: List[Dict[str, int]]
 
+class HeatmapType(str, Enum):
+    FOCUS_SCORE = "focus_score"
+    STD_DEV = "std_dev"
+    MATCHER_ROW_QUALITY = "matcher_row_quality"
+    MATCHER_COL_QUALITY = "matcher_col_quality"
 
-@analysis_api.get("/tiles", response_model=List[Dict])
-async def get_tiles():
-    raise NotImplementedError
 
 
-@analysis_api.get("/tile-stats", response_model=TileStats)
+@analysis_api.get("/{acquisition_id}/tile-stats", response_model=TileStats)
 async def get_tile_stats(acquisition_id: str):
     raise NotImplementedError
 
 
-@analysis_api.get("/matcher-stats", response_model=MatcherStats)
+@analysis_api.get("/{acquisition_id}/matcher-stats", response_model=MatcherStats)
 async def get_matcher_stats(acquisition_id: str):
     raise NotImplementedError
 
 
-@analysis_api.get("/low-quality-tiles", response_model=List[Dict])
-async def get_low_quality_tiles():
+@analysis_api.get("/{acquisition_id}/low-quality-tiles", response_model=List[Dict])
+async def get_low_quality_tiles(acquisition_id: str):
     raise NotImplementedError
 
 
-@analysis_api.get("/extreme-intensity-tiles", response_model=List[Dict])
-async def get_extreme_intensity_tiles(
-    low_threshold: float = Query(10, ge=0),
-    high_threshold: float = Query(245, ge=0),
-    limit: int = Query(10, ge=1, le=100),
-):
+@analysis_api.get("/{acquisition_id}/heatmap", response_model=Heatmaps)
+async def generate_tile_heatmaps(acquisition_id: str) -> Heatmaps:
     raise NotImplementedError
 
 
-@analysis_api.get("/acquisitions/{acquisition_id}/heatmap", response_model=HeatMapData)
-async def get_acquisition_heatmap(acquisition_id: str) -> HeatMapData:
-    raise NotImplementedError
-
-
-@analysis_api.get("/acquisitions/{acquisition_id}/heatmap/{metric}")
-async def get_acquisition_heatmap_metric(acquisition_id: str, metric: str):
+@analysis_api.get("/{acquisition_id}/heatmap/{heatmap_type}")
+async def get_heatmap(acquisition_id: str, heatmap_type: HeatmapType):
     raise NotImplementedError
