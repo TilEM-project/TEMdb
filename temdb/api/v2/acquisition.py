@@ -140,6 +140,21 @@ async def get_tile_from_acquisition(acquisition_id: str, tile_id: int):
     return tile_data
 
 
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=List[Dict])
+async def get_tiles_from_acquisition(
+    acquisition_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+):
+    tiles = (
+        await Tile.find(Tile.acquisition_id == acquisition_id)
+        .skip(skip)
+        .limit(limit)
+        .to_list()
+    )
+    return tiles
+
+
 @acquisition_api.post(
     "/acquisitions/{acquisition_id}/storage-locations", response_model=Acquisition
 )
@@ -224,4 +239,6 @@ async def delete_tile_from_acquisition(acquisition_id: str, tile_id: int):
 
     await tile.delete()
 
-    return {"message": f"Tile {tile_id} from acquisition {acquisition_id} deleted successfully"}
+    return {
+        "message": f"Tile {tile_id} from acquisition {acquisition_id} deleted successfully"
+    }
