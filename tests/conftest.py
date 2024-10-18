@@ -4,15 +4,17 @@ import asyncio
 import time
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
-from temdb.models.acquisition import Acquisition
-from temdb.models.tile import Tile
-from temdb.models.roi import ROI
-from temdb.models.imaging_session import ImagingSession
-from temdb.models.specimen import Specimen
-from temdb.models.block import Block
-from temdb.models.cutting_session import CuttingSession
-from temdb.models.section import Section
+from temdb.models.v2.acquisition import Acquisition
+from temdb.models.v2.tile import Tile
+from temdb.models.v2.roi import ROI
+from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.block import Block
+from temdb.models.v2.cutting_session import CuttingSession
+from temdb.models.v2.section import Section
 import pymongo
+
+from mongomock_motor import AsyncMongoMockClient
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,7 +26,8 @@ async def mongo_client():
     retries = 5
     for i in range(retries):
         try:
-            client = AsyncIOMotorClient(DATABASE_URL)
+            client = AsyncMongoMockClient()
+            # client = AsyncIOMotorClient(DATABASE_URL)
             client.get_io_loop = asyncio.get_event_loop
             await client.admin.command('ping')
             logging.info("Connected to database")

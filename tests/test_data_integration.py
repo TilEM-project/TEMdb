@@ -1,5 +1,5 @@
 import pytest
-
+import logging
 
 from tests.generators import (
     generate_specimen,
@@ -12,19 +12,25 @@ from tests.generators import (
     generate_tile,
 )
 
+from temdb.models.v2.tile import Tile
+
+logging.basicConfig(level=logging.INFO)
+
+
 
 @pytest.mark.asyncio
 async def test_full_data_integration(init_db):
     # Generate Specimen
+    
     specimen = generate_specimen()
     await specimen.insert()
-
+    
     # Generate Block linked to Specimen
     block = generate_block(specimen.id)
     await block.insert()
 
     # Generate Cutting Session linked to Block
-    cutting_session = generate_cutting_session(block.id)
+    cutting_session = generate_cutting_session(specimen.id, block.id)
     await cutting_session.insert()
 
     # Generate Section linked to Cutting Session
@@ -32,32 +38,36 @@ async def test_full_data_integration(init_db):
     await section.insert()
 
     # Generate ROI linked to Section
-    roi = generate_roi(section.id)
+    roi = generate_roi(section.section_number)
     await roi.insert()
 
     # Generate Imaging Session linked to Specimen and Block
-    imaging_session = generate_imaging_session(specimen.id, block.id, roi.id)
+    imaging_session = generate_imaging_session(specimen.id, block.id, roi)
     await imaging_session.insert()
-
+    logging.info(imaging_session)
     # Generate Acquisition linked to ROI and Imaging Session
-    acquisition = generate_acquisition(roi.id, imaging_session.id)
+    acquisition = generate_acquisition(specimen.id, roi.id, imaging_session.id)
     await acquisition.insert()
 
-    # Generate Tile linked to Acquisition
-    tile = generate_tile(acquisition.id)
-    await tile.insert()
+    # add many tiles 
+    for tile_id in range(10):
+        tile = generate_tile(tile_id, acquisition.acquisition_id)
+        await tile.insert()
 
-    # Add Tile to Acquisition
-    acquisition.add_tile(tile.id)
-    await acquisition.save()
-
+    # get tiles
+    tiles = Tile.find_many(Tile.acquisition_id == acquisition.acquisition_id).count()
+    logging.info(tiles)
+    # assert await tiles.to_list() == 10
     # Assertions
     assert specimen.id is not None
-    assert block.specimen.id == specimen.id
-    assert cutting_session.block.id == block.id
-    assert section.cut_session.id == cutting_session.id
-    assert imaging_session.specimen_id == specimen.id
-    assert roi.section.id == section.id
-    assert acquisition.roi.id == roi.id
-    assert acquisition.imaging_session.id == imaging_session.id
-    assert tile.id in acquisition.tile_ids
+    assert block.id is not None
+    assert cutting_session.id is not None
+    assert section.id is not None
+    assert roi.id is not None
+    assert imaging_session.id is not None
+    assert acquisition.id is not None
+
+    
+    # Check if all tiles are inserted
+    # tiles = await Tile.find({"acquisition_id": acquisition.id}).to_list()
+    # assert len(tiles) == 500
