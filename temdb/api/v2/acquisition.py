@@ -108,14 +108,10 @@ async def delete_acquisition(acquisition_id: str):
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles", response_model=Tile)
 async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
-    acquisition = await Acquisition.get(acquisition_id)
-    if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
 
-    # Create and insert the tile
     new_tile = Tile(
         tile_id=tile.tile_id,
-        acquisition_id=acquisition.acquisition_id,
+        acquisition_id=acquisition_id,
         stage_position=tile.stage_position,
         raster_position=tile.raster_position,
         focus_score=tile.focus_score,
@@ -130,10 +126,6 @@ async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
     )
     await new_tile.insert()
 
-    # Add the tile's ID to the acquisition
-    acquisition.add_tile(new_tile.id)
-    await acquisition.save()
-
     return new_tile
 
 
@@ -141,20 +133,11 @@ async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=Tile
 )
 async def get_tile_from_acquisition(acquisition_id: str, tile_id: int):
-    acquisition = await Acquisition.get(acquisition_id)
-    if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
 
-    if tile_id not in acquisition.tile_ids:
-        raise HTTPException(
-            status_code=404, detail="Tile not found in this acquisition"
-        )
-
-    tile = await Tile.get(tile_id)
-    if not tile:
-        raise HTTPException(status_code=404, detail="Tile not found")
-
-    return tile
+    tile_data = Tile.find_one(
+        Tile.acquisition_id == acquisition_id, Tile.tile_id == tile_id
+    )
+    return tile_data
 
 
 @acquisition_api.post(
@@ -235,21 +218,10 @@ async def get_tile_storage_path(acquisition_id: str, tile_id: int):
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=dict
 )
 async def delete_tile_from_acquisition(acquisition_id: str, tile_id: int):
-    acquisition = await Acquisition.get(acquisition_id)
-    if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
-
-    if tile_id not in acquisition.tile_ids:
-        raise HTTPException(
-            status_code=404, detail="Tile not found in this acquisition"
-        )
-
-    tile = await Tile.get(tile_id)
+    tile = Tile.find_one(Tile.acquisition_id == acquisition_id, Tile.tile_id == tile_id)
     if not tile:
         raise HTTPException(status_code=404, detail="Tile not found")
 
     await tile.delete()
-    acquisition.tile_ids.remove(tile_id)
-    await acquisition.save()
 
-    return {"message": "Tile deleted successfully"}
+    return {"message": f"Tile {tile_id} from acquisition {acquisition_id} deleted successfully"}
