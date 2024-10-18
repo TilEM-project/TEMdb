@@ -54,7 +54,6 @@ async def create_roi(roi: ROICreate):
         auto_roi=roi.auto_roi,
         is_lens_correction_roi=roi.is_lens_correction_roi,
         section_number=section.section_number,
-        section_id=section.id,
         parent_roi_id=parent_roi,
         roi_parameters=roi.roi_parameters,
     )
