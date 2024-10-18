@@ -1,6 +1,5 @@
 from typing import List, Optional
 from fastapi import APIRouter, Body, Query, HTTPException
-from beanie import PydanticObjectId
 
 from temdb.models.v2.section import Section, SectionCreate, SectionUpdate
 from temdb.models.v2.cutting_session import CuttingSession
@@ -20,7 +19,7 @@ async def list_sections(
 
 @section_api.get("/sections/cutting-session/{session_id}", response_model=List[Section])
 async def list_cutting_session_sections(
-    session_id: PydanticObjectId,
+    session_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
@@ -38,7 +37,7 @@ async def list_cutting_session_sections(
 
 @section_api.get("/sections/block/{block_id}", response_model=List[Section])
 async def list_block_sections(
-    block_id: PydanticObjectId,
+    block_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
@@ -68,7 +67,7 @@ async def list_specimen_sections(
     "/sections/cutting-session/{session_id}/section/{section_id}",
     response_model=Section,
 )
-async def get_section(session_id: PydanticObjectId, section_id: str):
+async def get_section(session_id: str, section_id: str):
     section = await Section.find_one(
         {"section_id": section_id, "cut_session.id": session_id}
     )
@@ -105,7 +104,7 @@ async def create_section(section: SectionCreate):
     response_model=Section,
 )
 async def update_section(
-    session_id: PydanticObjectId,
+    session_id: str,
     section_id: str,
     updated_fields: SectionUpdate = Body(...),
 ):
@@ -129,7 +128,7 @@ async def update_section(
 @section_api.delete(
     "/sections/cutting-session/{session_id}/section/{section_id}", response_model=dict
 )
-async def delete_section(session_id: PydanticObjectId, section_id: str):
+async def delete_section(session_id: str, section_id: str):
     section = await Section.find_one(
         {"section_id": section_id, "cut_session.id": session_id}
     )

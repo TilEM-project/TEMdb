@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 from pydantic import BaseModel
-from beanie import Document, Link, PydanticObjectId
+from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
 from temdb.models.v2.cutting_session import CuttingSession

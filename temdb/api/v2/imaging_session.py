@@ -1,7 +1,6 @@
 from typing import List, Dict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, Body
-from beanie import PydanticObjectId
 
 from temdb.models.v2.imaging_session import (
     ImagingSession,

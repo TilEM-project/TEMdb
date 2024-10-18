@@ -1,6 +1,5 @@
 from typing import List
 
-from beanie import PydanticObjectId
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from temdb.models.v2.specimen import Specimen
@@ -102,7 +101,7 @@ async def get_cutting_session(specimen_id: str, block_id: str, cutting_session_i
     "/cutting-sessions/{cutting_session_id}", response_model=CuttingSession
 )
 async def update_cutting_session(
-    cutting_session_id: PydanticObjectId, updated_fields: CuttingSessionUpdate = Body(...)
+    cutting_session_id: str, updated_fields: CuttingSessionUpdate = Body(...)
 ):
     existing_session = await CuttingSession.get(cutting_session_id)
     if not existing_session:

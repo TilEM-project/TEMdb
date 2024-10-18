@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Body, Query, HTTPException, Depends
-from beanie import PydanticObjectId
 from typing import List, Optional, Dict
 
 from temdb.dependencies import get_dynamic_model_dependency

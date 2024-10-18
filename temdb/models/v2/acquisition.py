@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
-from beanie import Document, Link, PydanticObjectId
+from beanie import Document, Link
 
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
