@@ -115,7 +115,7 @@ async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
     # Create and insert the tile
     new_tile = Tile(
         tile_id=tile.tile_id,
-        acquisition_id=acquisition.id,
+        acquisition_id=acquisition.acquisition_id,
         stage_position=tile.stage_position,
         raster_position=tile.raster_position,
         focus_score=tile.focus_score,
@@ -201,11 +201,8 @@ async def get_minimap_uri(acquisition_id: str):
     "/acquisitions/{acquisition_id}/tile-count", response_model=Dict[str, int]
 )
 async def get_tile_count(acquisition_id: str):
-    acquisition = await Acquisition.get(acquisition_id)
-    if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
-
-    return {"tile_count": len(acquisition.tile_ids)}
+    tile_count = await Tile.find(Tile.acquisition_id == acquisition_id).count()
+    return {"tile_count": tile_count}
 
 
 @acquisition_api.get(

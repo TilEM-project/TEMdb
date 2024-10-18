@@ -29,7 +29,7 @@ async def list_cutting_session_sections(
         raise HTTPException(status_code=404, detail="Cutting session not found")
 
     return (
-        await Section.find(Section.cut_session.id == session_id)
+        await Section.find(Section.cutting_session_id == cut_session.id)
         .skip(skip)
         .limit(limit)
         .to_list()
