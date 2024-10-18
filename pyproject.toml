@@ -15,9 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-testing = [
+test = [
     "pytest",
-    "pytest-asyncio"
+    "pytest-asyncio",
+    "faker",
+    "mongomock-motor"
 ]
 
 [build-system]
