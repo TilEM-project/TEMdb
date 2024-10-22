@@ -13,6 +13,7 @@ from temdb.models.v2.imaging_session import ImagingSession
 from temdb.models.v2.roi import ROI
 from temdb.models.v2.section import Section
 from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.tile import Tile
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class DatabaseManager:
             ROI,
             ImagingSession,
             Acquisition,
+            Tile,
         ]
 
         self._dynamic_models: Dict[str, Type[Document]] = {}
