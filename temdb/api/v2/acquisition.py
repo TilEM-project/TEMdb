@@ -112,6 +112,7 @@ async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
     new_tile = Tile(
         tile_id=tile.tile_id,
         acquisition_id=acquisition_id,
+        raster_index=tile.raster_index,
         stage_position=tile.stage_position,
         raster_position=tile.raster_position,
         focus_score=tile.focus_score,
