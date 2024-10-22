@@ -26,6 +26,7 @@ class Matcher(BaseModel):
 
 class TileCreate(BaseModel):
     tile_id: str
+    raster_index: int
     stage_position: Dict[str, float]
     raster_position: Dict[str, int]
     focus_score: float
