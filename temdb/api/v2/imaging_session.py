@@ -156,20 +156,17 @@ async def add_sections_to_session(
 
 
 @imaging_session_api.post(
-    "/imaging-sessions/{session_id}/add-rois", response_model=ImagingSession
+    "/imaging-sessions/{session_id}/add-rois",
+    response_model=ImagingSession
 )
 async def add_rois_to_imaging_session(
-    session_id: str, roi_ids: List
-):
-    session = await ImagingSession.get(session_id)
+    session_id: str,
+    roi_ids: List[int] = Body(...)):
+    session = await ImagingSession.find_one({"session_id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="Imaging session not found")
-
-    rois = await ROI.find(ROI.id.in_(roi_ids)).to_list()
-    if len(rois) != len(roi_ids):
-        raise HTTPException(status_code=404, detail="One or more ROIs not found")
-
-    session.rois.extend(rois)
+    # TODO: Check if all ROIs exist
+    session.rois = roi_ids
     await session.save()
     return session
 

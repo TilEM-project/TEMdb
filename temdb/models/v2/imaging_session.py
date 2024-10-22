@@ -31,10 +31,10 @@ class ImagingSession(Document):
     block: Link[Block]
     media_type: MediaType
     media_id: str
-    start_time: Optional[datetime]
-    end_time: Optional[datetime]
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     status: ImagingSessionStatus = ImagingSessionStatus.PLANNED
-    rois: List[ROI] = []
+    rois: List[int] = []
 
     class Settings:    
         name = "imaging_sessions"   
