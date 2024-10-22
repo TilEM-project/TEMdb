@@ -3,7 +3,7 @@ from fastapi import HTTPException, Query, APIRouter, Body
 from typing import List
 from datetime import datetime
 
-from temdb.models.v2.specimen import Specimen, SpecimenUpdate
+from temdb.models.v2.specimen import Specimen, SpecimenCreate, SpecimenUpdate
 from temdb.models.v2.block import Block
 from temdb.models.v2.imaging_session import ImagingSession
 
@@ -61,13 +61,22 @@ async def get_specimen_imaging_sessions(
 
 
 @specimen_api.post("/specimens", response_model=Specimen)
-async def create_specimen(specimen: Specimen):
-    existing_specimen = await Specimen.find_one({"specimen_id": specimen.specimen_id})
+async def create_specimen(specimen_data: SpecimenCreate):
+    existing_specimen = await Specimen.find_one({"specimen_id": specimen_data.specimen_id})
     if existing_specimen:
         raise HTTPException(
             status_code=400, detail="Specimen with this name already exists"
         )
-
+    
+    specimen = Specimen(
+        specimen_id=specimen_data.specimen_id,
+        description=specimen_data.description,
+        specimen_images=specimen_data.specimen_images,
+        created_at=datetime.now(timezone.utc),
+        updated_at=None,
+        functional_imaging_metadata=specimen_data.functional_imaging_metadata,
+    )
+    
     await specimen.insert()
     return specimen
 

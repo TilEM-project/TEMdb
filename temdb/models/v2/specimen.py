@@ -1,8 +1,16 @@
-from typing import List, Dict, Optional,Set
+from typing import List, Dict, Optional, Set
 from beanie import Document
 from pymongo import IndexModel, ASCENDING, DESCENDING
 from pydantic import BaseModel
 from datetime import datetime
+
+
+class SpecimenCreate(BaseModel):
+    specimen_id: str
+    description: Optional[str] = None
+    created_at: datetime = datetime.now()
+    specimen_images: Optional[List[str]] = None
+    functional_imaging_metadata: Optional[Dict] = None
 
 
 class SpecimenUpdate(BaseModel):
@@ -14,16 +22,18 @@ class SpecimenUpdate(BaseModel):
 
 class Specimen(Document):
     specimen_id: str
-    description: Optional[str]
-    specimen_images: Set[str]
+    description: Optional[str] = None
+    specimen_images: Optional[Set[str]] = None
     created_at: datetime
-    updated_at: Optional[datetime]
-    functional_imaging_metadata: Optional[Dict]
+    updated_at: Optional[datetime] = None
+    functional_imaging_metadata: Optional[Dict] = None
 
     class Settings:
         name = "specimens"
         indexes = [
-            IndexModel([("specimen_id", ASCENDING)], unique=True, name="specimen_id_index"),
+            IndexModel(
+                [("specimen_id", ASCENDING)], unique=True, name="specimen_id_index"
+            ),
             IndexModel([("created_at", DESCENDING)], name="created_at_index"),
             IndexModel([("updated_at", DESCENDING)], name="updated_at_index"),
         ]
