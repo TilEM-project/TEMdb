@@ -28,11 +28,11 @@ class Block(Document):
         indexes = [
             IndexModel([("block_id", ASCENDING)], unique=True, name="block_id_index"),
             IndexModel(
-                [("specimen.id", ASCENDING), ("name", ASCENDING)],
+                [("specimen_id.id", ASCENDING), ("name", ASCENDING)],
                 name="specimen_name_index",
             ),
             IndexModel(
-                [("specimen.id", ASCENDING), ("block_id", ASCENDING)],
+                [("specimen_id.id", ASCENDING), ("block_id", ASCENDING)],
                 name="specimen_block_index",
             ),
         ]

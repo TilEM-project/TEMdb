@@ -30,7 +30,7 @@ class CuttingSessionUpdate(BaseModel):
 class CuttingSession(Document):
     cutting_session_id: str
     start_time: datetime
-    end_time: datetime
+    end_time: Optional[datetime] = None
     operator: str
     sectioning_device: str
     media_type: MediaType
@@ -41,10 +41,10 @@ class CuttingSession(Document):
         name = "cutting_sessions"
         indexes = [
             IndexModel(
-                [("session_id", ASCENDING)], unique=True, name="session_id_index"
+                [("cutting_session_id", ASCENDING)], unique=True, name="session_id_index"
             ),
             IndexModel(
-                [("block.id", ASCENDING), ("start_time", DESCENDING)],
+                [("block_id.id", ASCENDING), ("start_time", DESCENDING)],
                 name="block_start_time_index",
             ),
             IndexModel(

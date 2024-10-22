@@ -38,12 +38,12 @@ class SectionUpdate(BaseModel):
 class Section(Document):
     section_id: str
     section_number: int
-    optical_image: Optional[Dict]
-    section_metrics: Optional[SectionMetrics]
+    optical_image: Optional[Dict] = None
+    section_metrics: Optional[SectionMetrics] = None
     media_type: MediaType
     media_id: str
-    relative_position: Optional[int]
-    barcode: Optional[str]
+    relative_position: Optional[int] = None
+    barcode: Optional[str] = None
     cutting_session_id: Link[CuttingSession]
 
     class Settings:
@@ -55,7 +55,7 @@ class Section(Document):
                 name="section_cut_session_index",
             ),
             IndexModel(
-                [("cut_session.id", ASCENDING), ("number", ASCENDING)],
+                [("cutting_session_id.id", ASCENDING), ("number", ASCENDING)],
                 name="cut_session_number_index",
             ),
             IndexModel(
