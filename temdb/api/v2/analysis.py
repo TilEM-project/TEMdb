@@ -43,24 +43,23 @@ class HeatmapType(str, Enum):
 
 @analysis_api.get("/{acquisition_id}/tile-stats", response_model=TileStats)
 async def get_tile_stats(acquisition_id: str):
-    raise NotImplementedError
+    raise HTTPException(status_code=501, detail="Not Implemented")
 
 
 @analysis_api.get("/{acquisition_id}/matcher-stats", response_model=MatcherStats)
 async def get_matcher_stats(acquisition_id: str):
-    raise NotImplementedError
+    raise HTTPException(status_code=501, detail="Not Implemented")
 
 
 @analysis_api.get("/{acquisition_id}/low-quality-tiles", response_model=List[Dict])
 async def get_low_quality_tiles(acquisition_id: str):
-    raise NotImplementedError
+    raise HTTPException(status_code=501, detail="Not Implemented")
 
 
 @analysis_api.get("/{acquisition_id}/heatmap", response_model=Heatmaps)
 async def generate_tile_heatmaps(acquisition_id: str) -> Heatmaps:
-    raise NotImplementedError
-
+    raise HTTPException(status_code=501, detail="Not Implemented")
 
 @analysis_api.get("/{acquisition_id}/heatmap/{heatmap_type}")
 async def get_heatmap(acquisition_id: str, heatmap_type: HeatmapType):
-    raise NotImplementedError
+    raise HTTPException(status_code=501, detail="Not Implemented")
