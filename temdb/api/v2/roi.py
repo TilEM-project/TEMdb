@@ -34,6 +34,8 @@ async def create_roi(roi: ROICreate):
 
     new_roi = ROI(
         roi_id=roi.roi_id,
+        specimen_id=roi.specimen_id,
+        block_id=roi.block_id,                 
         aperture_centroid=roi.aperture_centroid,
         aperture_width_height=roi.aperture_width_height,
         aperture_bounding_box=roi.aperture_bounding_box,
@@ -51,7 +53,6 @@ async def create_roi(roi: ROICreate):
         edits=roi.edits,
         updated_at=roi.updated_at,
         auto_roi=roi.auto_roi,
-        is_lens_correction_roi=roi.is_lens_correction_roi,
         section_number=section.section_number,
         parent_roi_id=parent_roi,
         roi_parameters=roi.roi_parameters,

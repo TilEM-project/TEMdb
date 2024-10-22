@@ -8,6 +8,8 @@ from temdb.models.v2.section import Section
 
 class ROICreate(BaseModel):
     roi_id: int
+    specimen_id: str             
+    block_id: str                 
     aperture_width_height: Optional[List] = None
     aperture_centroid: Optional[List] = None
     aperture_bounding_box: Optional[List] = None
@@ -51,15 +53,25 @@ class ROIUpdate(BaseModel):
     parent_roi_id: Optional[str] = None
     roi_parameters: Optional[Dict] = None
 
+
 class ROI(ROICreate, Document):
     parent_roi_id: Optional[Link["ROI"]]
 
     class Settings:
         name = "rois"
         indexes = [
-            IndexModel([("roi_id", ASCENDING)], unique=True, name="roi_id_index"),
             IndexModel(
-                [("section.id", ASCENDING), ("name", ASCENDING)],
+                [
+                    ("specimen_id", ASCENDING),
+                    ("block_id", ASCENDING),
+                    ("section_number", ASCENDING),
+                    ("roi_id", ASCENDING)
+                ],
+                unique=True,
+                name="roi_index"
+            ),
+            IndexModel(
+                [("section_number.id", ASCENDING), ("name", ASCENDING)],
                 name="section_name_index",
             ),
             IndexModel([("parent_roi.id", ASCENDING)], name="parent_roi_index"),
