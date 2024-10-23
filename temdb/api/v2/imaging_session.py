@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, Body
@@ -68,18 +69,18 @@ async def create_imaging_session(
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
-    existing_sessions = await ImagingSession.find(
-        {
-            "specimen_id": session.specimen_id,
-            "block.id": session.block_id,
-            "media_id": session.media_id,
-        }
-    ).to_list()
+    existing_sessions = await ImagingSession.find_many({
+            "$and": [
+                {"specimen_id.$id": specimen.id},
+                {"block.$id": block.id},
+                {"media_id": session.media_id}
+            ]
+        }).to_list()
     session_number = len(existing_sessions) + 1 if existing_sessions else 0
     session_id = (
         f"{session.specimen_id}_{session.block_id}_{session.media_id}_{session_number}"
     )
-
+    logging.info(f"Creating imaging session with ID: {session_id}")
     new_session = ImagingSession(
         session_id=session_id,
         specimen_id=specimen.id,
