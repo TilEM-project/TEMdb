@@ -71,7 +71,7 @@ async def create_acquisition(acquisition: AcquisitionCreate):
 
 @acquisition_api.get("/acquisitions/{acquisition_id}", response_model=Acquisition)
 async def get_acquisition(acquisition_id: str):
-    acquisition = await Acquisition.get(acquisition_id)
+    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
     return acquisition
@@ -81,7 +81,7 @@ async def get_acquisition(acquisition_id: str):
 async def update_acquisition(
     acquisition_id: str, updated_fields: AcquisitionUpdate = Body(...)
 ):
-    existing_acquisition = await Acquisition.get(acquisition_id)
+    existing_acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
     if not existing_acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
 
@@ -133,11 +133,11 @@ async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=Tile
 )
-async def get_tile_from_acquisition(acquisition_id: str, tile_id: int):
-
-    tile_data = Tile.find_one(
-        Tile.acquisition_id == acquisition_id, Tile.tile_id == tile_id
-    )
+async def get_tile_from_acquisition(acquisition_id: str, tile_id: str):
+    try:
+        tile_data = await Tile.find(Tile.tile_id == tile_id, Tile.acquisition_id == acquisition_id).first_or_none()
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Tile not found")
     return tile_data
 
 
@@ -162,7 +162,7 @@ async def get_tiles_from_acquisition(
 async def add_storage_location(
     acquisition_id: str, storage_location: StorageLocationCreate
 ):
-    acquisition = await Acquisition.get(acquisition_id)
+    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
 
@@ -177,7 +177,7 @@ async def add_storage_location(
     response_model=Optional[StorageLocation],
 )
 async def get_current_storage_location(acquisition_id: str):
-    acquisition = await Acquisition.get(acquisition_id)
+    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
 
@@ -189,7 +189,7 @@ async def get_current_storage_location(acquisition_id: str):
     response_model=Dict[str, Optional[str]],
 )
 async def get_minimap_uri(acquisition_id: str):
-    acquisition = await Acquisition.get(acquisition_id)
+    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
 
@@ -209,7 +209,7 @@ async def get_tile_count(acquisition_id: str):
     response_model=Dict[str, Optional[str]],
 )
 async def get_tile_storage_path(acquisition_id: str, tile_id: int):
-    acquisition = await Acquisition.get(acquisition_id)
+    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
     if not acquisition:
         raise HTTPException(status_code=404, detail="Acquisition not found")
 
@@ -234,7 +234,7 @@ async def get_tile_storage_path(acquisition_id: str, tile_id: int):
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=dict
 )
 async def delete_tile_from_acquisition(acquisition_id: str, tile_id: int):
-    tile = Tile.find_one(Tile.acquisition_id == acquisition_id, Tile.tile_id == tile_id)
+    tile = Tile.find(Tile.acquisition_id == acquisition_id, Tile.tile_id == tile_id)
     if not tile:
         raise HTTPException(status_code=404, detail="Tile not found")
 

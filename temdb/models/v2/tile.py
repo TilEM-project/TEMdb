@@ -52,7 +52,7 @@ class Tile(Document):
     mean_value: float
     std_value: float
     image_path: str
-    matcher: List[Matcher]
+    matcher: Optional[List[Matcher]] = None
     supertile_id: Optional[str] = None
     supertile_raster_position: Optional[Dict[str, int]] = None
 

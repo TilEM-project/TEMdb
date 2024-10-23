@@ -87,7 +87,7 @@ class AcquisitionUpdate(BaseModel):
 
 
 class Acquisition(Document):
-    metadata_version: str = "1.0"
+    metadata_version: str = "2.0"
     specimen_id: Link[Specimen]
     montage_id: str
     acquisition_id: str
@@ -95,7 +95,7 @@ class Acquisition(Document):
     imaging_session_id: Link[ImagingSession]
     hardware_settings: HardwareParams
     acquisition_settings: AcquisitionParams
-    calibration_info: Calibration
+    calibration_info: Optional[Calibration] = None
     status: AcquisitionStatus
     tilt_angle: Optional[float] = None
     lens_correction: Optional[bool] = None
