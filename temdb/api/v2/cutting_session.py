@@ -84,14 +84,17 @@ async def get_cutting_session(specimen_id: str, block_id: str, cutting_session_i
     specimen = await Specimen.find_one({"specimen_id": specimen_id})
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
+    block = await Block.find(
+        Block.block_id == block_id, Block.specimen_id.id == specimen.id
+    ).first_or_none()
 
-    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
+    cutting_session = await CuttingSession.find(
+        CuttingSession.block_id.id == block.id,
+        CuttingSession.specimen_id.id == specimen.id,
+    ).first_or_none()
 
-    cutting_session = await CuttingSession.find_one(
-        {"block_id": block.id, "cutting_session_id": cutting_session_id}
-    )
     if not cutting_session:
         raise HTTPException(status_code=404, detail="Cutting session not found")
     return cutting_session
@@ -103,7 +106,9 @@ async def get_cutting_session(specimen_id: str, block_id: str, cutting_session_i
 async def update_cutting_session(
     cutting_session_id: str, updated_fields: CuttingSessionUpdate = Body(...)
 ):
-    existing_session = await CuttingSession.get(cutting_session_id)
+    existing_session = await CuttingSession.find_one(
+        {"cutting_session_id": cutting_session_id}
+    )
     if not existing_session:
         raise HTTPException(status_code=404, detail="Cutting session not found")
 
@@ -118,7 +123,9 @@ async def update_cutting_session(
     return existing_session
 
 
-@cutting_session_api.delete("/cutting-sessions/{cutting_session_id}", response_model=dict)
+@cutting_session_api.delete(
+    "/cutting-sessions/{cutting_session_id}", response_model=dict
+)
 async def delete_cutting_session(cutting_session_id: str):
     session = await CuttingSession.get(cutting_session_id)
     if not session:
@@ -141,17 +148,20 @@ async def list_block_cutting_sessions(
     specimen = await Specimen.find_one({"specimen_id": specimen_id})
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
+    block = await Block.find(
+        Block.block_id == block_id, Block.specimen_id.id == specimen.id
+    ).first_or_none()
 
-    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
-    return (
-        await CuttingSession.find(CuttingSession.block_id == block.id)
+    cutting_session = (
+        await CuttingSession.find(CuttingSession.block_id.id == block.id)
         .skip(skip)
         .limit(limit)
         .to_list()
     )
+    return cutting_session
 
 
 @cutting_session_api.get(

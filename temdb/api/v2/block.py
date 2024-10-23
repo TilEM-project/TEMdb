@@ -64,7 +64,7 @@ async def get_block(specimen_id: str, block_id: str):
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
 
-    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
+    block = await Block.find(Block.block_id == block_id, Block.specimen_id.id == specimen.id).first_or_none()
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
     return block
@@ -78,7 +78,7 @@ async def update_block(
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
 
-    block = await Block.find_one({"specimen.id": specimen.id, "block_id": block_id})
+    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
@@ -99,7 +99,7 @@ async def delete_block(specimen_id: str, block_id: str):
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
 
-    block = await Block.find_one({"specimen.id": specimen.id, "block_id": block_id})
+    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
@@ -107,7 +107,7 @@ async def delete_block(specimen_id: str, block_id: str):
     return {"message": "Block deleted successfully"}
 
 
-@block_api.get("/specimens/{specimen_id}/blocks", response_model=List[Block])
+@block_api.get("/blocks/specimens/{specimen_id}/blocks", response_model=List[Block])
 async def list_specimen_blocks(
     specimen_id: str,
     skip: int = Query(0, ge=0),
@@ -118,7 +118,7 @@ async def list_specimen_blocks(
         raise HTTPException(status_code=404, detail="Specimen not found")
 
     return (
-        await Block.find(Block.specimen_id == specimen.id)
+        await Block.find(Block.specimen_id.id == specimen.id)
         .skip(skip)
         .limit(limit)
         .to_list()

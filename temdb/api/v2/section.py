@@ -17,18 +17,22 @@ async def list_sections(
     return await Section.find_all().skip(skip).limit(limit).to_list()
 
 
-@section_api.get("/sections/cutting-session/{session_id}", response_model=List[Section])
+@section_api.get(
+    "/sections/cutting-session/{cutting_session_id}", response_model=List[Section]
+)
 async def list_cutting_session_sections(
-    session_id: str,
+    cutting_session_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
-    cut_session = await CuttingSession.get(session_id)
+    cut_session = await CuttingSession.find(
+        CuttingSession.cutting_session_id == cutting_session_id
+    ).first_or_none()
     if not cut_session:
         raise HTTPException(status_code=404, detail="Cutting session not found")
 
     return (
-        await Section.find(Section.cutting_session_id == cut_session.id)
+        await Section.find(Section.cutting_session_id.id == cut_session.id)
         .skip(skip)
         .limit(limit)
         .to_list()
@@ -68,9 +72,10 @@ async def list_specimen_sections(
     response_model=Section,
 )
 async def get_section(session_id: str, section_id: str):
-    section = await Section.find_one(
-        {"section_id": section_id, "cut_session.id": session_id}
-    )
+    section = await Section.find(
+        Section.section_id == section_id, Section.cutting_session_id.cutting_session_id == session_id, fetch_links=True
+    ).first_or_none()
+
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
     return section
@@ -100,17 +105,19 @@ async def create_section(section: SectionCreate):
 
 
 @section_api.patch(
-    "/sections",
+    "/sections/cutting-session/{cutting_session_id}/section/{section_id}",
     response_model=Section,
 )
 async def update_section(
-    session_id: str,
+    cutting_session_id: str,
     section_id: str,
     updated_fields: SectionUpdate = Body(...),
 ):
-    existing_section = await Section.find_one(
-        {"section_id": section_id, "cut_session.id": session_id}
-    )
+    existing_section = await Section.find(
+        Section.section_id == section_id, 
+        Section.cutting_session_id.cutting_session_id == cutting_session_id,
+        fetch_links=True
+    ).first_or_none()
     if not existing_section:
         raise HTTPException(status_code=404, detail="Section not found")
 
