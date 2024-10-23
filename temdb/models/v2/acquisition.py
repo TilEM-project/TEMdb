@@ -33,7 +33,7 @@ class LensCorrectionModel(BaseModel):
 
 class Calibration(BaseModel):
     pixel_size: float
-    stig_angle: float
+    rotation_angle: float
     lens_model: Optional[LensCorrectionModel]
     aperture_centroid: Optional[List[float]] = None
 
