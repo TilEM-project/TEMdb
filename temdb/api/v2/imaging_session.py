@@ -76,13 +76,14 @@ async def create_imaging_session(
                 {"media_id": session.media_id}
             ]
         }).to_list()
-    session_number = len(existing_sessions) + 1 if existing_sessions else 0
-    session_id = (
-        f"{session.specimen_id}_{session.block_id}_{session.media_id}_{session_number}"
-    )
-    logging.info(f"Creating imaging session with ID: {session_id}")
+    # TODO might need to enforce uniqueness of session_id
+    # session_number = len(existing_sessions) + 1 if existing_sessions else 0
+    # session_id = (
+    #     f"{session.specimen_id}_{session.block_id}_{session.media_id}_{session_number}"
+    # )
+    # logging.info(f"Creating imaging session with ID: {session_id}")
     new_session = ImagingSession(
-        session_id=session_id,
+        session_id=session.session_id,
         specimen_id=specimen.id,
         block=block.id,
         media_type=session.media_type,
@@ -100,7 +101,7 @@ async def create_imaging_session(
     "/imaging-sessions/{session_id}", response_model=ImagingSession
 )
 async def get_imaging_session(session_id: str):
-    session = await ImagingSession.get(session_id)
+    session = await ImagingSession.find(ImagingSession.session_id == session_id).first_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Imaging session not found")
     return session
@@ -112,7 +113,7 @@ async def get_imaging_session(session_id: str):
 async def update_imaging_session(
     session_id: str, updated_fields: ImagingSessionUpdate = Body(...)
 ):
-    existing_session = await ImagingSession.get(session_id)
+    existing_session = await ImagingSession.find(ImagingSession.session_id == session_id).first_or_none()
     if not existing_session:
         raise HTTPException(status_code=404, detail="Imaging session not found")
 
@@ -182,7 +183,7 @@ async def get_specimen_imaging_sessions(
     limit: int = Query(10, ge=1, le=100),
 ):
     return (
-        await ImagingSession.find(ImagingSession.specimen.id == specimen_id)
+        await ImagingSession.find(ImagingSession.specimen_id.specimen_id == specimen_id, fetch_links=True)
         .skip(skip)
         .limit(limit)
         .to_list()
