@@ -81,7 +81,7 @@ async def create_specimen(specimen_data: SpecimenCreate):
     return specimen
 
 
-@specimen_api.get("/specimens/{specimen_name}", response_model=Specimen)
+@specimen_api.get("/specimens/{specimen_id}", response_model=Specimen)
 async def get_specimen(specimen_id: str):
     specimen = await Specimen.find_one({"specimen_id": specimen_id})
     if not specimen:
@@ -89,7 +89,7 @@ async def get_specimen(specimen_id: str):
     return specimen
 
 
-@specimen_api.patch("/specimens/{specimen_name}", response_model=Specimen)
+@specimen_api.patch("/specimens/{specimen_id}", response_model=Specimen)
 async def update_specimen(
     specimen_id: str, updated_fields: SpecimenUpdate = Body(...)
 ):
