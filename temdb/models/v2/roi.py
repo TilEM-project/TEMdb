@@ -50,6 +50,7 @@ class ROIUpdate(BaseModel):
     edits: Optional[List] = None
     updated_at: Optional[str] = None
     auto_roi: Optional[bool] = None
+    section_number: Optional[int] = None
     parent_roi_id: Optional[str] = None
     roi_parameters: Optional[Dict] = None
 

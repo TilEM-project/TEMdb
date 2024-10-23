@@ -103,20 +103,20 @@ async def delete_roi(roi_id: int):
 
 @roi_api.get("/sections/{section_id}/rois", response_model=List[ROI])
 async def list_section_rois(
-    section_id: int,
+    section_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     is_lens_correction: Optional[bool] = Query(None),
 ):
-    section = await Section.get(section_id)
+    section = await Section.find_one({"section_id": section_id})
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
 
-    query = {"section.id": section_id}
+    query = {"section_id.id": section_id}
     if is_lens_correction is not None:
         query["is_lens_correction_roi"] = is_lens_correction
 
-    return await ROI.find(query).skip(skip).limit(limit).to_list()
+    return await ROI.find(ROI.section_number == section.section_number).skip(skip).limit(limit).to_list()
 
 
 @roi_api.get("/rois/{roi_id}/children", response_model=Dict)

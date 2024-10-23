@@ -78,7 +78,7 @@ async def update_block(
     if not specimen:
         raise HTTPException(status_code=404, detail="Specimen not found")
 
-    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
+    block = await Block.find(Block.block_id == block_id, Block.specimen_id.id == specimen.id).first_or_none()
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
