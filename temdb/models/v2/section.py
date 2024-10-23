@@ -28,7 +28,7 @@ class SectionCreate(BaseModel):
 class SectionUpdate(BaseModel):
     section_number: Optional[int] = None
     optical_image: Optional[Dict] = None
-    sectioning_metadata: Optional[Dict] = None
+    section_metrics: Optional[SectionMetrics] = None
     quality: Optional[SectionQuality] = None
     tissue_confidence_score: Optional[float] = None
     relative_position: Optional[int] = None
