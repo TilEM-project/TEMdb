@@ -52,7 +52,7 @@ class AcquisitionParams(BaseModel):
     exposure_time: int
     tile_size: List[int]
     tile_overlap: float
-    saved_bit_depth = int
+    saved_bit_depth: int
 
 
 class AcquisitionCreate(BaseModel):
