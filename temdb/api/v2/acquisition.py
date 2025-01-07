@@ -145,7 +145,7 @@ async def get_tile_from_acquisition(acquisition_id: str, tile_id: str):
 async def get_tiles_from_acquisition(
     acquisition_id: str,
     skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(1000, ge=1, le=1000),
 ):
     tiles = (
         await Tile.find(Tile.acquisition_id == acquisition_id)
