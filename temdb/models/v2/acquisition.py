@@ -42,7 +42,7 @@ class HardwareParams(BaseModel):
     scope_id: str
     camera_model: str
     camera_serial: str
-    bit_depth: int
+    camera_bit_depth: int
     media_type: str
 
 
@@ -52,6 +52,7 @@ class AcquisitionParams(BaseModel):
     exposure_time: int
     tile_size: List[int]
     tile_overlap: float
+    saved_bit_depth = int
 
 
 class AcquisitionCreate(BaseModel):
