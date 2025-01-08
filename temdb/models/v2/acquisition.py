@@ -5,108 +5,105 @@ from beanie import Document, Link
 
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
-from temdb.models.v2.enum_schemas import AcquisitionStatus
+from temdb.models.v2.enum_schemas import AcquisitionStatus, MediaType
 from temdb.models.v2.roi import ROI
 from temdb.models.v2.imaging_session import ImagingSession
 from temdb.models.v2.specimen import Specimen
 
 class StorageLocation(BaseModel):
-    location_type: str
-    base_path: str
-    is_current: bool = True
-    date_added: datetime = None
-    metadata: Dict = Field(default_factory=dict)
+    location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
+    base_path: str = Field(..., description="Base path of storage location")
+    is_current: bool = Field(..., description="Whether this is the current storage location")
+    date_added: datetime = Field(..., description="Date storage location was added")
+    metadata: Dict = Field(..., description="Metadata of storage location")
 
 
 class StorageLocationCreate(BaseModel):
-    location_type: str
-    base_path: str
-    metadata: Dict = {}
+    location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
+    base_path: str = Field(..., description="Base path of storage location")
+    metadata: Dict = Field(..., description="Metadata of storage location")
 
 
 class LensCorrectionModel(BaseModel):
-    id: int
-    type: str
-    class_name: str
-    data_string: str
+    id: int = Field(..., description="ID of lens correction model")
+    type: str = Field(..., description="'Transform type as defined in Render Transform Spec. ie 'leaf' 'interpolated' 'list' 'ref'")
+    class_name: str = Field(..., description="Class name of lens correction model from mpicbg-compatible className'")
+    data_string: str = Field(..., description="Data string of lens correction model from mpicbg-compatible dataString'")
 
 
 class Calibration(BaseModel):
-    pixel_size: float
-    rotation_angle: float
-    lens_model: Optional[LensCorrectionModel]
-    aperture_centroid: Optional[List[float]] = None
+    pixel_size: float = Field(..., description="Pixel size in nm")
+    rotation_angle: float = Field(..., description="Rotation angle in degrees")
+    lens_model: Optional[LensCorrectionModel] = Field(None, description="Lens correction model")
+    aperture_centroid: Optional[List[float]] = Field(None, description="Aperture centroid in stage coordinates in nm")
 
 
 class HardwareParams(BaseModel):
-    scope_id: str
-    camera_model: str
-    camera_serial: str
-    camera_bit_depth: int
-    media_type: str
+    scope_id: str = Field(..., description="ID of microscope")
+    camera_model: str = Field(..., description="Model of camera")
+    camera_serial: str = Field(..., description="Serial number of camera")
+    camera_bit_depth: int = Field(..., description="Native bit depth of camera")
+    media_type: MediaType = Field(..., description="Type of substrate in microscope")
 
 
 class AcquisitionParams(BaseModel):
-    magnification: int
-    spot_size: int
-    exposure_time: int
-    tile_size: List[int]
-    tile_overlap: float
-    saved_bit_depth: int
+    magnification: int = Field(..., description="Magnification of acquisition")
+    spot_size: int = Field(..., description="Spot size of acquisition")
+    exposure_time: int = Field(..., description="Exposure time of camera in ms")
+    tile_size: List[int] = Field(..., description="Size of tiles in pixels")
+    tile_overlap: float = Field(..., description="Overlap of tiles in percent of tile size")
+    saved_bit_depth: int = Field(..., description="Bit depth of saved image")
 
 
 class AcquisitionCreate(BaseModel):
-    version: str = "1.0"
-    montage_id: str
-    acquisition_id: str
-    roi_id: int
-    imaging_session_id: str
-    hardware_settings: HardwareParams
-    acquisition_settings: AcquisitionParams
-    calibration_info: Optional[Calibration] = None
-    status: AcquisitionStatus = AcquisitionStatus.PLANNED
-    tilt_angle: float
-    lens_correction: bool
-    start_time: datetime
-    end_time: Optional[datetime] = None
-    montage_set_name: Optional[str] = None
-    sub_region: Optional[Dict[str, int]] = None
-    replaces_acquisition_id: Optional[int] = None
+    montage_id: str = Field(..., description="ID of montage")
+    acquisition_id: str = Field(..., description="ID of acquisition")
+    roi_id: int = Field(..., description="ID of region of interest")
+    imaging_session_id: str = Field(..., description="ID of imaging session")
+    hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
+    acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
+    calibration_info: Optional[Calibration] = Field(None, description="Calibration information of acquisition")
+    status: AcquisitionStatus = Field(default= AcquisitionStatus.PLANNED,  description="Status of acquisition")
+    tilt_angle: float = Field(..., description="Tilt angle of acquisition in degrees")
+    lens_correction: bool = Field(..., description="Whether this acquisition is a lens correction calibration") 
+    start_time: datetime = Field(..., description="Start time of acquisition")
+    end_time: Optional[datetime] = Field(None, description="End time of acquisition")
+    montage_set_name: Optional[str] = Field(None, description="Name of montage set")
+    sub_region: Optional[Dict[str, int]] = Field(None, description="Sub region of acquisition")
+    replaces_acquisition_id: Optional[int] = Field(None, description="ID of acquisition this acquisition replaces")
 
 
 class AcquisitionUpdate(BaseModel):
-    hardware_settings: Optional[HardwareParams] = None
-    acquisition_settings: Optional[AcquisitionParams] = None
-    calibration_info: Optional[Dict] = None
-    status: Optional[AcquisitionStatus] = None
-    tilt_angle: Optional[float] = None
-    lens_correction: Optional[bool] = None
-    end_time: Optional[datetime] = None
-    montage_set_name: Optional[str] = None
-    sub_region: Optional[Dict[str, int]] = None
-    replaces_acquisition_id: Optional[int] = None
+    hardware_settings: Optional[HardwareParams] = Field(None, description="Hardware settings of acquisition")
+    acquisition_settings: Optional[AcquisitionParams] = Field(None, description="Acquisition settings of acquisition")
+    calibration_info: Optional[Dict] = Field(None, description="Calibration information of acquisition")
+    status: Optional[AcquisitionStatus] = Field(None, description="Status of acquisition")
+    tilt_angle: Optional[float] = Field(None, description="Tilt angle of acquisition in degrees")
+    lens_correction: Optional[bool] = Field(None, description="Whether this acquisition is a lens correction calibration")
+    end_time: Optional[datetime] = Field(None, description="End time of acquisition")
+    montage_set_name: Optional[str] = Field(None, description="Name of montage set")
+    sub_region: Optional[Dict[str, int]] = Field(None, description="Sub region of acquisition")
+    replaces_acquisition_id: Optional[int] = Field(None, description="ID of acquisition this acquisition replaces")
 
 
 class Acquisition(Document):
-    metadata_version: str = "2.0"
-    specimen_id: Link[Specimen]
-    montage_id: str
-    acquisition_id: str
-    roi_id: Link[ROI]
-    imaging_session_id: Link[ImagingSession]
-    hardware_settings: HardwareParams
-    acquisition_settings: AcquisitionParams
-    calibration_info: Optional[Calibration] = None
-    status: AcquisitionStatus
-    tilt_angle: Optional[float] = None
-    lens_correction: Optional[bool] = None
-    start_time: datetime = None
-    end_time: Optional[datetime] = None
-    storage_locations: Optional[List[StorageLocation]] = Field(default_factory=list)
-    montage_set_name: Optional[str] = None
-    sub_region: Optional[Dict[str, int]] = None
-    replaces_acquisition_id: Optional[int] = None
-    version: int = 1
+    specimen_id: Link[Specimen] = Field(..., description="ID of specimen")
+    montage_id: str = Field(..., description="ID of montage")
+    acquisition_id: str = Field(..., description="ID of acquisition")
+    roi_id: Link[ROI] = Field(..., description="ID of region of interest")
+    imaging_session_id: Link[ImagingSession] = Field(..., description="ID of imaging session")
+    hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
+    acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
+    calibration_info: Optional[Calibration] = Field(None, description="Calibration information of acquisition")
+    status: AcquisitionStatus = Field(default= AcquisitionStatus.PLANNED,  description="Status of acquisition")
+    tilt_angle: Optional[float] = Field(None, description="Tilt angle of acquisition in degrees")
+    lens_correction: Optional[bool] = Field(None, description="Whether this acquisition is a lens correction calibration")
+    start_time: datetime = Field(..., description="Start time of acquisition")
+    end_time: Optional[datetime] = Field(None, description="End time of acquisition")
+    storage_locations: Optional[List[StorageLocation]] = Field(None, description="Storage locations of acquisition")
+    montage_set_name: Optional[str] = Field(None, description="Name of montage set")
+    sub_region: Optional[Dict[str, int]] = Field(None, description="Sub region of acquisition")
+    replaces_acquisition_id: Optional[int] = Field(None, description="ID of acquisition this acquisition replaces")
 
     class Settings:    
         name = "acquisitions"  

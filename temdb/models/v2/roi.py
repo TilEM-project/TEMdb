@@ -1,62 +1,61 @@
 from typing import Dict, Optional, Union, List
-from pydantic import BaseModel
+from datetime import datetime
+from pydantic import BaseModel, Field
 from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING
 
 from temdb.models.v2.section import Section
 
 
-class ROICreate(BaseModel):
-    roi_id: int
-    specimen_id: str             
-    block_id: str                 
-    aperture_width_height: Optional[List] = None
-    aperture_centroid: Optional[List] = None
-    aperture_bounding_box: Optional[List] = None
-    optical_nm_per_pixel: Optional[float] = None
-    scale_y: Optional[float] = None
-    barcode: Optional[Union[int, str]] = None
-    rois: Optional[List] = None
-    bucket: Optional[str] = None
-    aperture_image: Optional[str] = None
-    roi_mask: Optional[str] = None
-    roi_mask_bucket: Optional[str] = None
-    corners: Optional[Dict] = None
-    corners_perpendicular: Optional[Dict] = None
-    rule: Optional[str] = None
-    edits: Optional[List] = None
-    updated_at: Optional[str] = None
-    auto_roi: Optional[bool] = None
-    section_number: int
-    parent_roi_id: Optional[int] = None
-    roi_parameters: Optional[Dict] = None
+class ROIBase(BaseModel):
+    aperture_width_height_mm: Optional[List] = Field(
+        None,
+        description="Width and height of aperture in mm calculated from aperture_image",
+    )
+    aperture_centroid: Optional[List] = Field(
+        None,
+        description="Center of aperture measured in pixel coordinates from aperture_image from top left corner",
+    )
+    aperture_bounding_box: Optional[List] = Field(
+        None,
+        description="Bounding box of aperture measured in pixel coordinates from aperture_image from top left corner",
+    )
+    aperture_image: Optional[str] = Field(None, description="URL of aperture image")
+    optical_nm_per_pixel: Optional[float] = Field(
+        None, description="Optical resolution in nm per pixel"
+    )
+    scale_y: Optional[float] = Field(None, description="Scaling factor for y-axis")
+    barcode: Optional[Union[int, str]] = Field(
+        None, description="Barcode of ROI if present"
+    )
+    rois: Optional[List] = Field(None, description="List of ROIs")
+    bucket: Optional[str] = Field(None, description="Bucket of ROI")
+    roi_mask: Optional[str] = Field(None, description="URL of ROI mask")
+    roi_mask_bucket: Optional[str] = Field(None, description="Bucket of ROI mask")
+    corners: Optional[Dict] = Field(None, description="Corners of ROI")
+    corners_perpendicular: Optional[Dict] = Field(..., description="Perpendicular corners of ROI")
+    rule: Optional[str] = Field(None, description="Rule for ROI corner detection")
+    edits: Optional[List] = Field(None, description="List of edits to ROI")
+    updated_at: Optional[datetime] = Field(None, description="Time of last update")
+    auto_roi: Optional[bool] = Field(None, description="Flag if auto generated ROI was used")
+    roi_parameters: Optional[Dict] = Field(None, description="Parameters of ROI")
 
 
-class ROIUpdate(BaseModel):
-    aperture_width_height: Optional[List] = None
-    aperture_centroid: Optional[List] = None
-    aperture_bounding_box: Optional[List] = None
-    optical_nm_per_pixel: Optional[float] = None
-    scale_y: Optional[float] = None
-    barcode: Optional[Union[int, str]] = None
-    rois: Optional[List] = None
-    bucket: Optional[str] = None
-    aperture_image: Optional[str] = None
-    roi_mask: Optional[str] = None
-    roi_mask_bucket: Optional[str] = None
-    corners: Optional[Dict] = None
-    corners_perpendicular: Optional[Dict] = None
-    rule: Optional[str] = None
-    edits: Optional[List] = None
-    updated_at: Optional[str] = None
-    auto_roi: Optional[bool] = None
-    section_number: Optional[int] = None
-    parent_roi_id: Optional[str] = None
-    roi_parameters: Optional[Dict] = None
+class ROICreate(ROIBase):
+    roi_id: int = Field(..., description="ID of region of interest")
+    specimen_id: str = Field(..., description="ID of specimen")
+    block_id: str = Field(..., description="ID of block")
+    section_number: int = Field(..., description="Number of section from collection")
+    parent_roi_id: Optional[int] = Field(..., description="ID of parent region of interest")
+
+
+class ROIUpdate(ROIBase):
+    section_number: Optional[int] = Field(None, description="Number of section from collection")
+    parent_roi_id: Optional[str] = Field(None, description="ID of parent region of interest")
 
 
 class ROI(ROICreate, Document):
-    parent_roi_id: Optional[Link["ROI"]]
+    parent_roi_id: Optional[Link["ROI"]] = Field(None, description="ID of parent region of interest")
 
     class Settings:
         name = "rois"
@@ -66,10 +65,10 @@ class ROI(ROICreate, Document):
                     ("specimen_id", ASCENDING),
                     ("block_id", ASCENDING),
                     ("section_number", ASCENDING),
-                    ("roi_id", ASCENDING)
+                    ("roi_id", ASCENDING),
                 ],
                 unique=True,
-                name="roi_index"
+                name="roi_index",
             ),
             IndexModel(
                 [("section_number.id", ASCENDING), ("name", ASCENDING)],

@@ -37,7 +37,7 @@ async def create_roi(roi: ROICreate):
         specimen_id=roi.specimen_id,
         block_id=roi.block_id,                 
         aperture_centroid=roi.aperture_centroid,
-        aperture_width_height=roi.aperture_width_height,
+        aperture_width_height_mm=roi.aperture_width_height_mm,
         aperture_bounding_box=roi.aperture_bounding_box,
         optical_nm_per_pixel=roi.optical_nm_per_pixel,
         scale_y=roi.scale_y,

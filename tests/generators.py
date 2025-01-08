@@ -79,7 +79,7 @@ def generate_section(cutting_session_id: ObjectId) -> Section:
 def generate_roi(section_number: int) -> ROI:
     return ROI(
         roi_id=fake.random_int(min=1, max=100),
-        aperture_width_height=[fake.random_int(min=1, max=100) for _ in range(2)],
+        aperture_width_height_mm=[fake.random_int(min=1, max=100) for _ in range(2)],
         aperture_centroid=[fake.pyfloat(), fake.pyfloat()],
         aperture_bounding_box=[fake.pyfloat() for _ in range(4)],
         optical_nm_per_pixel=fake.pyfloat(),

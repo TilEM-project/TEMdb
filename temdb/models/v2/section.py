@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
@@ -8,43 +8,38 @@ from temdb.models.v2.enum_schemas import MediaType, SectionQuality
 
 
 class SectionMetrics(BaseModel):
-    sectioning_metadata: Optional[Dict] = None
-    quality: Optional[SectionQuality] = None 
-    tissue_confidence_score: Optional[float] = None
+    sectioning_metadata: Optional[Dict] = Field(None, description="Field for storing arbitrary metadata")
+    quality: Optional[SectionQuality] = Field(None, description="State of the health of a section") 
+    tissue_confidence_score: Optional[float] = Field(None, description="Confidence score for tissue detection on substrate")
 
+class SectionBase(BaseModel):
+    section_number: Optional[int] = Field(None, description="Number of section from collection")
+    optical_image: Optional[Dict] = Field(None, description="Optical image of section collected before imaging")
+    section_metrics: Optional[SectionMetrics] = Field(None, description="Metrics of section")
+    relative_position: Optional[int] = Field(None, description="Position of section relative to substrate centroid")
+    barcode: Optional[str] = Field(None, description="Barcode of section if using a barcode system per substrate aperture")
 
-class SectionCreate(BaseModel):
-    section_id: str
-    section_number: int
-    optical_image: Optional[Dict] = None
-    section_metrics: Optional[SectionMetrics] = None
-    media_type: MediaType
-    media_id: str
-    relative_position: Optional[int] = None
-    barcode: Optional[str] = None
-    cutting_session_id: str
+class SectionCreate(SectionBase):
+    section_id: str = Field(..., description="ID of section")
+    media_type: MediaType = Field(..., description="Type of substrate the section is on")
+    media_id: str = Field(..., description="ID of substrate the section is on")
+    cutting_session_id: str = Field(..., description="ID of cutting session section was collected in")
+    section_number: int  = Field(..., description="Number of section from collection")
 
-
-class SectionUpdate(BaseModel):
-    section_number: Optional[int] = None
-    optical_image: Optional[Dict] = None
-    section_metrics: Optional[SectionMetrics] = None
-    quality: Optional[SectionQuality] = None
-    tissue_confidence_score: Optional[float] = None
-    relative_position: Optional[int] = None
-    barcode: Optional[str] = None
-
+class SectionUpdate(SectionBase):
+    quality: Optional[SectionQuality] = Field(None, description="State of the health of a section")
+    tissue_confidence_score: Optional[float] = Field(None, description="Confidence score for tissue detection on substrate")
 
 class Section(Document):
-    section_id: str
-    section_number: int
-    optical_image: Optional[Dict] = None
-    section_metrics: Optional[SectionMetrics] = None
-    media_type: MediaType
-    media_id: str
-    relative_position: Optional[int] = None
-    barcode: Optional[str] = None
-    cutting_session_id: Link[CuttingSession]
+    section_id: str = Field(..., description="ID of section")
+    section_number: int = Field(..., description="Number of section from collection")
+    optical_image: Optional[Dict] = Field(None, description="Optical image of section collected before imaging")
+    section_metrics: Optional[SectionMetrics] = Field(None, description="Metrics of section")
+    media_type: MediaType = Field(..., description="Type of substrate the section is on")
+    media_id: str = Field(..., description="ID of substrate the section is on")
+    relative_position: Optional[int] = Field(None, description="Position of section relative to substrate centroid")
+    barcode: Optional[str] = Field(None, description="Barcode of section if using a barcode system per substrate aperture")
+    cutting_session_id: Link[CuttingSession] =  Field(..., description="ID of cutting session section was collected in")
 
     class Settings:
         name = "sections"

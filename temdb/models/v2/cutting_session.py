@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING, DESCENDING
 
@@ -10,32 +10,32 @@ from temdb.models.v2.enum_schemas import MediaType
 
 
 class CuttingSessionCreate(BaseModel):
-    cutting_session_id: str
-    start_time: datetime
-    end_time: Optional[datetime] = None
-    operator: str
-    sectioning_device: str
-    media_type: MediaType
-    block_id: str
+    cutting_session_id: str = Field(..., description="ID of cutting session")
+    start_time: datetime = Field(..., description="Time when cutting session started")
+    end_time: Optional[datetime] = Field(None, description="Time when cutting session ended")
+    operator: Optional[str] = Field(None, description="Operator of cutting session")
+    sectioning_device: str = Field(..., description="Device used for sectioning")
+    media_type: MediaType = Field(..., description="Type of substrate the sections are placed upon")
+    block_id: str = Field(..., description="ID of block cutting session is associated with")
 
 
 class CuttingSessionUpdate(BaseModel):
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    operator: Optional[str] = None
-    sectioning_device: Optional[str] = None
-    media_type: Optional[MediaType] = None
+    start_time: Optional[datetime] = Field(None, description="Time when cutting session started")
+    end_time: Optional[datetime] = Field(None, description="Time when cutting session ended")
+    operator: Optional[str] = Field(None, description="Operator of cutting session")
+    sectioning_device: Optional[str] = Field(None, description="Device used for sectioning")
+    media_type: Optional[MediaType] = Field(None, description="Type of substrate the sections are placed upon")
 
 
 class CuttingSession(Document):
-    cutting_session_id: str
-    start_time: datetime
-    end_time: Optional[datetime] = None
-    operator: str
-    sectioning_device: str
-    media_type: MediaType
-    specimen_id: Link[Specimen]
-    block_id: Link[Block]
+    cutting_session_id: str = Field(..., description="ID of cutting session")
+    start_time: datetime = Field(..., description="Time when cutting session started")
+    end_time: Optional[datetime] = Field(None, description="Time when cutting session ended")
+    operator: str = Field(..., description="Operator of cutting session")
+    sectioning_device: str = Field(..., description="Device used for sectioning")
+    media_type: MediaType = Field(..., description="Type of substrate the sections are placed upon")
+    specimen_id: Link[Specimen] = Field(None, description="ID of specimen the cutting session is associated with")
+    block_id: Link[Block] = Field(None, description="ID of block the cutting session is associated with")
 
     class Settings:
         name = "cutting_sessions"
