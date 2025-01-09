@@ -19,9 +19,9 @@ from temdb.database import DatabaseManager
 
 __version__ = "0.1.0"
 
-
-logging.basicConfig(level=logging.DEBUG if config.debug else logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn")
+logger.setLevel(logging.DEBUG if config.debug else logging.INFO)
+logger.info(f"Debug mode: {config.debug}")
 
 
 @asynccontextmanager
