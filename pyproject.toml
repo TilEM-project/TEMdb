@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings",
     "jinja2",
     "python-multipart",
+    "uvicorn-worker"
 ]
 
 [project.optional-dependencies]
