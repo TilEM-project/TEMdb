@@ -5,11 +5,11 @@ from temdb.models.v2.specimen import Specimen
 from temdb.models.v2.acquisition import Acquisition
 from temdb.models.v2.tile import Tile
 from temdb.models.v2.roi import ROI
-from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.task import AcquisitionTask
 from temdb.models.v2.enum_schemas import (
     AcquisitionStatus,
     MediaType,
-    ImagingSessionStatus,
+    AcquisitionTaskStatus,
     SectionQuality,
 )
 from temdb.models.v2.block import Block
@@ -79,10 +79,10 @@ def generate_section(cutting_session_id: ObjectId) -> Section:
 def generate_roi(section_number: int) -> ROI:
     return ROI(
         roi_id=fake.random_int(min=1, max=100),
-        aperture_width_height_mm=[fake.random_int(min=1, max=100) for _ in range(2)],
+        aperture_width_height=[fake.random_int(min=1, max=100) for _ in range(2)],
         aperture_centroid=[fake.pyfloat(), fake.pyfloat()],
         aperture_bounding_box=[fake.pyfloat() for _ in range(4)],
-        optical_nm_per_pixel=fake.pyfloat(),
+        optical_pixel_size=fake.pyfloat(),
         scale_y=fake.pyfloat(),
         barcode=fake.ean13() if fake.boolean() else None,
         rois=[],
@@ -109,27 +109,31 @@ def generate_roi(section_number: int) -> ROI:
         section_number=section_number,
         parent_roi_id=None,
         roi_parameters={},
+        specimen_id=fake.uuid4(),
+        block_id=fake.uuid4(),
     )
 
 
-def generate_imaging_session(
+def generate_imaging_tasks(
     specimen_id: ObjectId, block_id: ObjectId, roi_ids: list[ObjectId]
-) -> ImagingSession:
-    return ImagingSession(
-        session_id=f"{specimen_id}_{block_id}_{fake.random_int(min=1, max=100)}",
+) -> AcquisitionTask:
+    return AcquisitionTask(
+        task_id=fake.uuid4(),
+        task_type=fake.word(),
+        version=fake.random_int(min=1, max=10),
         specimen_id=specimen_id,
-        block=block_id,
-        media_type=fake.random_element(elements=MediaType),
-        media_id=fake.uuid4(),
-        start_time=fake.date_time_this_year(),
-        end_time=fake.date_time_this_year(),
-        status=fake.random_element(elements=ImagingSessionStatus),
-        rois=[roi_ids],
-    )
+        block_id=block_id,
+        roi_id=fake.random_element(elements=roi_ids),
+        status=fake.random_element(elements=AcquisitionTaskStatus),
+        created_at=fake.date_time_this_year(),
+        updated_at=fake.date_time_this_year(),
+        started_at=fake.date_time_this_year(),
+        )
 
+      
 
 def generate_acquisition(
-    specimen_id: ObjectId, roi_id: ObjectId, imaging_session_id: ObjectId
+    specimen_id: ObjectId, roi_id: ObjectId, acquisition_task_id: ObjectId
 ) -> Acquisition:
     return Acquisition(
         metadata_version=fake.pystr(min_chars=4, max_chars=8),
@@ -137,12 +141,12 @@ def generate_acquisition(
         montage_id=fake.uuid4(),
         acquisition_id=fake.uuid4(),
         roi_id=roi_id,
-        imaging_session_id=imaging_session_id,
+        acquisition_task_id=acquisition_task_id,
         hardware_settings={
             "scope_id": fake.pystr(),
             "camera_model": fake.pystr(),
             "camera_serial": fake.uuid4(),
-            "bit_depth": fake.random_int(min=8, max=16),
+            "camera_bit_depth": fake.random_int(min=8, max=16),
             "media_type": "tape",
         },
         acquisition_settings={
@@ -154,10 +158,11 @@ def generate_acquisition(
                 fake.random_int(min=512, max=2048),
             ],
             "tile_overlap": fake.pyfloat(min_value=0.0, max_value=0.5),
+            "saved_bit_depth": fake.random_int(min=8, max=16),
         },
         calibration_info={
             "pixel_size": fake.pyfloat(),
-            "stig_angle": fake.pyfloat(),
+            "rotation_angle": fake.pyfloat(),
             "lens_model": {
                 "id": fake.random_int(),
                 "type": fake.pystr(),
