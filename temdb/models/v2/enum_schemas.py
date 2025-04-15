@@ -17,15 +17,16 @@ class SectionQuality(str, Enum):
     EMPTY = "empty"
 
 
-class ImagingSessionStatus(str, Enum):
+class AcquisitionTaskStatus(str, Enum):
     PLANNED = "Planned"
     IN_PROGRESS = "In Progress"
     COMPLETED = "Completed"
     FAILED = "Failed"
+    ABORTED = "Aborted"
 
 
 class AcquisitionStatus(str, Enum):
-    PLANNED = "planned"
+    IMAGING = "imaging"
     ACQUIRED = "acquired"
     ABORTED = "aborted"
     QC_FAILED = "failed"
