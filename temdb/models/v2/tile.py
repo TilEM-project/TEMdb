@@ -58,7 +58,7 @@ class TileCreate(BaseModel):
 
 class Tile(Document):
     tile_id: str = Field(..., description="ID of the tile")
-    acquisition_id: str = Field(..., description="ID of the acquisition")
+    acquisition_id: Link[Acquisition] = Field(..., description="ID of the acquisition")
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: Dict[str, float] = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: Dict[str, int] = Field(..., description="Row, column raster position of the tile")

@@ -9,7 +9,7 @@ from temdb.models.v1.grids import Grid
 from temdb.models.v2.acquisition import Acquisition
 from temdb.models.v2.block import Block
 from temdb.models.v2.cutting_session import CuttingSession
-from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.task import AcquisitionTask
 from temdb.models.v2.roi import ROI
 from temdb.models.v2.section import Section
 from temdb.models.v2.specimen import Specimen
@@ -35,7 +35,7 @@ class DatabaseManager:
             CuttingSession,
             Section,
             ROI,
-            ImagingSession,
+            AcquisitionTask,
             Acquisition,
             Tile,
         ]

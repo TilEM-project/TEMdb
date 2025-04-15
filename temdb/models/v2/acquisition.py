@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 from beanie import Document, Link
@@ -7,7 +7,7 @@ from pymongo import IndexModel, ASCENDING, DESCENDING
 
 from temdb.models.v2.enum_schemas import AcquisitionStatus, MediaType
 from temdb.models.v2.roi import ROI
-from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.task import AcquisitionTask
 from temdb.models.v2.specimen import Specimen
 
 class StorageLocation(BaseModel):
@@ -50,8 +50,8 @@ class AcquisitionParams(BaseModel):
     magnification: int = Field(..., description="Magnification of acquisition")
     spot_size: int = Field(..., description="Spot size of acquisition")
     exposure_time: int = Field(..., description="Exposure time of camera in ms")
-    tile_size: List[int] = Field(..., description="Size of tiles in pixels")
-    tile_overlap: float = Field(..., description="Overlap of tiles in percent of tile size")
+    tile_size: List[int] = Field(..., description="Shape of the image tile in pixels")
+    tile_overlap: float = Field(..., description="Pixel overlap to neighboring tiles")
     saved_bit_depth: int = Field(..., description="Bit depth of saved image")
 
 
@@ -59,14 +59,14 @@ class AcquisitionCreate(BaseModel):
     montage_id: str = Field(..., description="ID of montage")
     acquisition_id: str = Field(..., description="ID of acquisition")
     roi_id: int = Field(..., description="ID of region of interest")
-    imaging_session_id: str = Field(..., description="ID of imaging session")
+    acquisition_task_id: str = Field(..., description="ID of acquisition task session")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
     calibration_info: Optional[Calibration] = Field(None, description="Calibration information of acquisition")
-    status: AcquisitionStatus = Field(default= AcquisitionStatus.PLANNED,  description="Status of acquisition")
+    status: AcquisitionStatus = Field(default= AcquisitionStatus.IMAGING,  description="Status of acquisition")
     tilt_angle: float = Field(..., description="Tilt angle of acquisition in degrees")
     lens_correction: bool = Field(..., description="Whether this acquisition is a lens correction calibration") 
-    start_time: datetime = Field(..., description="Start time of acquisition")
+    start_time: datetime = Field(..., description="Start time of acquisition", default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = Field(None, description="End time of acquisition")
     montage_set_name: Optional[str] = Field(None, description="Name of montage set")
     sub_region: Optional[Dict[str, int]] = Field(None, description="Sub region of acquisition")
@@ -84,21 +84,21 @@ class AcquisitionUpdate(BaseModel):
     montage_set_name: Optional[str] = Field(None, description="Name of montage set")
     sub_region: Optional[Dict[str, int]] = Field(None, description="Sub region of acquisition")
     replaces_acquisition_id: Optional[int] = Field(None, description="ID of acquisition this acquisition replaces")
-
+    storage_locations: Optional[List[StorageLocation]] = Field(None, description="Storage locations of acquisition")
 
 class Acquisition(Document):
-    specimen_id: Link[Specimen] = Field(..., description="ID of specimen")
-    montage_id: str = Field(..., description="ID of montage")
     acquisition_id: str = Field(..., description="ID of acquisition")
+    montage_id: str = Field(..., description="ID of montage")
+    specimen_id: Link[Specimen] = Field(..., description="ID of specimen")
     roi_id: Link[ROI] = Field(..., description="ID of region of interest")
-    imaging_session_id: Link[ImagingSession] = Field(..., description="ID of imaging session")
+    acquisition_task_id: Link[AcquisitionTask] = Field(..., description="ID of acquisition task")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
     calibration_info: Optional[Calibration] = Field(None, description="Calibration information of acquisition")
-    status: AcquisitionStatus = Field(default= AcquisitionStatus.PLANNED,  description="Status of acquisition")
+    status: AcquisitionStatus = Field(default= AcquisitionStatus.IMAGING,  description="Status of acquisition")
     tilt_angle: Optional[float] = Field(None, description="Tilt angle of acquisition in degrees")
     lens_correction: Optional[bool] = Field(None, description="Whether this acquisition is a lens correction calibration")
-    start_time: datetime = Field(..., description="Start time of acquisition")
+    start_time: datetime = Field(..., description="Start time of acquisition", default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = Field(None, description="End time of acquisition")
     storage_locations: Optional[List[StorageLocation]] = Field(None, description="Storage locations of acquisition")
     montage_set_name: Optional[str] = Field(None, description="Name of montage set")
@@ -118,8 +118,8 @@ class Acquisition(Document):
                 name="roi_start_time_index",
             ),
             IndexModel(
-                [("imaging_session_id.id", ASCENDING), ("start_time", DESCENDING)],
-                name="imaging_session_start_time_index",
+                [("acquisition_task_id.id", ASCENDING), ("start_time", DESCENDING)],
+                name="acquisition_task_start_time_index",
             ),
             IndexModel([("status", ASCENDING)], name="status_index"),
             IndexModel(

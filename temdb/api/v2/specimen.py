@@ -5,7 +5,6 @@ from datetime import datetime
 
 from temdb.models.v2.specimen import Specimen, SpecimenCreate, SpecimenUpdate
 from temdb.models.v2.block import Block
-from temdb.models.v2.imaging_session import ImagingSession
 
 specimen_api = APIRouter(
     tags=["Specimens"],
@@ -34,29 +33,6 @@ async def get_specimen_blocks(
         .to_list()
     )
 
-
-@specimen_api.get(
-    "/specimens/{specimen_id}/imaging-sessions", response_model=List[ImagingSession]
-)
-async def get_specimen_imaging_sessions(
-    specimen_id: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)
-):
-    specimen = await Specimen.find_one({"specimen_id": specimen_id})
-    if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
-    try:
-        imaging_sessions = (
-            await ImagingSession.find(ImagingSession.specimen_id == specimen_id)
-            .skip(skip)
-            .limit(limit)
-            .to_list()
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if not imaging_sessions:
-        raise HTTPException(status_code=404, detail=f"Imaging sessions not found for {specimen_id}")
-    
-    return imaging_sessions
 
 
 
