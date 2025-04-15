@@ -38,7 +38,7 @@ def specimen_id_to_database_name(specimen_id):
 
 
 class Grid(Document, GridRecord):
-    id: str = Field(default_factory=str)
+    id: str
 
     class Settings:
         name = "grids"
