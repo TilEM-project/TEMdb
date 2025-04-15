@@ -8,7 +8,7 @@ from temdb.models.v2.section import Section
 
 
 class ROIBase(BaseModel):
-    aperture_width_height_mm: Optional[List] = Field(
+    aperture_width_height: Optional[List] = Field(
         None,
         description="Width and height of aperture in mm calculated from aperture_image",
     )
@@ -21,7 +21,7 @@ class ROIBase(BaseModel):
         description="Bounding box of aperture measured in pixel coordinates from aperture_image from top left corner",
     )
     aperture_image: Optional[str] = Field(None, description="URL of aperture image")
-    optical_nm_per_pixel: Optional[float] = Field(
+    optical_pixel_size: Optional[float] = Field(
         None, description="Optical resolution in nm per pixel"
     )
     scale_y: Optional[float] = Field(None, description="Scaling factor for y-axis")
@@ -33,7 +33,7 @@ class ROIBase(BaseModel):
     roi_mask: Optional[str] = Field(None, description="URL of ROI mask")
     roi_mask_bucket: Optional[str] = Field(None, description="Bucket of ROI mask")
     corners: Optional[Dict] = Field(None, description="Corners of ROI")
-    corners_perpendicular: Optional[Dict] = Field(..., description="Perpendicular corners of ROI")
+    corners_perpendicular: Optional[Dict] = Field(None, description="Perpendicular corners of ROI")
     rule: Optional[str] = Field(None, description="Rule for ROI corner detection")
     edits: Optional[List] = Field(None, description="List of edits to ROI")
     updated_at: Optional[datetime] = Field(None, description="Time of last update")
