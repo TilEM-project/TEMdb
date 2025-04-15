@@ -7,6 +7,7 @@ class BaseConfig(BaseSettings):
     app_name: str = "TEMDB"
     mongodb_uri: str
     mongodb_name: str
+    max_batch_size: int = 5000
     model_config = SettingsConfigDict(
         case_sensitive=False,
         extra="allow",
