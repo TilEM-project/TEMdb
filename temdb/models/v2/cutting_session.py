@@ -31,7 +31,7 @@ class CuttingSession(Document):
     cutting_session_id: str = Field(..., description="ID of cutting session")
     start_time: datetime = Field(..., description="Time when cutting session started")
     end_time: Optional[datetime] = Field(None, description="Time when cutting session ended")
-    operator: str = Field(..., description="Operator of cutting session")
+    operator: Optional[str] = Field(..., description="Operator of cutting session")
     sectioning_device: str = Field(..., description="Device used for sectioning")
     media_type: MediaType = Field(..., description="Type of substrate the sections are placed upon")
     specimen_id: Link[Specimen] = Field(None, description="ID of specimen the cutting session is associated with")
