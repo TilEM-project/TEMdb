@@ -19,7 +19,9 @@ class SpecimenBase(BaseModel):
 class SpecimenCreate(SpecimenBase):
     specimen_id: str = Field(..., description="ID of specimen")
     created_at: datetime = Field(
-        ..., description="Time when specimen metadata was created"
+        ...,
+        description="Time when specimen metadata was created",
+        default_factory=lambda:datetime.now(timezone.utc),
     )
 
 
@@ -34,7 +36,9 @@ class Specimen(Document):
     )
     specimen_images: Optional[Set[str]] = Field(None, description="Images of specimen")
     created_at: datetime = Field(
-        ..., description="Time when specimen metadata was created"
+        ...,
+        description="Time when specimen metadata was created",
+        default_factory=lambda: datetime.now(timezone.utc),
     )
     updated_at: Optional[datetime] = Field(
         None, description="Time when specimen metadata was last updated"
