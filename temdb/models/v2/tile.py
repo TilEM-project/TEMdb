@@ -61,7 +61,7 @@ class TileCreate(BaseModel):
 
 
 class TileUpdate(BaseModel):
-    acquisition_id: Optional[Link[Acquisition]] = Field(
+    acquisition_id: Optional[str] = Field(
         None, description="ID of the acquisition"
     )
     stage_position: Optional[Dict[str, float]] = Field(
