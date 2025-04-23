@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 from beanie import init_beanie
 from fastapi import FastAPI
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from temdb.database import DatabaseManager
@@ -98,7 +98,7 @@ def app(test_db_manager: DatabaseManager, init_db) -> FastAPI:
 @pytest.fixture(scope="function")
 async def async_client(app: FastAPI) -> AsyncClient:
     """Asynchronous TestClient using the overridden app."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(base_url="http://test", transport=ASGITransport(app=app)) as client:
         yield client
 
 
