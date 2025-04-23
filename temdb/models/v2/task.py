@@ -13,11 +13,9 @@ from temdb.models.v2.block import Block
 
 class AcquisitionTaskCreate(BaseModel):
     task_id: str = Field(..., description="Unique identifier for this task")
-    specimen_id: Link[Specimen] = Field(..., description="ID of specimen")
-    block_id: Link[Block] = Field(..., description="ID of block")
-    roi_id: Link[ROI] = Field(
-        ..., description="ID of region of interest to be acquired"
-    )
+    specimen_id: str = Field(..., description="ID of specimen")
+    block_id: str = Field(..., description="ID of block")
+    roi_id: int = Field(..., description="ID of region of interest to be acquired")
     tags: List[str] = Field(default_factory=list, description="Tags for filtering")
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata"
@@ -27,9 +25,7 @@ class AcquisitionTaskCreate(BaseModel):
     )
     version: int = Field(1, description="Version number of this task")
     status: AcquisitionTaskStatus = Field(default=AcquisitionTaskStatus.PLANNED)
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AcquisitionTaskUpdate(BaseModel):
@@ -46,29 +42,33 @@ class AcquisitionTaskUpdate(BaseModel):
     completed_at: Optional[datetime] = Field(
         None, description="When task finished (success or failure)"
     )
-    tags: List[str] = Field(default_factory=list, description="Tags for filtering")
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata"
-    )
+    tags: Optional[List[str]] = Field(None, description="Tags for filtering")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class AcquisitionTask(Document):
     task_id: str = Field(..., description="Unique identifier for this task")
+    specimen_id: str = Field(..., description="ID of specimen")
+    block_id: str = Field(..., description="ID of block")
+    roi_id: int = Field(..., description="ID of region of interest to be acquired")
+
     task_type: str = Field(
         "standard_acquisition", description="Type of acquisition task"
     )
     version: int = Field(1, description="Version number of this task")
 
-    specimen_id: Link[Specimen] = Field(..., description="ID of specimen")
-    block_id: Link[Block] = Field(..., description="ID of block")
-    roi_id: Link[ROI] = Field(
-        ..., description="ID of region of interest to be acquired"
+    specimen_ref: Link[Specimen] = Field(
+        ..., description="Internal link to the specimen document"
+    )
+    block_ref: Link[Block] = Field(
+        ..., description="Internal link to the block document"
+    )
+    roi_ref: Link[ROI] = Field(
+        ..., description="Internal link to the region of interest document"
     )
 
     status: AcquisitionTaskStatus = Field(default=AcquisitionTaskStatus.PLANNED)
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = Field(
         None, description="When task was last updated"
     )
@@ -89,18 +89,29 @@ class AcquisitionTask(Document):
     class Settings:
         name = "acquisition_tasks"
         indexes = [
-            IndexModel([("task_id", ASCENDING)], unique=False),
-            IndexModel([("task_id", ASCENDING), ("version", DESCENDING)]),
+            IndexModel([("task_id", ASCENDING)], unique=True, name="task_id_index"),
+            IndexModel([("created_at", DESCENDING)], name="created_at_index"),
+            IndexModel([("updated_at", DESCENDING)], name="updated_at_index"),
+            IndexModel([("completed_at", DESCENDING)], name="completed_at_index"),
+            IndexModel([("started_at", DESCENDING)], name="started_at_index"),
+            IndexModel(
+                [("task_id", ASCENDING), ("version", DESCENDING)],
+                name="task_id_version_index",
+            ),
             IndexModel([("status", ASCENDING)]),
-            IndexModel([("specimen_id.id", ASCENDING), ("block_id.id", ASCENDING)]),
-            IndexModel([("roi_id.id", ASCENDING)]),
-            IndexModel([("task_type", ASCENDING)]),
-            IndexModel([("tags", ASCENDING)]),
+            IndexModel([("status", ASCENDING)], name="status_index"),
+            IndexModel(
+                [("specimen_ref.id", ASCENDING), ("block_ref.id", ASCENDING)],
+                name="specimen_block_ref_index",
+            ),
+            IndexModel([("roi_ref.id", ASCENDING)], name="roi_ref_index"),
+            IndexModel([("task_type", ASCENDING)], name="task_type_index"),
+            IndexModel([("tags", ASCENDING)], name="tags_index"),
         ]
 
     @classmethod
     async def get_latest_version(cls, task_id: str):
-        """Get the latest version of a task"""
+        """Get the latest version of a task by human-readable task_id"""
         return (
             await cls.find(cls.task_id == task_id)
             .sort([("version", -1)])

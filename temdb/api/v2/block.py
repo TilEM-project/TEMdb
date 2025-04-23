@@ -1,5 +1,5 @@
-from fastapi import HTTPException, Query, Body, APIRouter
-from typing import List
+from fastapi import HTTPException, Query, Body, APIRouter, status
+from typing import List, Optional
 
 from temdb.models.v2.block import Block, BlockCreate, BlockUpdate
 from temdb.models.v2.specimen import Specimen
@@ -11,12 +11,28 @@ block_api = APIRouter(
 
 
 @block_api.get("/blocks", response_model=List[Block])
-async def list_blocks(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)):
-    return await Block.find_all().skip(skip).limit(limit).to_list()
+async def list_blocks(
+    specimen_id: Optional[str] = Query(
+        None, description="Filter by human-readable Specimen ID"
+    ),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+):
+    """Retrieve a list of blocks, optionally filtered by specimen ID."""
+    query_filter = {}
+    if specimen_id:
+        query_filter["specimen_id"] = specimen_id
+
+    return (
+        await Block.find(query_filter, fetch_links=True)
+        .skip(skip)
+        .limit(limit)
+        .to_list()
+    )
 
 
 @block_api.get(
-    "/blocks/{specimen_id}/{block_id}/cut-sessions",
+    "/blocks/specimens/{specimen_id}/blocks/{block_id}/cut-sessions",
     response_model=List[CuttingSession],
 )
 async def get_block_cut_sessions(
@@ -25,86 +41,139 @@ async def get_block_cut_sessions(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
-    specimen = await Specimen.find_one({"specimen_id": specimen_id})
-    if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
-
-    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
+    """Retrieve cutting sessions associated with a specific block."""
+    block = await Block.find_one({"block_id": block_id, "specimen_id": specimen_id})
     if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
+        )
 
-    return (
-        await CuttingSession.find(CuttingSession.block_id == block.id)
+    cutting_sessions = (
+        await CuttingSession.find(
+            CuttingSession.block_ref.id
+            == block.id,
+            fetch_links=True,
+        )
         .skip(skip)
         .limit(limit)
         .to_list()
     )
-
-
-@block_api.post("/blocks", response_model=Block)
-async def create_block(block: BlockCreate):
-    specimen = await Specimen.find_one({"specimen_id": block.specimen_id})
-    if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
-    try:
-        new_block = Block(
-            block_id=block.block_id,
-            microCT_info=block.microCT_info,
-            specimen_id=specimen.id,
+    if not cutting_sessions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No cutting sessions found for block '{block_id}' and specimen '{specimen_id}'",
         )
-        await new_block.insert()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return new_block
+
+    return cutting_sessions
 
 
-@block_api.get("/blocks/{specimen_id}/{block_id}", response_model=Block)
-async def get_block(specimen_id: str, block_id: str):
-    specimen = await Specimen.find_one({"specimen_id": specimen_id})
+@block_api.post("/blocks", response_model=Block, status_code=status.HTTP_201_CREATED)
+async def create_block(block_data: BlockCreate):
+    """Create a new block associated with a specimen."""
+    specimen = await Specimen.find_one(Specimen.specimen_id == block_data.specimen_id)
     if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Specimen with ID '{block_data.specimen_id}' not found",
+        )
 
-    block = await Block.find(Block.block_id == block_id, Block.specimen_id.id == specimen.id).first_or_none()
+    existing_block = await Block.find_one(
+        {"block_id": block_data.block_id, "specimen_ref.id": specimen.id}
+    )
+    if existing_block:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Block with ID '{block_data.block_id}' already exists for specimen '{block_data.specimen_id}'",
+        )
+
+    new_block = Block(
+        block_id=block_data.block_id,
+        specimen_id=specimen.specimen_id,
+        specimen_ref=specimen.id,
+        microCT_info=block_data.microCT_info,
+    )
+    await new_block.insert()
+    created_block = await Block.get(new_block.id, fetch_links=True)
+    return created_block
+
+
+@block_api.get(
+    "/blocks/specimens/{specimen_id}/blocks/{block_id}", response_model=Block
+)
+async def get_block(specimen_id: str, block_id: str):
+    """Retrieve a specific block by its human-readable ID and specimen ID."""
+    block = await Block.find_one(
+        {"block_id": block_id, "specimen_id": specimen_id}, fetch_links=True
+    )
     if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
+        )
     return block
 
 
-@block_api.patch("/blocks/{specimen_id}/{block_id}", response_model=Block)
+@block_api.patch(
+    "/blocks/specimens/{specimen_id}/blocks/{block_id}", response_model=Block
+)
 async def update_block(
     specimen_id: str, block_id: str, updated_fields: BlockUpdate = Body(...)
 ):
-    specimen = await Specimen.find_one({"specimen_id": specimen_id})
-    if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
-
-    block = await Block.find(Block.block_id == block_id, Block.specimen_id.id == specimen.id).first_or_none()
+    """Update details of a specific block."""
+    block = await Block.find_one({"block_id": block_id, "specimen_id": specimen_id})
     if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
+        )
 
     update_data = updated_fields.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided"
+        )
 
-    if update_data:
-        for field, value in update_data.items():
-            setattr(block, field, value)
+    needs_save = False
+    if (
+        "microCT_info" in update_data
+        and block.microCT_info != update_data["microCT_info"]
+    ):
+        block.microCT_info = update_data["microCT_info"]
+        needs_save = True
+
+    if needs_save:
 
         await block.save()
 
-    return block
+    updated_block = await Block.get(block.id, fetch_links=True)
+    return updated_block
 
 
-@block_api.delete("/blocks/{specimen_id}/{block_id}", response_model=dict)
+@block_api.delete(
+    "/blocks/specimens/{specimen_id}/blocks/{block_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def delete_block(specimen_id: str, block_id: str):
-    specimen = await Specimen.find_one({"specimen_id": specimen_id})
-    if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
-
-    block = await Block.find_one({"specimen_id": specimen.id, "block_id": block_id})
+    """Delete a specific block."""
+    block = await Block.find_one({"block_id": block_id, "specimen_id": specimen_id})
     if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
+        )
+
+    session_count = await CuttingSession.find(
+        CuttingSession.block_ref.id == block.id
+    ).count()
+    if session_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete block '{block_id}' as it has {session_count} associated cutting sessions.",
+        )
 
     await block.delete()
-    return {"message": "Block deleted successfully"}
+    return None
 
 
 @block_api.get("/blocks/specimens/{specimen_id}/blocks", response_model=List[Block])
@@ -113,13 +182,16 @@ async def list_specimen_blocks(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
-    specimen = await Specimen.find_one({"specimen_id": specimen_id})
-    if not specimen:
-        raise HTTPException(status_code=404, detail="Specimen not found")
-
-    return (
-        await Block.find(Block.specimen_id.id == specimen.id)
+    """Retrieve blocks associated with a specific specimen using specimen's human-readable ID."""
+    blocks = (
+        await Block.find({"specimen_id": specimen_id}, fetch_links=True)
         .skip(skip)
         .limit(limit)
         .to_list()
     )
+    if not blocks and not await Specimen.find_one(Specimen.specimen_id == specimen_id):
+        raise HTTPException(
+            status_code=404, detail=f"Specimen with ID '{specimen_id}' not found"
+        )
+
+    return blocks

@@ -1,14 +1,6 @@
 from enum import Enum
 
 
-class MediaType(str, Enum):
-    TAPE = "tape"
-    GRID = "grid"
-    SLED = "sled"
-    STICK = "stick"
-    STICK16 = "stick16"
-
-
 class SectionQuality(str, Enum):
     GOOD = "good"
     BROKEN = "broken"

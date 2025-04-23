@@ -1,7 +1,7 @@
 from typing import Dict, Optional, Union, List
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
-from beanie import Document, Link
+from beanie import Document, Link, Indexed
 from pymongo import IndexModel, ASCENDING
 
 from temdb.models.v2.section import Section
@@ -33,58 +33,99 @@ class ROIBase(BaseModel):
     roi_mask: Optional[str] = Field(None, description="URL of ROI mask")
     roi_mask_bucket: Optional[str] = Field(None, description="Bucket of ROI mask")
     corners: Optional[Dict] = Field(None, description="Corners of ROI")
-    corners_perpendicular: Optional[Dict] = Field(None, description="Perpendicular corners of ROI")
+    corners_perpendicular: Optional[Dict] = Field(
+        None, description="Perpendicular corners of ROI"
+    )
     rule: Optional[str] = Field(None, description="Rule for ROI corner detection")
     edits: Optional[List] = Field(None, description="List of edits to ROI")
-    updated_at: Optional[datetime] = Field(None, description="Time of last update")
-    auto_roi: Optional[bool] = Field(None, description="Flag if auto generated ROI was used")
+    auto_roi: Optional[bool] = Field(
+        None, description="Flag if auto generated ROI was used"
+    )
     roi_parameters: Optional[Dict] = Field(None, description="Parameters of ROI")
 
 
 class ROICreate(ROIBase):
     roi_id: int = Field(..., description="ID of region of interest")
+    section_id: str = Field(..., description="ID of section")
     specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")
-    section_number: int = Field(..., description="Number of section from collection")
-    parent_roi_id: Optional[int] = Field(..., description="ID of parent region of interest")
+    section_number: Optional[int] = Field(
+        None, description="Number of section from collection"
+    )
+    parent_roi_id: Optional[int] = Field(
+        None, description="ID of parent region of interest"
+    )
 
 
 class ROIUpdate(ROIBase):
-    section_number: Optional[int] = Field(None, description="Number of section from collection")
-    parent_roi_id: Optional[str] = Field(None, description="ID of parent region of interest")
+    updated_at: Optional[datetime] = Field(
+        description="Time of last update",
+        default_factory=lambda: datetime.now(timezone.utc),
+    )
 
 
-class ROI(ROICreate, Document):
-    parent_roi_id: Optional[Link["ROI"]] = Field(None, description="ID of parent region of interest")
+class ROI(Document):
+    roi_id: int = Field(
+        ..., description="Unique, human-readable integer ID for this ROI"
+    )
+    section_id: str = Field(..., description="Human-readable ID of the parent Section")
+    cutting_session_id: str = Field(
+        ..., description="Human-readable ID of the parent Cutting Session"
+    )
+    block_id: str = Field(..., description="Human-readable ID of the parent Block")
+    specimen_id: str = Field(
+        ..., description="Human-readable ID of the parent Specimen"
+    )
+
+    section_ref: Link[Section] = Field(
+        ..., description="Internal link to the section document"
+    )
+    parent_roi_ref: Optional[Link["ROI"]] = Field(
+        None, description="Internal link to the parent ROI document, if any"
+    )
+
+    section_number: Optional[int] = Field(None)
+    aperture_width_height: Optional[List] = Field(None)
+    aperture_centroid: Optional[List] = Field(None)
+    aperture_bounding_box: Optional[List] = Field(None)
+    aperture_image: Optional[str] = Field(None)
+    optical_pixel_size: Optional[float] = Field(None)
+    scale_y: Optional[float] = Field(None)
+    barcode: Optional[Union[int, str]] = Field(None)
+    rois: Optional[List] = Field(None)
+    bucket: Optional[str] = Field(None)
+    roi_mask: Optional[str] = Field(None)
+    roi_mask_bucket: Optional[str] = Field(None)
+    corners: Optional[Dict] = Field(None)
+    corners_perpendicular: Optional[Dict] = Field(None)
+    rule: Optional[str] = Field(None)
+    edits: Optional[List] = Field(None)
+    auto_roi: Optional[bool] = Field(None)
+    roi_parameters: Optional[Dict] = Field(None)
+    updated_at: Optional[datetime] = Field(None, description="Time of last update")
 
     class Settings:
         name = "rois"
         indexes = [
             IndexModel(
-                [
-                    ("specimen_id", ASCENDING),
-                    ("block_id", ASCENDING),
-                    ("section_number", ASCENDING),
-                    ("roi_id", ASCENDING),
-                ],
+                [("section_ref.id", ASCENDING), ("roi_id", ASCENDING)],
+                name="section_ref_roi_id_unique_index",
                 unique=True,
-                name="roi_index",
             ),
+            IndexModel([("section_id", ASCENDING)], name="section_id_index"),
+            IndexModel([("cutting_session_id", ASCENDING)], name="session_id_index"),
+            IndexModel([("block_id", ASCENDING)], name="block_id_index"),
+            IndexModel([("specimen_id", ASCENDING)], name="specimen_id_index"),
+            IndexModel([("updated_at", ASCENDING)], name="updated_at_index"),
+            IndexModel([("section_ref.id", ASCENDING)], name="section_ref_index"),
             IndexModel(
-                [("section_number.id", ASCENDING), ("name", ASCENDING)],
-                name="section_name_index",
-            ),
-            IndexModel([("parent_roi.id", ASCENDING)], name="parent_roi_index"),
-            IndexModel(
-                [("is_lens_correction_roi", ASCENDING)], name="lens_correction_index"
-            ),
+                [("parent_roi_ref.id", ASCENDING)],
+                name="parent_roi_ref_index",
+                sparse=True,
+            ),  # sparse if not all ROIs have parents
+            IndexModel([("barcode", ASCENDING)], name="barcode_index", sparse=True),
+            IndexModel([("section_id", ASCENDING)], name="section_hr_id_index"),
+            IndexModel([("cutting_session_id", ASCENDING)], name="session_hr_id_index"),
+            IndexModel([("block_id", ASCENDING)], name="block_hr_id_index"),
+            IndexModel([("specimen_id", ASCENDING)], name="specimen_hr_id_index"),
         ]
-
-    @classmethod
-    async def create_roi(cls, **kwargs):
-        # Ensure ROIs are correctly linked to multiple sections
-        section_id = kwargs.get("section_id", [])
-        for section in section_id:
-            if not await Section.exists(section.id):
-                raise ValueError(f"Section with id {section.id} does not exist.")
-        return await cls(**kwargs).insert()

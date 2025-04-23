@@ -1,0 +1,231 @@
+import pytest
+from httpx import AsyncClient
+from datetime import datetime, timezone
+
+
+@pytest.mark.asyncio
+async def test_list_rois_unfiltered(async_client: AsyncClient):
+    """Test retrieving a list of all ROIs."""
+    response = await async_client.get("/api/v2/rois")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+@pytest.mark.asyncio
+async def test_list_rois_filtered(
+    async_client: AsyncClient,
+    test_specimen,
+    test_block,
+    test_cutting_session,
+    test_section,
+    test_roi,
+):
+    """Test filtering ROIs by parent IDs."""
+    response_sec = await async_client.get(
+        f"/api/v2/rois?section_id={test_section.section_id}"
+    )
+    assert response_sec.status_code == 200
+    res_sec_data = response_sec.json()
+    assert isinstance(res_sec_data, list)
+    assert len(res_sec_data) >= 1
+    assert all(roi["section_id"] == test_section.section_id for roi in res_sec_data)
+    assert any(roi["roi_id"] == test_roi.roi_id for roi in res_sec_data)
+
+
+
+@pytest.mark.asyncio
+async def test_create_roi(async_client: AsyncClient, test_section):
+    """Test creating a new top-level ROI."""
+    roi_id_hr = 9001
+    roi_data = {
+        "roi_id": roi_id_hr,
+        "section_id": test_section.section_id,  
+        "aperture_width_height": [100, 100],
+        "specimen_id": test_section.specimen_id,  
+        "block_id": test_section.block_id,
+        "section_number": test_section.section_number,
+    }
+    response = await async_client.post("/api/v2/rois", json=roi_data)
+    assert response.status_code == 201
+    response_data = response.json()
+    assert response_data["roi_id"] == roi_id_hr
+    assert response_data["section_id"] == test_section.section_id
+    assert (
+        response_data["cutting_session_id"] == test_section.cutting_session_id
+    )  
+    assert response_data["block_id"] == test_section.block_id 
+    assert response_data["specimen_id"] == test_section.specimen_id
+    assert response_data["parent_roi_ref"] is None  
+
+
+
+@pytest.mark.asyncio
+async def test_create_child_roi(async_client: AsyncClient, test_roi):
+    """Test creating a child ROI linked to a parent."""
+    child_roi_id_hr = test_roi.roi_id + 1 
+    child_roi_data = {
+        "roi_id": child_roi_id_hr,
+        "section_id": test_roi.section_id,
+        "parent_roi_id": test_roi.roi_id, 
+        "aperture_width_height": [50, 50],
+        "specimen_id": test_roi.specimen_id, 
+        "block_id": test_roi.block_id,  
+    }
+    response = await async_client.post("/api/v2/rois", json=child_roi_data)
+    assert response.status_code == 201
+    response_data = response.json()
+    assert response_data["roi_id"] == child_roi_id_hr
+    assert response_data["section_id"] == test_roi.section_id
+    assert "parent_roi_ref" in response_data
+    assert response_data["parent_roi_ref"]["id"] == str(
+        test_roi.id
+    )  
+
+@pytest.mark.asyncio
+async def test_get_roi(async_client: AsyncClient, test_roi):
+    """Test retrieving a specific ROI by its human-readable integer ID."""
+    response = await async_client.get(f"/api/v2/rois/{test_roi.roi_id}")
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["roi_id"] == test_roi.roi_id
+    assert response_data["section_id"] == test_roi.section_id
+    assert response_data["_id"] == str(test_roi.id)
+
+
+@pytest.mark.asyncio
+async def test_get_roi_not_found(async_client: AsyncClient):
+    """Test retrieving a non-existent ROI."""
+    response = await async_client.get("/api/v2/rois/9999999")  # Use an unlikely ID
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_roi(async_client: AsyncClient, test_roi):
+    """Test updating an ROI's attributes."""
+    update_data = {"aperture_image": "http://example.com/updated_roi.png"}
+    response = await async_client.patch(
+        f"/api/v2/rois/{test_roi.roi_id}", json=update_data
+    )
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["aperture_image"] == "http://example.com/updated_roi.png"
+    assert response_data["roi_id"] == test_roi.roi_id
+    assert "updated_at" in response_data
+    assert response_data["updated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_roi(async_client: AsyncClient, test_section):
+    """Test deleting an ROI successfully (when it has no dependencies)."""
+    roi_id_hr = 9002
+    roi_data = {
+        "roi_id": roi_id_hr,
+        "section_id": test_section.section_id,
+        "specimen_id": test_section.specimen_id,
+        "block_id": test_section.block_id,
+    }
+    create_response = await async_client.post("/api/v2/rois", json=roi_data)
+    assert create_response.status_code == 201
+
+    delete_response = await async_client.delete(f"/api/v2/rois/{roi_id_hr}")
+    assert delete_response.status_code == 204
+
+    get_response = await async_client.get(f"/api/v2/rois/{roi_id_hr}")
+    assert get_response.status_code == 404
+
+
+
+# @pytest.mark.asyncio
+# async def test_delete_roi_with_children(async_client: AsyncClient, test_roi):
+#     """Test deleting an ROI fails if it has child ROIs."""
+#     # 1. Create a child ROI linked to test_roi
+#     child_roi_id_hr = test_roi.roi_id + 1
+#     child_roi_data = {
+#         "roi_id": child_roi_id_hr, "section_id": test_roi.section_id,
+#         "parent_roi_id": test_roi.roi_id, "specimen_id": test_roi.specimen_id,
+#         "block_id": test_roi.block_id, "section_number": test_roi.section_number
+#     }
+#     cr_resp = await async_client.post("/api/v2/rois", json=child_roi_data)
+#     assert cr_resp.status_code == 201
+
+#     # 2. Attempt to delete the parent ROI (test_roi)
+#     response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
+#     assert response.status_code == 400
+#     assert "child ROIs" in response.json()["detail"].lower()
+
+#     # Cleanup child
+#     await async_client.delete(f"/api/v2/rois/{child_roi_id_hr}")
+
+
+# @pytest.mark.asyncio
+# async def test_delete_roi_with_tasks(async_client: AsyncClient, test_roi, test_acquisition_task):
+#     """Test deleting an ROI fails if it has associated AcquisitionTasks."""
+#     # test_acquisition_task fixture links to test_roi
+#     response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
+#     assert response.status_code == 400
+#     assert "associated Acquisition Tasks" in response.json()["detail"].lower()
+
+
+# @pytest.mark.asyncio
+# async def test_delete_roi_with_acquisitions(async_client: AsyncClient, test_roi, test_acquisition):
+#     """Test deleting an ROI fails if it has associated Acquisitions."""
+#     # test_acquisition fixture links to test_roi
+#     response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
+#     assert response.status_code == 400
+#     assert "associated Acquisitions" in response.json()["detail"].lower()
+
+
+
+
+@pytest.mark.asyncio
+async def test_list_section_rois(async_client: AsyncClient, test_section, test_roi):
+    """Test retrieving ROIs associated with a specific section."""
+    response = await async_client.get(
+        f"/api/v2/sections/{test_section.section_id}/rois"
+    )
+    assert response.status_code == 200
+    response_data = response.json()
+    assert isinstance(response_data, list)
+    assert len(response_data) >= 1
+    assert any(roi["roi_id"] == test_roi.roi_id for roi in response_data)
+    assert all(roi["section_id"] == test_section.section_id for roi in response_data)
+
+
+@pytest.mark.asyncio
+async def test_get_child_rois(async_client: AsyncClient, test_roi):
+    """Test retrieving child ROIs for a parent ROI."""
+    parent_roi_id = test_roi.roi_id
+    child_roi_id_hr = parent_roi_id + 1
+    child_roi_data = {
+        "roi_id": child_roi_id_hr,
+        "section_id": test_roi.section_id,
+        "parent_roi_id": parent_roi_id,
+        "specimen_id": test_roi.specimen_id,
+        "block_id": test_roi.block_id,
+    }
+    cr_resp = await async_client.post("/api/v2/rois", json=child_roi_data)
+    assert cr_resp.status_code == 201
+
+    response = await async_client.get(f"/api/v2/rois/{parent_roi_id}/children")
+    assert response.status_code == 200
+    response_data = response.json()
+    assert "children" in response_data
+    assert "metadata" in response_data
+    assert isinstance(response_data["children"], list)
+    assert len(response_data["children"]) == 1
+    assert response_data["children"][0]["roi_id"] == child_roi_id_hr
+    assert response_data["children"][0]["parent_roi_ref"]["id"] == str(test_roi.id)
+    assert response_data["metadata"]["total_children"] == 1
+
+    await async_client.delete(f"/api/v2/rois/{child_roi_id_hr}")
+
+
+@pytest.mark.asyncio
+async def test_get_child_rois_no_children(async_client: AsyncClient, test_roi):
+    """Test retrieving children for an ROI that has none."""
+    response = await async_client.get(f"/api/v2/rois/{test_roi.roi_id}/children")
+    assert response.status_code == 200
+    response_data = response.json()
+    assert isinstance(response_data["children"], list)
+    assert len(response_data["children"]) == 0
+    assert response_data["metadata"]["total_children"] == 0

@@ -9,7 +9,7 @@ class SpecimenBase(BaseModel):
     description: Optional[str] = Field(
         None, description="Description of specimen, used for additional notes."
     )
-    specimen_images: Optional[List[str]] = Field(None, description="Images of specimen")
+    specimen_images: Optional[Set[str]] = Field(None, description="Images of specimen")
     functional_imaging_metadata: Optional[Dict] = Field(
         None,
         description="Functional imaging metadata of specimen, optional links to other datasets",
@@ -21,12 +21,12 @@ class SpecimenCreate(SpecimenBase):
     created_at: datetime = Field(
         ...,
         description="Time when specimen metadata was created",
-        default_factory=lambda:datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc),
     )
 
 
 class SpecimenUpdate(SpecimenBase):
-    specimen_id: Optional[str] = Field(None, description="ID of specimen")
+    pass
 
 
 class Specimen(Document):
@@ -34,7 +34,9 @@ class Specimen(Document):
     description: Optional[str] = Field(
         None, description="Description of specimen, used for additional notes."
     )
-    specimen_images: Optional[Set[str]] = Field(None, description="Images of specimen")
+    specimen_images: Optional[Set[str]] = Field(
+        default_factory=set, description="Images of specimen"
+    )
     created_at: datetime = Field(
         ...,
         description="Time when specimen metadata was created",
