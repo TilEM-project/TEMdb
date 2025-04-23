@@ -10,7 +10,8 @@ from temdb.api.v2.acquisition import acquisition_api
 from temdb.api.v2.analysis import analysis_api
 from temdb.api.v2.block import block_api
 from temdb.api.v2.cutting_session import cutting_session_api
-from temdb.api.v2.imaging_session import imaging_session_api
+from temdb.api.v2.substrate import substrate_api
+from temdb.api.v2.tasks import acquisition_task_api
 from temdb.api.v2.roi import roi_api
 from temdb.api.v2.section import section_api
 from temdb.api.v2.specimen import specimen_api
@@ -53,8 +54,9 @@ def create_app():
     app.include_router(block_api, prefix=v2_prefix)
     app.include_router(cutting_session_api, prefix=v2_prefix)
     app.include_router(section_api, prefix=v2_prefix)
+    app.include_router(substrate_api, prefix=v2_prefix)
     app.include_router(roi_api, prefix=v2_prefix)
-    app.include_router(imaging_session_api, prefix=v2_prefix)
+    app.include_router(acquisition_task_api, prefix=v2_prefix)
     app.include_router(acquisition_api, prefix=v2_prefix)
     app.include_router(analysis_api, prefix=v2_prefix)
 

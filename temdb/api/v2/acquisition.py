@@ -1,79 +1,241 @@
 from datetime import datetime, timezone
-from typing import List, Optional, Dict
-
-from fastapi import APIRouter, Body, HTTPException, Query
-
+from typing import List, Optional, Dict, Any
+import logging
+import math
+from fastapi import APIRouter, Body, HTTPException, Query, Response
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ASCENDING
 from temdb.models.v2.acquisition import (
     Acquisition,
     AcquisitionCreate,
     AcquisitionUpdate,
+    AcquisitionStatus,
     StorageLocation,
     StorageLocationCreate,
 )
-from temdb.models.v2.imaging_session import ImagingSession
+from temdb.models.v2.task import AcquisitionTask
 from temdb.models.v2.roi import ROI
 from temdb.models.v2.tile import Tile, TileCreate
+from fastapi import BackgroundTasks, status, Depends
+from temdb.config import get_config, BaseConfig
+
+from temdb.database import DatabaseManager
+from temdb.dependencies import get_db_manager
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
 )
 
+logger = logging.getLogger(__name__)
 
-@acquisition_api.get("/acquisitions", response_model=List[Acquisition])
+
+@acquisition_api.get("/acquisitions", response_model=Dict[str, Any])
 async def list_acquisitions(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    response: Response,
+    cursor: Optional[str] = Query(
+        None,
+        description="Cursor for pagination (e.g., last seen acquisition_id or _id)",
+    ),
+    limit: int = Query(50, ge=1, le=1000),
+    sort_by: str = Query(
+        "start_time", description="Field to sort by (e.g., start_time, acquisition_id)"
+    ),
+    sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
+    specimen_id: Optional[str] = Query(
+        None, description="Filter by human-readable Specimen ID"
+    ),
+    roi_id: Optional[int] = Query(None, description="Filter by human-readable ROI ID"),
+    acquisition_task_id: Optional[str] = Query(
+        None, description="Filter by human-readable Acquisition Task ID"
+    ),
     montage_set_name: Optional[str] = Query(None),
-    magnification: Optional[int] = Query(None),
+    magnification: Optional[int] = Query(None, ge=1),
+    status: Optional[AcquisitionStatus] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    fields: Optional[List[str]] = Query(
+        None, description="Fields to return (e.g., ['acquisition_id', 'status'])"
+    ),
+) -> Dict[str, Any]:
+    """Retrieve a list of acquisitions with filtering, sorting, and pagination."""
+    try:
+        query = {}
+        if specimen_id:
+            query["specimen_id"] = specimen_id
+        if roi_id:
+            query["roi_id"] = roi_id
+        if acquisition_task_id:
+            query["acquisition_task_id"] = acquisition_task_id
+
+        # Apply other filters
+        if montage_set_name:
+            query["montage_set_name"] = montage_set_name
+        if magnification is not None:
+            query["acquisition_settings.magnification"] = magnification
+        if status:
+            query["status"] = status  # Add validation if status is Enum
+        if start_date and end_date:
+            query["start_time"] = {"$gte": start_date, "$lte": end_date}
+        elif start_date:
+            query["start_time"] = {"$gte": start_date}
+        elif end_date:
+            query["start_time"] = {"$lte": end_date}
+        # TODO: Handle other date filters if needed
+        # Handle cursor-based pagination (assuming cursor is based on sort field or _id)
+        # This needs refinement based on the actual cursor strategy
+        # Example: If sorting by start_time desc, cursor could be the start_time of the last item
+        # if cursor and sort_by == 'start_time' and sort_order == -1:
+        #     query['start_time'] = {'$lt': datetime.fromisoformat(cursor)} # Example
+        # Example: If using _id
+        # if cursor: query["_id"] = {"$gt": ObjectId(cursor)} # Requires ObjectId import
+
+        # Field projection
+        projection = None
+        if fields:
+            projection = {field: 1 for field in fields}
+            if (
+                "_id" not in fields
+            ): 
+                projection["_id"] = 1 
+
+        find_query = Acquisition.find(query, fetch_links=False)
+
+        if projection:
+            find_query = find_query.project(
+                projection_model=None, projection=projection
+            )
+
+        sort_key = sort_by if sort_by else "start_time"
+        sort_direction = sort_order if sort_order in [-1, 1] else -1
+        find_query = find_query.sort([(sort_key, sort_direction)])
+
+        total_count = await Acquisition.find(query).count()
+
+        acquisitions_list = await find_query.limit(limit).to_list()
+
+        next_cursor = str(acquisitions_list[-1].id) if acquisitions_list else None
+
+        metadata = {
+            "total_count": total_count,
+            "returned_count": len(acquisitions_list),
+            "limit": limit,
+            "sort_by": sort_key,
+            "sort_order": sort_direction,
+            "next_cursor": next_cursor,
+        }
+
+        response.headers["Cache-Control"] = "private, max-age=300"
+        response.headers["X-Total-Count"] = str(total_count)
+
+        return {"acquisitions": acquisitions_list, "metadata": metadata}
+
+    except Exception as e:
+        logger.error(f"Error listing acquisitions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error retrieving acquisitions")
+
+@acquisition_api.post(
+    "/acquisitions", response_model=Acquisition, status_code=status.HTTP_201_CREATED
+)
+async def create_acquisition(
+    acq_data: AcquisitionCreate, db_manager: DatabaseManager = Depends(get_db_manager)
 ):
-    query = {}
-    if montage_set_name:
-        query["montage_set_name"] = montage_set_name
-    if magnification is not None:
-        query["acquisition_settings.magnification"] = magnification
+    """Create a new acquisition with validation but without transactions."""
+    new_acq_id_internal = None
 
-    return await Acquisition.find(query).skip(skip).limit(limit).to_list()
+    try:
+        if await Acquisition.find_one({"acquisition_id": acq_data.acquisition_id}):
+            raise HTTPException(
+                400,
+                f"Acquisition ID '{acq_data.acquisition_id}' already exists.",
+            )
 
+        roi = await ROI.find_one(ROI.roi_id == acq_data.roi_id, fetch_links=True)
+        if not roi:
+            raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
 
-@acquisition_api.post("/acquisitions", response_model=Acquisition)
-async def create_acquisition(acquisition: AcquisitionCreate):
-    roi = await ROI.find_one(ROI.roi_id == acquisition.roi_id)
-    if not roi:
-        raise HTTPException(status_code=404, detail="ROI not found")
+        task = await AcquisitionTask.find_one(
+            AcquisitionTask.task_id == acq_data.acquisition_task_id,
+            fetch_links=True,
+        )
+        if not task:
+            raise HTTPException(
+                404,
+                f"Acquisition Task '{acq_data.acquisition_task_id}' not found.",
+            )
 
-    imaging_session = await ImagingSession.find_one(
-        ImagingSession.session_id == acquisition.imaging_session_id
+        if task.roi_ref.id != roi.id:
+            raise HTTPException(
+                400,
+                f"ROI ID '{roi.roi_id}' does not match ROI reference in Task '{task.task_id}'.",
+            )
+
+        specimen_ref_id = task.specimen_ref.id
+        specimen_id_hr = task.specimen_id
+
+        replaces_acq_ref_id = None
+        if acq_data.replaces_acquisition_id:
+            prev_acq = await Acquisition.find_one(
+                {"acquisition_id": acq_data.replaces_acquisition_id},
+            )
+            if not prev_acq:
+                raise HTTPException(
+                    404,
+                    f"Acquisition to replace ID '{acq_data.replaces_acquisition_id}' not found.",
+                )
+            replaces_acq_ref_id = prev_acq.id
+
+        new_acquisition = Acquisition(
+            acquisition_id=acq_data.acquisition_id,
+            montage_id=acq_data.montage_id,
+            specimen_id=specimen_id_hr,
+            roi_id=roi.roi_id,
+            acquisition_task_id=task.task_id,
+            specimen_ref=specimen_ref_id,
+            roi_ref=roi.id,
+            acquisition_task_ref=task.id,
+            hardware_settings=acq_data.hardware_settings,
+            acquisition_settings=acq_data.acquisition_settings,
+            calibration_info=acq_data.calibration_info,
+            status=acq_data.status,
+            tilt_angle=acq_data.tilt_angle,
+            lens_correction=acq_data.lens_correction,
+            start_time=acq_data.start_time or datetime.now(timezone.utc),
+            end_time=acq_data.end_time,
+            montage_set_name=acq_data.montage_set_name,
+            sub_region=acq_data.sub_region,
+            replaces_acquisition_ref=replaces_acq_ref_id,
+        )
+        insert_result = await new_acquisition.insert()
+        new_acq_id_internal = insert_result.id
+
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        else:
+            logger.error(
+                f"Error during acquisition creation: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(500, "Failed to create acquisition.")
+
+    if new_acq_id_internal:
+        created_acq = await Acquisition.get(new_acq_id_internal, fetch_links=True)
+        if created_acq:
+            return created_acq
+    raise HTTPException(
+        500, "Failed to retrieve created acquisition after creation."
     )
-    if not imaging_session:
-        raise HTTPException(status_code=404, detail="Imaging session not found")
-
-    new_acquisition = Acquisition(
-        version=acquisition.version,
-        montage_id=acquisition.montage_id,
-        specimen_id=imaging_session.specimen_id,
-        acquisition_id=acquisition.acquisition_id,
-        roi_id=roi.id,
-        imaging_session_id=imaging_session.id,
-        hardware_settings=acquisition.hardware_settings,
-        acquisition_settings=acquisition.acquisition_settings,  # Contains magnification
-        calibration_info=acquisition.calibration_info,
-        status=acquisition.status,
-        tilt_angle=acquisition.tilt_angle,
-        lens_correction=acquisition.lens_correction,
-        start_time=datetime.now(timezone.utc),
-        montage_set_name=acquisition.montage_set_name,
-        sub_region=acquisition.sub_region,
-        replaces_acquisition_id=acquisition.replaces_acquisition_id,
-    )
-    await new_acquisition.insert()
-    return new_acquisition
-
 
 @acquisition_api.get("/acquisitions/{acquisition_id}", response_model=Acquisition)
 async def get_acquisition(acquisition_id: str):
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
+    """Retrieve a specific acquisition by its human-readable ID."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id, fetch_links=True
+    )
     if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
+        raise HTTPException(
+            status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found"
+        )
     return acquisition
 
 
@@ -81,95 +243,260 @@ async def get_acquisition(acquisition_id: str):
 async def update_acquisition(
     acquisition_id: str, updated_fields: AcquisitionUpdate = Body(...)
 ):
-    existing_acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not existing_acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
+    """Update details of a specific acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
+    if not acquisition:
+        raise HTTPException(
+            status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found"
+        )
 
     update_data = updated_fields.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(400, "No update data provided")
 
-    if update_data:
-        for field, value in update_data.items():
-            setattr(existing_acquisition, field, value)
+    needs_save = False
+    for field, value in update_data.items():
+        # TODO: Handle nested updates for settings/calibration carefully
+        if hasattr(acquisition, field) and getattr(acquisition, field) != value:
+            setattr(acquisition, field, value)
+            needs_save = True
 
-        await existing_acquisition.save()
+    if needs_save:
+        await acquisition.save()
 
-    return existing_acquisition
+    updated_acq = await Acquisition.get(acquisition.id, fetch_links=True)
+    return updated_acq
 
 
-@acquisition_api.delete("/acquisitions/{acquisition_id}", response_model=dict)
+@acquisition_api.delete(
+    "/acquisitions/{acquisition_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_acquisition(acquisition_id: str):
-    acquisition = await Acquisition.get(acquisition_id)
+    """Delete a specific acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
     if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
+        raise HTTPException(
+            status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found"
+        )
+
+    tile_count = await Tile.find(Tile.acquisition_ref.id == acquisition.id).count()
+    if tile_count > 0:
+        raise HTTPException(
+            400,
+            f"Cannot delete acquisition '{acquisition_id}': {tile_count} tiles exist.",
+        )
 
     await acquisition.delete()
-    return {"message": "Acquisition deleted successfully"}
+    return None
 
 
-@acquisition_api.post("/acquisitions/{acquisition_id}/tiles", response_model=Tile)
-async def add_tile_to_acquisition(acquisition_id: str, tile: TileCreate):
+@acquisition_api.post(
+    "/acquisitions/{acquisition_id}/tiles",
+    response_model=Tile,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_tile_to_acquisition(acquisition_id: str, tile_data: TileCreate):
+    """Add a single tile to an acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
+    if not acquisition:
+        raise HTTPException(
+            status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found"
+        )
+
+    if await Tile.find_one(Tile.tile_id == tile_data.tile_id):
+        raise HTTPException(400, f"Tile ID '{tile_data.tile_id}' already exists.")
 
     new_tile = Tile(
-        tile_id=tile.tile_id,
-        acquisition_id=acquisition_id,
-        raster_index=tile.raster_index,
-        stage_position=tile.stage_position,
-        raster_position=tile.raster_position,
-        focus_score=tile.focus_score,
-        min_value=tile.min_value,
-        max_value=tile.max_value,
-        mean_value=tile.mean_value,
-        std_value=tile.std_value,
-        image_path=tile.image_path,
-        matcher=tile.matcher,
-        supertile_id=tile.supertile_id,
-        supertile_raster_position=tile.supertile_raster_position,
+        **tile_data.model_dump(),
+        acquisition_id=acquisition.acquisition_id,
+        acquisition_ref=acquisition.id,
+        roi_id=acquisition.roi_id,
+        specimen_id=acquisition.specimen_id,
     )
     await new_tile.insert()
-
     return new_tile
 
+
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/bulk", response_model=dict)
+async def add_tiles_to_acquisition(
+    acquisition_id: str,
+    tiles: List[TileCreate],
+    background_tasks: BackgroundTasks,
+    config: BaseConfig = Depends(get_config),
+):
+    """Add multiple tiles to an acquisition, using background tasks for large batches."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
+    if not acquisition:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+
+    async def process_tile_batch(tile_batch: List[TileCreate], acq_doc: Acquisition):
+        logger.info(
+            f"Processing batch of {len(tile_batch)} tiles for acquisition {acq_doc.acquisition_id}"
+        )
+        new_tiles_to_insert = []
+        for tile_item in tile_batch:
+            if await Tile.find_one({"tile_id": tile_item.tile_id}).exists():
+                continue 
+
+            new_tiles_to_insert.append(
+                Tile(
+                    **tile_item.model_dump(),
+                    acquisition_id=acq_doc.acquisition_id,
+                    acquisition_ref=acq_doc.id,
+                    roi_id=acq_doc.roi_id,
+                    specimen_id=acq_doc.specimen_id,
+                )
+            )
+        try:
+            if new_tiles_to_insert:
+                await Tile.insert_many(new_tiles_to_insert)
+                logger.info(
+                    f"Inserted batch of {len(new_tiles_to_insert)} tiles for acquisition {acq_doc.acquisition_id}"
+                )
+        except Exception as e_batch:
+            logger.error(
+                f"Error inserting tile batch for acquisition {acq_doc.acquisition_id}: {e_batch}",
+                exc_info=True,
+            )
+
+    total_tiles = len(tiles)
+    num_batches = math.ceil(total_tiles / config.max_batch_size)
+    logger.info(
+        f"Received {total_tiles} tiles for acquisition {acquisition_id}, processing in {num_batches} batches."
+    )
+
+    for i in range(num_batches):
+        start_idx = i * config.max_batch_size
+        end_idx = start_idx + config.max_batch_size
+        batch = tiles[start_idx:end_idx]
+        background_tasks.add_task(process_tile_batch, batch, acquisition)
+
+    return {
+        "message": f"Processing {total_tiles} tiles in {num_batches} background batches for acquisition {acquisition_id}.",
+        "acquisition_id": acquisition_id,
+        "total_tiles": total_tiles,
+        "num_batches": num_batches,
+    }
+
+@acquisition_api.get(
+    "/acquisitions/{acquisition_id}/tiles", response_model=Dict[str, Any]
+)
+async def get_tiles_from_acquisition(
+    response: Response,
+    acquisition_id: str,
+    cursor: Optional[int] = Query(None, description="Last raster_index seen"),
+    limit: int = Query(100, ge=1, le=1000),
+    fields: Optional[List[str]] = Query(None),
+):
+    """Retrieve tiles associated with a specific acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
+    if not acquisition:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+
+    query = {"acquisition_ref.id": acquisition.id}
+    if cursor is not None:
+        query["raster_index"] = {"$gt": cursor}
+
+    projection = None
+    if fields:
+        projection = {field: 1 for field in fields}
+        if "raster_index" not in fields:
+            projection["raster_index"] = 1
+        projection["_id"] = 0
+
+    find_query = Tile.find(query, fetch_links=False)
+
+    if projection:
+        find_query = find_query.project(projection_model=None, projection=projection)
+
+    find_query = find_query.sort([("raster_index", ASCENDING)])
+
+    tiles_list = await find_query.limit(limit).to_list()
+    next_cursor = tiles_list[-1]["raster_index"] if tiles_list else None
+    
+    has_more = await Tile.find(query).sort(
+        ("raster_index", ASCENDING) 
+    ).skip(limit).limit(1).to_list()
+
+    has_more = len(has_more) > 0 
+
+    response.headers["Cache-Control"] = "private, max-age=300"
+
+    return {
+        "tiles": tiles_list,
+        "metadata": {
+            "returned_count": len(tiles_list),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+        },
+    }
 
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=Tile
 )
 async def get_tile_from_acquisition(acquisition_id: str, tile_id: str):
-    try:
-        tile_data = await Tile.find(Tile.tile_id == tile_id, Tile.acquisition_id == acquisition_id).first_or_none()
-    except Exception as e:
-        raise HTTPException(status_code=404, detail="Tile not found")
-    return tile_data
-
-
-@acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=List[Dict])
-async def get_tiles_from_acquisition(
-    acquisition_id: str,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(1000, ge=1, le=1000),
-):
-    tiles = (
-        await Tile.find(Tile.acquisition_id == acquisition_id)
-        .skip(skip)
-        .limit(limit)
-        .to_list()
+    """Retrieve a specific tile by its human-readable ID, verifying acquisition parent."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
     )
-    return tiles
+    if not acquisition:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+
+    tile = await Tile.find_one(
+        {"tile_id": tile_id, "acquisition_id": acquisition.acquisition_id}, fetch_links=True
+    )
+
+    if not tile:
+        raise HTTPException(
+            404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'"
+        )
+    return tile
 
 
-@acquisition_api.post(
+acquisition_api.post(
     "/acquisitions/{acquisition_id}/storage-locations", response_model=Acquisition
 )
+
+
 async def add_storage_location(
     acquisition_id: str, storage_location: StorageLocationCreate
 ):
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
+    """Add a storage location entry to an acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
     if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
 
-    new_location = StorageLocation(**storage_location.model_dump())
+    new_location_data = storage_location.model_dump()
+    make_current = new_location_data.pop("is_current", True)
+
+    new_location = StorageLocation(
+        **new_location_data,
+        is_current=make_current,
+        date_added=datetime.now(timezone.utc),
+    )
+
+    if make_current:
+        for loc in acquisition.storage_locations:
+            loc.is_current = False
+
     acquisition.storage_locations.append(new_location)
     await acquisition.save()
-    return acquisition
+    updated_acq = await Acquisition.get(acquisition.id, fetch_links=True)
+    return updated_acq
 
 
 @acquisition_api.get(
@@ -177,10 +504,12 @@ async def add_storage_location(
     response_model=Optional[StorageLocation],
 )
 async def get_current_storage_location(acquisition_id: str):
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
+    """Get the current storage location for an acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
     if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
-
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     return acquisition.get_current_storage_location()
 
 
@@ -189,10 +518,12 @@ async def get_current_storage_location(acquisition_id: str):
     response_model=Dict[str, Optional[str]],
 )
 async def get_minimap_uri(acquisition_id: str):
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
+    """Get the calculated URI for the acquisition's minimap image."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
     if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
-
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     return {"minimap_uri": acquisition.get_minimap_uri()}
 
 
@@ -200,46 +531,36 @@ async def get_minimap_uri(acquisition_id: str):
     "/acquisitions/{acquisition_id}/tile-count", response_model=Dict[str, int]
 )
 async def get_tile_count(acquisition_id: str):
-    tile_count = await Tile.find(Tile.acquisition_id == acquisition_id).count()
+    """Get the total count of tiles associated with an acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
+    if not acquisition:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_count = await Tile.find({"acquisition_id": acquisition_id}).count()
     return {"tile_count": tile_count}
 
 
-@acquisition_api.get(
-    "/acquisitions/{acquisition_id}/tiles/{tile_id}/storage-path",
-    response_model=Dict[str, Optional[str]],
+@acquisition_api.delete(
+    "/acquisitions/{acquisition_id}/tiles/{tile_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
-async def get_tile_storage_path(acquisition_id: str, tile_id: int):
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
+async def delete_tile_from_acquisition(acquisition_id: str, tile_id: str):
+    """Delete a specific tile, ensuring it belongs to the specified acquisition."""
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id
+    )
     if not acquisition:
-        raise HTTPException(status_code=404, detail="Acquisition not found")
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
 
-    if tile_id not in acquisition.tile_ids:
+    tile = await Tile.find_one(
+        {"tile_id": tile_id, "acquisition_id": acquisition_id}
+    )
+
+    if not tile:
         raise HTTPException(
-            status_code=404, detail="Tile not found in this acquisition"
+            404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'"
         )
 
-    tile = await Tile.get(tile_id)
-    if not tile:
-        raise HTTPException(status_code=404, detail="Tile not found")
-
-    current_location = acquisition.get_current_storage_location()
-    storage_path = None
-    if current_location and tile:
-        storage_path = f"{current_location.base_path}/{tile.image_path}"
-
-    return {"storage_path": storage_path}
-
-
-@acquisition_api.delete(
-    "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=dict
-)
-async def delete_tile_from_acquisition(acquisition_id: str, tile_id: int):
-    tile = Tile.find(Tile.acquisition_id == acquisition_id, Tile.tile_id == tile_id)
-    if not tile:
-        raise HTTPException(status_code=404, detail="Tile not found")
-
     await tile.delete()
-
-    return {
-        "message": f"Tile {tile_id} from acquisition {acquisition_id} deleted successfully"
-    }
+    return None

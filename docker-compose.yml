@@ -34,6 +34,20 @@ services:
       - TEMDB_ENV=dev
     depends_on:
       - mongo
+
+  docs:
+      build:
+        context: .
+        dockerfile: Dockerfile.docs
+      ports:
+        - "8001:8000"
+      volumes:
+        - ./docs:/docs_app/docs
+        - ./mkdocs.yml:/docs_app/mkdocs.yml
+        # - ./generate_schema_diagram.py:/docs_app/generate_schema_diagram.py
+        # - ./temdb:/docs_app/temdb
+      restart: unless-stopped
+
   
 volumes:
   testdb_data:

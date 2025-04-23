@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /docs_app
+
+COPY requirements.txt .
+
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY mkdocs.yml .
+COPY docs/ ./docs/
+
+COPY temdb/ ./temdb/
+
+EXPOSE 8000
+
+ENV NAME DocsSite
+
+CMD ["mkdocs", "serve", "--dev-addr", "0.0.0.0:8000", "--dirtyreload"]
+
