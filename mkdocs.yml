@@ -1,0 +1,68 @@
+site_name: TEMdb Documentation
+# site_url: https://example.com/ # Optional: Replace with your site's URL if deployed
+site_description: Documentation for the TEMdb Microscopy Pipeline Database.
+repo_url: https://github.com/AllenInstitute/TEMdb
+
+
+# Theme configuration (using mkdocs-material)
+theme:
+  name: material
+  palette:
+    # Palette toggle for light/dark mode
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+
+# Extensions
+markdown_extensions:
+  - pymdownx.highlight: # Code highlighting
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.details # Collapsible sections
+  - footnotes
+  - admonition # Nice looking warning/info boxes
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+    
+
+# Plugins
+plugins:
+  - search # Built-in search plugin
+  - mermaid2: # Enable the mermaid plugin
+      arguments: # Arguments passed to mermaid.initialize
+        theme: 'dark' # Use 'dark', 'forest', 'neutral', or 'default'
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Schema:
+        - Preparation Workflow: schema_Preparation_erd.md
+        - Imaging Workflow: schema_Imaging_erd.md
+  - Models: # Create a section for individual models
+      - Specimen: models/Specimen.md
+      - Block: models/Block.md
+      - CuttingSession: models/CuttingSession.md
+      - Section: models/Section.md
+      - ROI: models/ROI.md
+      - AcquisitionTask: models/AcquisitionTask.md
+      - Acquisition: models/Acquisition.md
+      - Tile: models/Tile.md
