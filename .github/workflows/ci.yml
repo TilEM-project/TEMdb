@@ -2,19 +2,17 @@ name: TEMdb CI
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     services:
       mongo:
-        image: mongo:latest 
+        image: mongo:latest
         ports:
           - 27017:27017
-        options: >- 
+        options: >-
           --health-cmd "mongosh --eval 'db.runCommand({ping: 1})' || exit 1"
           --health-interval 10s
           --health-timeout 5s
@@ -52,3 +50,25 @@ jobs:
           MONGODB_URI: mongodb://localhost:27017/
           MONGODB_NAME: temdb
           TEMDB_ENV: dev
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Docker login
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Generate image name
+        run: echo "IMAGE_NAME=$(echo ${GITHUB_REPOSITORY@L} | cut -d "/" -f 2)" >> ${GITHUB_ENV}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ startsWith(github.ref, 'refs/tags') }}
+          tags: |
+            ${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
