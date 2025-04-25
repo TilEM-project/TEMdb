@@ -1,13 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 from temdb.api.v1.grids import grid_api
 from temdb.api.v2.acquisition import acquisition_api
-from temdb.api.v2.analysis import analysis_api
+from temdb.api.v2.quality_control import qc_api
 from temdb.api.v2.block import block_api
 from temdb.api.v2.cutting_session import cutting_session_api
 from temdb.api.v2.substrate import substrate_api
@@ -17,6 +15,7 @@ from temdb.api.v2.section import section_api
 from temdb.api.v2.specimen import specimen_api
 from temdb.config import config
 from temdb.database import DatabaseManager
+from temdb.exception_handlers import register_exception_handlers
 
 __version__ = "0.1.0"
 
@@ -44,6 +43,8 @@ def create_app():
     logging.info(f"Database name: {app.config.mongodb_name}")
     app.state.mongodb_uri = app.config.mongodb_uri
     app.state.mongodb_name = app.config.mongodb_name
+   
+    register_exception_handlers(app)
 
     v1_prefix = "/api/v1"
     app.include_router(grid_api, prefix=v1_prefix)
@@ -58,7 +59,7 @@ def create_app():
     app.include_router(roi_api, prefix=v2_prefix)
     app.include_router(acquisition_task_api, prefix=v2_prefix)
     app.include_router(acquisition_api, prefix=v2_prefix)
-    app.include_router(analysis_api, prefix=v2_prefix)
+    app.include_router(qc_api, prefix=v2_prefix)
 
     @app.get("/")
     async def root():
@@ -68,19 +69,6 @@ def create_app():
     def health():
         return {"status": "ok"}
 
-    register_exception(app)
     return app
 
 
-def register_exception(app: FastAPI):
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
-    ):
-
-        exc_str = f"{exc}".replace("\n", " ").replace("   ", " ")
-        logger.error(f"RequestValidationError for {request.url}: {exc_str}")
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": exc.errors(), "body": exc.body},
-        )
