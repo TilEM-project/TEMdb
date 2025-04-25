@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
-
+import logging
 from fastapi import APIRouter, Body, HTTPException, Query, status
 
+from pymongo.errors import BulkWriteError
+from temdb.models.error import APIErrorResponse
+from temdb.models.v2.roi import ROIResponse
 from temdb.models.v2.roi import ROI, ROICreate, ROIUpdate
 from temdb.models.v2.section import Section
 from temdb.models.v2.acquisition import Acquisition
@@ -11,6 +14,8 @@ from temdb.models.v2.task import AcquisitionTask
 roi_api = APIRouter(
     tags=["ROIs"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 @roi_api.get("/rois", response_model=List[ROI])
@@ -29,7 +34,7 @@ async def list_rois(
     ),
     is_parent_roi: Optional[bool] = Query(
         None, description="Filter ROIs that are parents (have children)"
-    ), 
+    ),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
@@ -59,26 +64,28 @@ async def create_roi(roi_data: ROICreate):
 
     section = await Section.find_one(Section.section_id == roi_data.section_id)
     if not section:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"Section with ID '{roi_data.section_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Section with ID '{roi_data.section_id}' not found",
+        )
 
-    existing_roi = await ROI.find_one({
-        "roi_id": roi_data.roi_id,
-        "section_ref.id": section.id
-    })
+    existing_roi = await ROI.find_one(
+        {"roi_id": roi_data.roi_id, "section_ref.id": section.id}
+    )
     if existing_roi:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ROI with ID '{roi_data.roi_id}' already exists in Section '{roi_data.section_id}'"
+            detail=f"ROI with ID '{roi_data.roi_id}' already exists in Section '{roi_data.section_id}'",
         )
-
 
     parent_roi_ref_id = None
     if roi_data.parent_roi_id is not None:
         parent_roi = await ROI.find_one(ROI.roi_id == roi_data.parent_roi_id)
         if not parent_roi:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"Parent ROI with ID '{roi_data.parent_roi_id}' not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Parent ROI with ID '{roi_data.parent_roi_id}' not found",
+            )
         parent_roi_ref_id = parent_roi.id
 
     roi_payload = roi_data.model_dump(exclude={"section_id", "parent_roi_id"})
@@ -89,12 +96,95 @@ async def create_roi(roi_data: ROICreate):
         parent_roi_ref=parent_roi_ref_id,
         section_id=section.section_id,
         cutting_session_id=section.cutting_session_id,
-        updated_at=datetime.now(timezone.utc)
+        updated_at=datetime.now(timezone.utc),
     )
 
     await new_roi.insert()
     created_roi = await ROI.get(new_roi.id, fetch_links=True)
     return created_roi
+
+
+@roi_api.post(
+    "/rois/batch",
+    response_model=List[ROIResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create multiple ROIs in bulk",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "model": APIErrorResponse,
+            "description": "Invalid input data",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": APIErrorResponse,
+            "description": "Parent section not found",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": APIErrorResponse,
+            "description": "Duplicate ROI ID",
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": APIErrorResponse,
+            "description": "Internal server error",
+        },
+    },
+)
+async def create_rois_batch(rois_data: List[ROICreate]):
+    """
+    Creates multiple ROI documents from a list.
+
+    - Validates parent Section existence.
+    - Derives parent IDs (session, block, specimen) from the Section.
+    - Performs bulk insert into the database.
+    - Returns the list of created ROI documents.
+    """
+    if not rois_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ROI data list cannot be empty.",
+        )
+
+    rois_to_insert = []
+    parent_section_cache = {}
+
+    for i, roi_create in enumerate(rois_data):
+        section_id = roi_create.section_id
+        if section_id not in parent_section_cache:
+            section = await Section.find_one(Section.section_id == section_id)
+            if not section:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Section '{section_id}' not found for ROI item {i}.",
+                )
+            parent_section_cache[section_id] = section
+        section = parent_section_cache[section_id]
+
+        roi_doc_data = roi_create.model_dump()
+        roi_doc_data.update(
+            {
+                "section_ref": section.id,
+                "cutting_session_id": section.cutting_session_id,
+                "block_id": section.block_id,
+                "specimen_id": section.specimen_id,
+            }
+        )
+        roi_doc = ROI(**roi_doc_data)
+        rois_to_insert.append(roi_doc)
+
+    try:
+        await ROI.insert_many(rois_to_insert)
+        return rois_to_insert
+    except BulkWriteError as e:
+        logger.error(f"BulkWriteError during ROI batch insert: {e.details}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Bulk insert failed. Check for duplicate ROI IDs within the batch or against existing data. Details: {e.details.get('writeErrors')}",
+        )
+    except Exception as e:
+        logger.exception("Unexpected error during ROI batch insert.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An internal error occurred during bulk ROI creation: {e}",
+        )
 
 
 # get_roi remains the same (looks up by globally unique internal ID or non-unique roi_id int)
@@ -104,15 +194,16 @@ async def create_roi(roi_data: ROICreate):
 @roi_api.get("/rois/{roi_id}", response_model=ROI)
 async def get_roi(roi_id: int):
     """Retrieve a specific ROI by its human-readable integer ID.
-       WARNING: If roi_id is not globally unique, this may return an arbitrary ROI with this ID.
-       Consider using a compound path like /sections/{section_id}/rois/{roi_id} for uniqueness.
+    WARNING: If roi_id is not globally unique, this may return an arbitrary ROI with this ID.
+    Consider using a compound path like /sections/{section_id}/rois/{roi_id} for uniqueness.
     """
     roi = await ROI.find_one(ROI.roi_id == roi_id, fetch_links=True)
     if not roi:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"ROI with ID '{roi_id}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ROI with ID '{roi_id}' not found",
+        )
     return roi
-
 
 
 @roi_api.patch("/rois/{roi_id}", response_model=ROI)
@@ -162,14 +253,21 @@ async def delete_roi(roi_id: int):
             detail=f"Cannot delete ROI '{roi_id}' as it has {child_rois_count} child ROIs",
         )
 
-    task_count = await AcquisitionTask.find(AcquisitionTask.roi_ref.id == roi.id).count()
+    task_count = await AcquisitionTask.find(
+        AcquisitionTask.roi_ref.id == roi.id
+    ).count()
     if task_count > 0:
-        raise HTTPException(status_code=400, detail=f"Cannot delete ROI '{roi_id}' as it has {task_count} associated Acquisition Tasks.")
-
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete ROI '{roi_id}' as it has {task_count} associated Acquisition Tasks.",
+        )
 
     acq_count = await Acquisition.find(Acquisition.roi_ref.id == roi.id).count()
     if acq_count > 0:
-        raise HTTPException(status_code=400, detail=f"Cannot delete ROI '{roi_id}' as it has {acq_count} associated Acquisitions.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete ROI '{roi_id}' as it has {acq_count} associated Acquisitions.",
+        )
 
     await roi.delete()
     return None

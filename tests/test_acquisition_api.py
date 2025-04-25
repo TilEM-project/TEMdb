@@ -5,9 +5,11 @@ import math
 
 
 from temdb.models.v2.enum_schemas import AcquisitionStatus
-from temdb.config import config 
+from temdb.config import config
+
 TEST_MAX_BATCH_SIZE = 10
 config.max_batch_size = TEST_MAX_BATCH_SIZE
+
 
 @pytest.mark.asyncio
 async def test_list_acquisitions(async_client: AsyncClient):
@@ -17,50 +19,91 @@ async def test_list_acquisitions(async_client: AsyncClient):
     assert "acquisitions" in response.json()
     assert "metadata" in response.json()
 
+
 @pytest.mark.asyncio
-async def test_list_acquisitions_filtered(async_client: AsyncClient, test_specimen, test_roi, test_acquisition_task, test_acquisition):
+async def test_list_acquisitions_filtered(
+    async_client: AsyncClient,
+    test_specimen,
+    test_roi,
+    test_acquisition_task,
+    test_acquisition,
+):
     """Test filtering acquisitions."""
     # Filter by specimen_id
-    resp_spec = await async_client.get(f"/api/v2/acquisitions?specimen_id={test_specimen.specimen_id}")
+    resp_spec = await async_client.get(
+        f"/api/v2/acquisitions?specimen_id={test_specimen.specimen_id}"
+    )
     assert resp_spec.status_code == 200
-    assert all(a["specimen_id"] == test_specimen.specimen_id for a in resp_spec.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_spec.json()["acquisitions"])
+    assert all(
+        a["specimen_id"] == test_specimen.specimen_id
+        for a in resp_spec.json()["acquisitions"]
+    )
+    assert any(
+        a["acquisition_id"] == test_acquisition.acquisition_id
+        for a in resp_spec.json()["acquisitions"]
+    )
 
     # Filter by roi_id
     resp_roi = await async_client.get(f"/api/v2/acquisitions?roi_id={test_roi.roi_id}")
     assert resp_roi.status_code == 200
     assert all(a["roi_id"] == test_roi.roi_id for a in resp_roi.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_roi.json()["acquisitions"])
+    assert any(
+        a["acquisition_id"] == test_acquisition.acquisition_id
+        for a in resp_roi.json()["acquisitions"]
+    )
 
     # Filter by acquisition_task_id
-    resp_task = await async_client.get(f"/api/v2/acquisitions?acquisition_task_id={test_acquisition_task.task_id}")
+    resp_task = await async_client.get(
+        f"/api/v2/acquisitions?acquisition_task_id={test_acquisition_task.task_id}"
+    )
     assert resp_task.status_code == 200
-    assert all(a["acquisition_task_id"] == test_acquisition_task.task_id for a in resp_task.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_task.json()["acquisitions"])
+    assert all(
+        a["acquisition_task_id"] == test_acquisition_task.task_id
+        for a in resp_task.json()["acquisitions"]
+    )
+    assert any(
+        a["acquisition_id"] == test_acquisition.acquisition_id
+        for a in resp_task.json()["acquisitions"]
+    )
 
     # Filter by status
-    resp_status = await async_client.get(f"/api/v2/acquisitions?status={AcquisitionStatus.IMAGING.value}")
+    resp_status = await async_client.get(
+        f"/api/v2/acquisitions?status={AcquisitionStatus.IMAGING.value}"
+    )
     assert resp_status.status_code == 200
     # Assumes test_acquisition fixture has IMAGING status
-    assert all(a["status"] == AcquisitionStatus.IMAGING.value for a in resp_status.json()["acquisitions"])
+    assert all(
+        a["status"] == AcquisitionStatus.IMAGING.value
+        for a in resp_status.json()["acquisitions"]
+    )
+
 
 @pytest.mark.asyncio
-async def test_create_acquisition(async_client: AsyncClient, test_specimen, test_roi, test_acquisition_task):
+async def test_create_acquisition(
+    async_client: AsyncClient, test_specimen, test_roi, test_acquisition_task
+):
     """Test creating a new acquisition successfully."""
     acq_id_hr = f"ACQ_CREATE_{int(datetime.now(timezone.utc).timestamp())}"
     montage_id_hr = f"MONTAGE_CREATE_{int(datetime.now(timezone.utc).timestamp())}"
     acquisition_data = {
         "acquisition_id": acq_id_hr,
         "montage_id": montage_id_hr,
-        "roi_id": test_roi.roi_id, 
+        "roi_id": test_roi.roi_id,
         "acquisition_task_id": test_acquisition_task.task_id,
         "hardware_settings": {
-            "scope_id": "TEST_SCOPE_CREATE", "camera_model": "Test Camera Create",
-            "camera_serial": "CR12345", "camera_bit_depth": 16, "media_type": "tape",
+            "scope_id": "TEST_SCOPE_CREATE",
+            "camera_model": "Test Camera Create",
+            "camera_serial": "CR12345",
+            "camera_bit_depth": 16,
+            "media_type": "tape",
         },
         "acquisition_settings": {
-            "magnification": 1500, "spot_size": 3, "exposure_time": 150,
-            "tile_size": [4000, 4000], "tile_overlap": 0.15, "saved_bit_depth": 8,
+            "magnification": 1500,
+            "spot_size": 3,
+            "exposure_time": 150,
+            "tile_size": [4000, 4000],
+            "tile_overlap": 0.15,
+            "saved_bit_depth": 8,
         },
         "tilt_angle": 5.0,
         "lens_correction": False,
@@ -80,25 +123,46 @@ async def test_create_acquisition(async_client: AsyncClient, test_specimen, test
 
     # await async_client.delete(f"/api/v2/acquisitions/{acq_id_hr}")
 
+
 @pytest.mark.asyncio
-async def test_create_acquisition_invalid_parent(async_client: AsyncClient, test_roi, test_acquisition_task):
+async def test_create_acquisition_invalid_parent(
+    async_client: AsyncClient, test_roi, test_acquisition_task
+):
     """Test creating an acquisition fails atomically if a parent task doesn't exist."""
     acq_id_hr = f"ACQ_CREATE_INVALID_{int(datetime.now(timezone.utc).timestamp())}"
     invalid_task_id = "NON_EXISTENT_TASK_FOR_ACQ"
     acquisition_data = {
-        "acquisition_id": acq_id_hr, "montage_id": "MONTAGE_INVALID",
+        "acquisition_id": acq_id_hr,
+        "montage_id": "MONTAGE_INVALID",
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": invalid_task_id,
-        "hardware_settings": {"scope_id": "s", "camera_model": "c", "camera_serial": "1", "camera_bit_depth": 8, "media_type": "tape"},
-        "acquisition_settings": {"magnification": 1, "spot_size": 1, "exposure_time": 1, "tile_size": [1, 1], "tile_overlap": 0, "saved_bit_depth": 8},
-        "tilt_angle": 0, "lens_correction": False,
+        "hardware_settings": {
+            "scope_id": "s",
+            "camera_model": "c",
+            "camera_serial": "1",
+            "camera_bit_depth": 8,
+            "media_type": "tape",
+        },
+        "acquisition_settings": {
+            "magnification": 1,
+            "spot_size": 1,
+            "exposure_time": 1,
+            "tile_size": [1, 1],
+            "tile_overlap": 0,
+            "saved_bit_depth": 8,
+        },
+        "tilt_angle": 0,
+        "lens_correction": False,
     }
     response = await async_client.post("/api/v2/acquisitions", json=acquisition_data)
     assert response.status_code == 404
-    assert f"Acquisition Task '{invalid_task_id}' not found" in response.json()["detail"]
+    assert (
+        f"Acquisition Task '{invalid_task_id}' not found" in response.json()["detail"]
+    )
 
     get_response = await async_client.get(f"/api/v2/acquisitions/{acq_id_hr}")
     assert get_response.status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_get_acquisition(async_client: AsyncClient, test_acquisition):
@@ -114,11 +178,13 @@ async def test_get_acquisition(async_client: AsyncClient, test_acquisition):
     assert response_data["roi_id"] == test_acquisition.roi_id
     assert response_data["acquisition_task_id"] == test_acquisition.acquisition_task_id
 
+
 @pytest.mark.asyncio
 async def test_get_acquisition_not_found(async_client: AsyncClient):
     """Test retrieving a non-existent acquisition."""
     response = await async_client.get("/api/v2/acquisitions/NON_EXISTENT_ACQ")
     assert response.status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_update_acquisition(async_client: AsyncClient, test_acquisition):
@@ -131,18 +197,39 @@ async def test_update_acquisition(async_client: AsyncClient, test_acquisition):
     response_data = response.json()
     assert response_data["status"] == AcquisitionStatus.ACQUIRED.value
     assert response_data["acquisition_id"] == test_acquisition.acquisition_id
-    assert "end_time" not in update_data # Ensure other fields weren't changed unless specified
+    assert (
+        "end_time" not in update_data
+    )  # Ensure other fields weren't changed unless specified
+
 
 @pytest.mark.asyncio
-async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acquisition_task):
+async def test_delete_acquisition(
+    async_client: AsyncClient, test_roi, test_acquisition_task
+):
     """Test deleting an acquisition successfully (when it has no Tiles)."""
     acq_id_hr = f"ACQ_DELETE_{int(datetime.now(timezone.utc).timestamp())}"
     acq_data = {
-        "acquisition_id": acq_id_hr, "montage_id": "MONTAGE_DELETE",
-        "roi_id": test_roi.roi_id, "acquisition_task_id": test_acquisition_task.task_id,
-        "hardware_settings": {"scope_id": "s", "camera_model": "c", "camera_serial": "1", "camera_bit_depth": 8, "media_type": "tape"},
-        "acquisition_settings": {"magnification": 1, "spot_size": 1, "exposure_time": 1, "tile_size": [1, 1], "tile_overlap": 0, "saved_bit_depth": 8},
-        "tilt_angle": 0, "lens_correction": False,
+        "acquisition_id": acq_id_hr,
+        "montage_id": "MONTAGE_DELETE",
+        "roi_id": test_roi.roi_id,
+        "acquisition_task_id": test_acquisition_task.task_id,
+        "hardware_settings": {
+            "scope_id": "s",
+            "camera_model": "c",
+            "camera_serial": "1",
+            "camera_bit_depth": 8,
+            "media_type": "tape",
+        },
+        "acquisition_settings": {
+            "magnification": 1,
+            "spot_size": 1,
+            "exposure_time": 1,
+            "tile_size": [1, 1],
+            "tile_overlap": 0,
+            "saved_bit_depth": 8,
+        },
+        "tilt_angle": 0,
+        "lens_correction": False,
     }
     create_response = await async_client.post("/api/v2/acquisitions", json=acq_data)
     assert create_response.status_code == 201
@@ -154,6 +241,7 @@ async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acqu
     # Verify it's gone
     get_response = await async_client.get(f"/api/v2/acquisitions/{acq_id_hr}")
     assert get_response.status_code == 404
+
 
 # @pytest.mark.asyncio
 # async def test_delete_acquisition_with_tiles(async_client: AsyncClient, test_acquisition, test_tile):
@@ -173,8 +261,11 @@ async def test_add_tile_to_acquisition(async_client: AsyncClient, test_acquisiti
         "raster_index": 10,
         "stage_position": {"x": 150.5, "y": 250.5},
         "raster_position": {"row": 1, "col": 0},
-        "focus_score": 0.92, "min_value": 5, "max_value": 250,
-        "mean_value": 120, "std_value": 30,
+        "focus_score": 0.92,
+        "min_value": 5,
+        "max_value": 250,
+        "mean_value": 120,
+        "std_value": 30,
         "image_path": f"/path/to/test/{tile_id_hr}.tif",
     }
     response = await async_client.post(
@@ -189,8 +280,11 @@ async def test_add_tile_to_acquisition(async_client: AsyncClient, test_acquisiti
 
     # await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id_hr}")
 
+
 @pytest.mark.asyncio
-async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acquisition):
+async def test_add_tiles_to_acquisition_bulk(
+    async_client: AsyncClient, test_acquisition
+):
     """Test adding multiple tiles in bulk."""
     num_tiles = TEST_MAX_BATCH_SIZE + 5
     tiles_data = []
@@ -198,17 +292,24 @@ async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acq
     for i in range(num_tiles):
         tile_id_hr = f"TILE_BULK_{i}_{int(datetime.now(timezone.utc).timestamp())}"
         expected_tile_ids.append(tile_id_hr)
-        tiles_data.append({
-            "tile_id": tile_id_hr, "raster_index": i,
-            "stage_position": {"x": float(i), "y": float(i+1)},
-            "raster_position": {"row": i // 10, "col": i % 10},
-            "focus_score": 0.8, "min_value": 10, "max_value": 240,
-            "mean_value": 100, "std_value": 20,
-            "image_path": f"/path/to/bulk/{tile_id_hr}.tif",
-        })
+        tiles_data.append(
+            {
+                "tile_id": tile_id_hr,
+                "raster_index": i,
+                "stage_position": {"x": float(i), "y": float(i + 1)},
+                "raster_position": {"row": i // 10, "col": i % 10},
+                "focus_score": 0.8,
+                "min_value": 10,
+                "max_value": 240,
+                "mean_value": 100,
+                "std_value": 20,
+                "image_path": f"/path/to/bulk/{tile_id_hr}.tif",
+            }
+        )
 
     response = await async_client.post(
-        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk", json=tiles_data
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json=tiles_data,
     )
     assert response.status_code == 200
     response_data = response.json()
@@ -218,7 +319,9 @@ async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acq
 
 
 @pytest.mark.asyncio
-async def test_get_tiles_from_acquisition(async_client: AsyncClient, test_acquisition, test_tile):
+async def test_get_tiles_from_acquisition(
+    async_client: AsyncClient, test_acquisition, test_tile
+):
     """Test retrieving tiles from an acquisition with pagination."""
     acq_id = test_acquisition.acquisition_id
 
@@ -228,24 +331,29 @@ async def test_get_tiles_from_acquisition(async_client: AsyncClient, test_acquis
     assert "tiles" in data1
     assert "metadata" in data1
     assert isinstance(data1["tiles"], list)
-    assert len(data1["tiles"]) <= 1 
+    assert len(data1["tiles"]) <= 1
     assert data1["metadata"]["limit"] == 1
     next_cursor = data1["metadata"]["next_cursor"]
 
     if len(data1["tiles"]) == 1:
         assert data1["tiles"][0]["tile_id"] == test_tile.tile_id
         assert data1["tiles"][0]["acquisition_id"] == acq_id
-        
+
         assert next_cursor == test_tile.raster_index
 
     if next_cursor is not None:
-        response2 = await async_client.get(f"/api/v2/acquisitions/{acq_id}/tiles?limit=1&cursor={next_cursor}")
+        response2 = await async_client.get(
+            f"/api/v2/acquisitions/{acq_id}/tiles?limit=1&cursor={next_cursor}"
+        )
         assert response2.status_code == 200
         data2 = response2.json()
         assert len(data2["tiles"]) <= 1
 
+
 @pytest.mark.asyncio
-async def test_get_tile_from_acquisition(async_client: AsyncClient, test_acquisition, test_tile):
+async def test_get_tile_from_acquisition(
+    async_client: AsyncClient, test_acquisition, test_tile
+):
     """Test retrieving a specific tile from an acquisition."""
     response = await async_client.get(
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{test_tile.tile_id}"
@@ -256,30 +364,49 @@ async def test_get_tile_from_acquisition(async_client: AsyncClient, test_acquisi
     assert response_data["acquisition_id"] == test_acquisition.acquisition_id
     assert response_data["raster_index"] == test_tile.raster_index
 
+
 @pytest.mark.asyncio
-async def test_get_tile_from_acquisition_not_found(async_client: AsyncClient, test_acquisition):
+async def test_get_tile_from_acquisition_not_found(
+    async_client: AsyncClient, test_acquisition
+):
     """Test retrieving a non-existent tile from an acquisition."""
     response = await async_client.get(
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/NON_EXISTENT_TILE"
     )
     assert response.status_code == 404
 
+
 @pytest.mark.asyncio
 async def test_get_tile_count(async_client: AsyncClient, test_acquisition, test_tile):
-     """Test getting the tile count for an acquisition."""
-     response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tile-count")
-     assert response.status_code == 200
-     assert response.json()["tile_count"] >= 1
+    """Test getting the tile count for an acquisition."""
+    response = await async_client.get(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tile-count"
+    )
+    assert response.status_code == 200
+    assert response.json()["tile_count"] >= 1
 
 
 @pytest.mark.asyncio
-async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acquisition):
+async def test_delete_tile_from_acquisition(
+    async_client: AsyncClient, test_acquisition
+):
     """Test deleting a specific tile from an acquisition."""
     tile_id_hr = f"TILE_DELETE_{int(datetime.now(timezone.utc).timestamp())}"
-    tile_data = { "tile_id": tile_id_hr, "raster_index": 50, "stage_position": {"x":0,"y":0},
-                  "raster_position": {"row":0,"col":0}, "focus_score": 0, "min_value": 0,
-                  "max_value": 0, "mean_value": 0, "std_value": 0, "image_path": "del.tif" }
-    add_resp = await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data)
+    tile_data = {
+        "tile_id": tile_id_hr,
+        "raster_index": 50,
+        "stage_position": {"x": 0, "y": 0},
+        "raster_position": {"row": 0, "col": 0},
+        "focus_score": 0,
+        "min_value": 0,
+        "max_value": 0,
+        "mean_value": 0,
+        "std_value": 0,
+        "image_path": "del.tif",
+    }
+    add_resp = await async_client.post(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data
+    )
     assert add_resp.status_code == 201
 
     delete_response = await async_client.delete(
@@ -340,4 +467,3 @@ async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acqu
 #     response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/minimap-uri")
 #     assert response.status_code == 200
 #     assert response.json() == {"minimap_uri": "/data/minimap_test/minimap.png"}
-

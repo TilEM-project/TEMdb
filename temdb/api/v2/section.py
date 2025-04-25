@@ -1,12 +1,15 @@
 from typing import List, Optional
+import logging
+from pymongo.errors import BulkWriteError
 from datetime import datetime, timezone
-from fastapi import APIRouter, Body, Query, HTTPException, Depends, status
+from fastapi import APIRouter, Body, Query, HTTPException, status
 from temdb.models.v2.section import (
     Section,
     SectionCreate,
     SectionUpdate,
     SectionMetrics,
 )
+from temdb.models.error import APIErrorResponse
 from temdb.models.v2.cutting_session import CuttingSession
 from temdb.models.v2.enum_schemas import SectionQuality
 from temdb.models.v2.substrate import Substrate
@@ -15,6 +18,8 @@ from temdb.models.v2.roi import ROI
 section_api = APIRouter(
     tags=["Sections"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 @section_api.get("/sections", response_model=List[Section])
@@ -42,9 +47,7 @@ async def list_sections(
     if block_id:
         query_filter["block_id"] = block_id
     if cutting_session_id:
-        query_filter["cutting_session_id"] = (
-            cutting_session_id
-        )
+        query_filter["cutting_session_id"] = cutting_session_id
     if media_id:
         query_filter["media_id"] = media_id
     if quality:
@@ -118,9 +121,7 @@ async def list_specimen_sections(
     """Retrieve sections associated with a specific specimen using its human-readable ID."""
     sections = (
         await Section.find({"specimen_id": specimen_id}, fetch_links=True)
-        .sort(
-            [("block_id", 1), ("cutting_session_id", 1), ("section_number", 1)]
-        )  # Sort hierarchically
+        .sort([("block_id", 1), ("cutting_session_id", 1), ("section_number", 1)])
         .skip(skip)
         .limit(limit)
         .to_list()
@@ -161,7 +162,7 @@ async def create_section(section_data: SectionCreate):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{section_data.cutting_session_id}' not found",
         )
-    
+
     new_section_id = f"{section_data.media_id}_S{section_data.section_number}"
 
     existing_section = await Section.find_one(
@@ -175,18 +176,21 @@ async def create_section(section_data: SectionCreate):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
         )
-    
+
     substrate = await Substrate.find_one(
         Substrate.media_id == section_data.media_id,
         fetch_links=True,
     )
-    
 
     new_section = Section(
         section_id=new_section_id,
         section_number=section_data.section_number,
         cutting_session_id=cut_session.cutting_session_id,
-        timestamp=section_data.timestamp if section_data.timestamp else datetime.now(timezone.utc),
+        timestamp=(
+            section_data.timestamp
+            if section_data.timestamp
+            else datetime.now(timezone.utc)
+        ),
         block_id=cut_session.block_id,
         specimen_id=cut_session.specimen_id,
         cutting_session_ref=cut_session.id,
@@ -199,6 +203,114 @@ async def create_section(section_data: SectionCreate):
     await new_section.insert()
     created_section = await Section.get(new_section.id, fetch_links=True)
     return created_section
+
+
+
+@section_api.post(
+    "/sections/batch",
+    response_model=List[Section],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create multiple Sections in bulk",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "model": APIErrorResponse,
+            "description": "Invalid input data",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": APIErrorResponse,
+            "description": "Parent resource not found",
+        },
+        status.HTTP_409_CONFLICT: {
+            "model": APIErrorResponse,
+            "description": "Duplicate section ID",
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": APIErrorResponse,
+            "description": "Internal server error",
+        },
+    },
+)
+async def create_sections_batch(sections_data: List[SectionCreate]):
+    """
+    Creates multiple Section documents from a list.
+
+    - Validates parent CuttingSession and Substrate existence.
+    - Generates unique section_id based on media_id and section_number.
+    - Performs bulk insert into the database.
+    - Returns the list of created Section documents.
+    """
+    if not sections_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Section data list cannot be empty.",
+        )
+
+    sections_to_insert = []
+    parent_cache = {}
+
+    for i, section_create in enumerate(sections_data):
+        session_id = section_create.cutting_session_id
+        media_id = section_create.media_id
+
+        if session_id not in parent_cache:
+            session = await CuttingSession.find_one(
+                CuttingSession.cutting_session_id == session_id
+            )
+            if not session:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"CuttingSession '{session_id}' not found for item {i}.",
+                )
+            parent_cache[session_id] = session
+        session = parent_cache[session_id]
+
+        if media_id not in parent_cache:
+            substrate = await Substrate.find_one(Substrate.media_id == media_id)
+            if not substrate:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Substrate '{media_id}' not found for item {i}.",
+                )
+            if substrate.media_type != session.media_type:
+                logger.warning(
+                    f"Mismatch media_type between session {session_id} ({session.media_type}) and substrate {media_id} ({substrate.media_type}) for item {i}"
+                )
+            parent_cache[media_id] = substrate
+        substrate = parent_cache[media_id]
+
+        section_id = f"{media_id}_S{section_create.section_number:05d}"
+
+        section_doc_data = section_create.model_dump()
+        section_doc_data.update(
+            {
+                "section_id": section_id,
+                "cutting_session_ref": session.id,
+                "substrate_ref": substrate.id,
+                "block_id": session.block_id,
+                "specimen_id": session.specimen_id,
+            }
+        )
+        section_doc = Section(**section_doc_data)
+        sections_to_insert.append(section_doc)
+
+    try:
+        await Section.insert_many(sections_to_insert)
+
+        return sections_to_insert
+    except BulkWriteError as e:
+
+        logger.error(f"BulkWriteError during section batch insert: {e.details}")
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Bulk insert failed. Check for duplicate section IDs within the batch or against existing data. Details: {e.details.get('writeErrors')}",
+        )
+    except Exception as e:
+        logger.exception("Unexpected error during section batch insert.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An internal error occurred during bulk section creation: {e}",
+        )
 
 
 @section_api.patch(
@@ -275,18 +387,18 @@ async def delete_section(cutting_session_id: str, section_id: str):
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
 
-    roi_count = await ROI.find(ROI.section_ref.id == section.id).count() # Placeholder
+    roi_count = await ROI.find(ROI.section_ref.id == section.id).count()
     if roi_count > 0:
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                             detail=f"Cannot delete section '{section_id}' as it has {roi_count} associated ROIs.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete section '{section_id}' as it has {roi_count} associated ROIs.",
+        )
 
     await section.delete()
     return None
 
 
-@section_api.get(
-    "/sections/media/{media_id}", response_model=List[Section]
-)
+@section_api.get("/sections/media/{media_id}", response_model=List[Section])
 async def list_sections_by_media(
     media_id: str,
     skip: int = Query(0, ge=0),

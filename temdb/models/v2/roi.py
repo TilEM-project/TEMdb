@@ -63,6 +63,11 @@ class ROIUpdate(ROIBase):
         default_factory=lambda: datetime.now(timezone.utc),
     )
 
+class ROIResponse(ROIBase):
+    roi_id: int = Field(..., description="ID of region of interest")
+    section_id: str = Field(..., description="ID of section")
+    specimen_id: str = Field(..., description="ID of specimen")
+    block_id: str = Field(..., description="ID of block")
 
 class ROI(Document):
     roi_id: int = Field(

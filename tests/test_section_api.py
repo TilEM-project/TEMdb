@@ -57,10 +57,7 @@ async def test_list_sections_filtered(
         f"/api/v2/sections?media_id={test_section.media_id}"
     )
     assert response_media.status_code == 200
-    assert all(
-        s["media_id"] == test_section.media_id
-        for s in response_media.json()
-    )
+    assert all(s["media_id"] == test_section.media_id for s in response_media.json())
     assert any(
         s["section_id"] == test_section.section_id for s in response_media.json()
     )
@@ -105,6 +102,176 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
     assert response_data["specimen_id"] == test_cutting_session.specimen_id
     assert response_data["section_number"] == 99
     assert response_data["barcode"] == "BC123456789"
+
+
+@pytest.mark.asyncio
+async def test_create_sections_batch(async_client: AsyncClient, test_cutting_session):
+    """Test creating multiple sections in a batch request."""
+    timestamp = int(datetime.now(timezone.utc).timestamp())
+    media_base = f"TEST_SUB_BATCH_{timestamp}"
+
+    substrates_data = []
+    for i in range(2):
+        substrate_id = f"{media_base}_{i}"
+        substrates_data.append(
+            {
+                "media_id": substrate_id,
+                "media_type": test_cutting_session.media_type,
+                "status": "new",
+                "uid": f"SUBSTRATE_{i}",
+                "metadata": {"name": f"Test Substrate Batch {i}"},
+                "apertures": [
+                    {"uid": f"A{j}", "index": j, "status": "available"}
+                    for j in range(3)
+                ],
+            }
+        )
+
+    for substrate_data in substrates_data:
+        substrate_response = await async_client.post(
+            "/api/v2/substrates", json=substrate_data
+        )
+        assert substrate_response.status_code == 201
+
+    sections_data = []
+    for i in range(5):
+        substrate_idx = i % 2
+        section_number = i + 1
+        sections_data.append(
+            {
+                "specimen_id": test_cutting_session.specimen_id,
+                "block_id": test_cutting_session.block_id,
+                "cutting_session_id": test_cutting_session.cutting_session_id,
+                "section_number": section_number,
+                "media_id": f"{media_base}_{substrate_idx}",
+                "optical_image": {"url": f"http://example.com/image_{i}.png"},
+                "barcode": f"BATCH{timestamp}_{i}",
+            }
+        )
+
+    response = await async_client.post("/api/v2/sections/batch", json=sections_data)
+
+    assert response.status_code == 201
+    created_sections = response.json()
+    assert len(created_sections) == 5
+
+    for i, section in enumerate(created_sections):
+        substrate_idx = i % 2
+        section_number = i + 1
+        expected_section_id = f"{media_base}_{substrate_idx}_S{section_number:05d}"
+
+        assert section["section_id"] == expected_section_id
+        assert section["cutting_session_id"] == test_cutting_session.cutting_session_id
+        assert section["specimen_id"] == test_cutting_session.specimen_id
+        assert section["block_id"] == test_cutting_session.block_id
+        assert section["section_number"] == section_number
+        assert section["media_id"] == f"{media_base}_{substrate_idx}"
+        assert section["barcode"] == f"BATCH{timestamp}_{i}"
+
+        get_path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{expected_section_id}"
+        get_response = await async_client.get(get_path)
+        assert get_response.status_code == 200
+
+    for i, section in enumerate(created_sections):
+        delete_path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{section['section_id']}"
+        await async_client.delete(delete_path)
+
+
+@pytest.mark.asyncio
+async def test_create_sections_batch_empty(async_client: AsyncClient):
+    """Test creating an empty batch of sections returns 400."""
+    response = await async_client.post("/api/v2/sections/batch", json=[])
+    assert response.status_code == 400
+    assert "cannot be empty" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_sections_batch_invalid_session(
+    async_client: AsyncClient, test_substrate
+):
+    """Test creating sections with an invalid cutting session ID."""
+    sections_data = [
+        {
+            "specimen_id": "test_specimen",
+            "block_id": "test_block",
+            "cutting_session_id": "NON_EXISTENT_SESSION_ID",
+            "section_number": 1,
+            "media_id": test_substrate.media_id,
+            "optical_image": {"url": "http://foobar.com/image.png"},
+        }
+    ]
+
+    response = await async_client.post("/api/v2/sections/batch", json=sections_data)
+    assert response.status_code == 404
+    assert "CuttingSession" in response.json()["detail"]
+    assert "not found" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_sections_batch_invalid_substrate(
+    async_client: AsyncClient, test_cutting_session
+):
+    """Test creating sections with an invalid substrate/media ID."""
+    sections_data = [
+        {
+            "specimen_id": test_cutting_session.specimen_id,
+            "block_id": test_cutting_session.block_id,
+            "cutting_session_id": test_cutting_session.cutting_session_id,
+            "section_number": 1,
+            "media_id": "NON_EXISTENT_MEDIA_ID",
+            "optical_image": {"url": "http://example.com/image.png"},
+        }
+    ]
+
+    response = await async_client.post("/api/v2/sections/batch", json=sections_data)
+    assert response.status_code == 404
+    assert "Substrate" in response.json()["detail"]
+    assert "not found" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_sections_batch_duplicate_ids(
+    async_client: AsyncClient, test_cutting_session
+):
+    """Test creating sections with duplicate IDs in the same batch."""
+    timestamp = int(datetime.now(timezone.utc).timestamp())
+    media_id = f"TEST_SUB_DUP_{timestamp}"
+
+    substrate_data = {
+        "media_id": media_id,
+        "media_type": test_cutting_session.media_type,
+        "status": "new",
+        "metadata": {"name": "Test Substrate Duplicate"},
+        "apertures": [{"uid": "A1", "index": 0, "status": "available"}],
+    }
+
+    substrate_response = await async_client.post(
+        "/api/v2/substrates", json=substrate_data
+    )
+    assert substrate_response.status_code == 201
+
+    sections_data = [
+        {
+            "specimen_id": test_cutting_session.specimen_id,
+            "block_id": test_cutting_session.block_id,
+            "cutting_session_id": test_cutting_session.cutting_session_id,
+            "section_number": 1,
+            "media_id": media_id,
+            "optical_image": {"url": "http://image.server.com/image1.png"},
+        },
+        {
+            "specimen_id": test_cutting_session.specimen_id,
+            "block_id": test_cutting_session.block_id,
+            "cutting_session_id": test_cutting_session.cutting_session_id,
+            "section_number": 1,
+            "media_id": media_id,
+            "optical_image": {"url": "http://some.other.place.com/image2.png"},
+        },
+    ]
+
+    response = await async_client.post("/api/v2/sections/batch", json=sections_data)
+    assert response.status_code == 409
+    assert "duplicate" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -237,10 +404,7 @@ async def test_list_sections_by_media(async_client: AsyncClient, test_section):
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert any(s["section_id"] == test_section.section_id for s in response_data)
-    assert all(
-        s["media_id"] == test_section.media_id
-        for s in response_data
-    )
+    assert all(s["media_id"] == test_section.media_id for s in response_data)
 
 
 # @pytest.mark.asyncio
