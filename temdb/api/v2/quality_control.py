@@ -79,7 +79,6 @@ async def get_heatmap(acquisition_id: str, heatmap_type: HeatmapType):
     "/{acquisition_id}/focus-scores",
     response_model=AcquisitionFocusScoresResponse,
     summary="Get focus scores for all tiles in an acquisition",
-    tags=["QC", "Acquisitions", "Tiles"],
     responses={
         status.HTTP_404_NOT_FOUND: {
             "model": APIErrorResponse,
