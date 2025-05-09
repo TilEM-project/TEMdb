@@ -16,7 +16,8 @@ class BaseConfig(BaseSettings):
 
 class DevConfig(BaseConfig):
     debug: bool = True
-
+    mongodb_uri: str = "mongodb://mongo:27017/"
+    mongodb_name: str = "temdb"
     model_config = SettingsConfigDict(
         case_sensitive=False,
         env_file="dev.env",
