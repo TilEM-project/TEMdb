@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from temdb.api.v1.grids import grid_api
 from temdb.api.v2.acquisition import acquisition_api
@@ -44,6 +45,19 @@ def create_app():
     app.state.mongodb_uri = app.config.mongodb_uri
     app.state.mongodb_name = app.config.mongodb_name
    
+    origins = [
+        "http://localhost:5173",
+        "http://localhost:3000", 
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],  
+    )
+   
+
     register_exception_handlers(app)
 
     v1_prefix = "/api/v1"
