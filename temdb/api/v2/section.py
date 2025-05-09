@@ -61,6 +61,37 @@ async def list_sections(
     )
 
 
+@section_api.get("/sections/count", response_model=int)
+async def count_sections(
+    specimen_id: Optional[str] = Query(
+        None, description="Filter by human-readable Specimen ID"
+    ),
+    block_id: Optional[str] = Query(
+        None, description="Filter by human-readable Block ID"
+    ),
+    cutting_session_id: Optional[str] = Query(
+        None, description="Filter by human-readable Cutting Session ID"
+    ),
+    media_id: Optional[str] = Query(None, description="Filter by media ID"),
+    quality: Optional[SectionQuality] = Query(
+        None, description="Filter by section quality"
+    ),
+):
+    query_filter = {}
+    if specimen_id:
+        query_filter["specimen_id"] = specimen_id
+    if block_id:
+        query_filter["block_id"] = block_id
+    if cutting_session_id:
+        query_filter["cutting_session_id"] = cutting_session_id
+    if media_id:
+        query_filter["media_id"] = media_id
+    if quality:
+        query_filter["section_metrics.quality"] = quality
+
+    return await Section.find(query_filter).count()
+
+
 @section_api.get(
     "/sections/sessions/{cutting_session_id}",
     response_model=List[Section],
