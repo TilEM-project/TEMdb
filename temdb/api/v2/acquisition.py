@@ -18,6 +18,7 @@ from temdb.models.v2.roi import ROI
 from temdb.models.v2.tile import Tile, TileCreate
 from fastapi import BackgroundTasks, status, Depends
 from temdb.config import get_config, BaseConfig
+from pydantic import BaseModel
 
 from temdb.database import DatabaseManager
 from temdb.dependencies import get_db_manager
@@ -28,6 +29,12 @@ acquisition_api = APIRouter(
 
 logger = logging.getLogger(__name__)
 
+class TileAcquisitionRefView(BaseModel): 
+        
+    acquisition_ref: Optional[Any] = None 
+
+    class Settings:
+        projection = {"acquisition_ref": 1, "_id": 0} 
 
 @acquisition_api.get("/acquisitions", response_model=Dict[str, Any])
 async def list_acquisitions(
@@ -53,52 +60,104 @@ async def list_acquisitions(
     status: Optional[AcquisitionStatus] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    param_tile_focus_lt: Optional[float] = Query(None, description="Filter acquisitions where tile focus score is less than this value"),
+    param_tile_match_quality_lt: Optional[float] = Query(None, description="Filter acquisitions where tile match quality is less than this value"),
+    param_tile_dx_gt: Optional[float] = Query(None, description="Filter acquisitions where tile dx is greater than this value"),
+    param_tile_dy_gt: Optional[float] = Query(None, description="Filter acquisitions where tile dy is greater than this value"),
     fields: Optional[List[str]] = Query(
         None, description="Fields to return (e.g., ['acquisition_id', 'status'])"
     ),
 ) -> Dict[str, Any]:
     """Retrieve a list of acquisitions with filtering, sorting, and pagination."""
     try:
-        query = {}
-        if specimen_id:
-            query["specimen_id"] = specimen_id
-        if roi_id:
-            query["roi_id"] = roi_id
-        if acquisition_task_id:
-            query["acquisition_task_id"] = acquisition_task_id
+        main_filters = []
 
-        # Apply other filters
+        if specimen_id:
+            main_filters.append(Acquisition.specimen_id == specimen_id)
+        if roi_id:
+            main_filters.append(Acquisition.roi_id == roi_id)
+        if acquisition_task_id:
+            main_filters.append(Acquisition.acquisition_task_id == acquisition_task_id)
         if montage_set_name:
-            query["montage_set_name"] = montage_set_name
+            main_filters.append(Acquisition.montage_set_name == montage_set_name)
         if magnification is not None:
-            query["acquisition_settings.magnification"] = magnification
+            main_filters.append(Acquisition.acquisition_settings.magnification == magnification)
         if status:
-            query["status"] = status  # Add validation if status is Enum
+            main_filters.append(Acquisition.status == status)
+        
         if start_date and end_date:
-            query["start_time"] = {"$gte": start_date, "$lte": end_date}
+            main_filters.append(Acquisition.start_time >= start_date)
+            main_filters.append(Acquisition.start_time <= end_date)
         elif start_date:
-            query["start_time"] = {"$gte": start_date}
+            main_filters.append(Acquisition.start_time >= start_date)
         elif end_date:
-            query["start_time"] = {"$lte": end_date}
-        # TODO: Handle other date filters if needed
-        # Handle cursor-based pagination (assuming cursor is based on sort field or _id)
-        # This needs refinement based on the actual cursor strategy
-        # Example: If sorting by start_time desc, cursor could be the start_time of the last item
-        # if cursor and sort_by == 'start_time' and sort_order == -1:
-        #     query['start_time'] = {'$lt': datetime.fromisoformat(cursor)} # Example
-        # Example: If using _id
-        # if cursor: query["_id"] = {"$gt": ObjectId(cursor)} # Requires ObjectId import
+            main_filters.append(Acquisition.start_time <= end_date)
+
+        acq_ids_from_tile_filters = None
+        tile_filter_active_and_processed = False
+
+        if param_tile_focus_lt is not None:
+            tile_filter_active_and_processed = True
+
+            tiles_with_matching_focus_docs = await Tile.find(
+                Tile.focus_score < param_tile_focus_lt 
+            ).project(
+                TileAcquisitionRefView 
+            ).to_list()
+            
+            current_focus_acq_ids = {
+                doc.acquisition_ref.id 
+                for doc in tiles_with_matching_focus_docs 
+                if hasattr(doc, 'acquisition_ref') and doc.acquisition_ref
+            }
+            
+            if acq_ids_from_tile_filters is None:
+                acq_ids_from_tile_filters = current_focus_acq_ids
+            else:
+                acq_ids_from_tile_filters.intersection_update(current_focus_acq_ids)
+
+        # TODO: Implement filtering for match_quality and dX/dY based on Tile.matcher array.
+
+        if param_tile_match_quality_lt is not None:
+            tile_filter_active_and_processed = True 
+            logger.warning(
+                f"API parameter 'param_tile_match_quality_lt' ({param_tile_match_quality_lt}) is accepted but not yet implemented for filtering acquisitions."
+            )
+
+        if param_tile_dx_gt is not None:
+            tile_filter_active_and_processed = True 
+            logger.warning(
+                f"API parameter 'param_tile_dx_gt' ({param_tile_dx_gt}) is accepted but not yet implemented for filtering acquisitions."
+            )
+
+        if param_tile_dy_gt is not None:
+            tile_filter_active_and_processed = True 
+            logger.warning(
+                f"API parameter 'param_tile_dy_gt' ({param_tile_dy_gt}) is accepted but not yet implemented for filtering acquisitions."
+            )
+
+        if tile_filter_active_and_processed and acq_ids_from_tile_filters is not None and not acq_ids_from_tile_filters:
+            metadata = {
+                "total_count": 0,
+                "returned_count": 0,
+                "limit": limit,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+                "next_cursor": None,
+            }
+            return {"acquisitions": [], "metadata": metadata}
+
+        if acq_ids_from_tile_filters is not None:
+            main_filters.append(Acquisition.id.in_(list(acq_ids_from_tile_filters)))
+        
+        find_query = Acquisition.find(*main_filters, fetch_links=False)
 
         # Field projection
         projection = None
         if fields:
             projection = {field: 1 for field in fields}
-            if (
-                "_id" not in fields
-            ): 
+            if "_id" not in fields: 
                 projection["_id"] = 1 
-
-        find_query = Acquisition.find(query, fetch_links=False)
 
         if projection:
             find_query = find_query.project(
@@ -107,11 +166,11 @@ async def list_acquisitions(
 
         sort_key = sort_by if sort_by else "start_time"
         sort_direction = sort_order if sort_order in [-1, 1] else -1
-        find_query = find_query.sort([(sort_key, sort_direction)])
+        find_query_for_list = find_query.sort([(sort_key, sort_direction)])
 
-        total_count = await Acquisition.find(query).count()
+        total_count = await Acquisition.find(*main_filters).count()
 
-        acquisitions_list = await find_query.limit(limit).to_list()
+        acquisitions_list = await find_query_for_list.limit(limit).to_list()
 
         next_cursor = str(acquisitions_list[-1].id) if acquisitions_list else None
 
