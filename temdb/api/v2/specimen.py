@@ -1,6 +1,6 @@
 from datetime import timezone
 from fastapi import HTTPException, Query, APIRouter, Body, status
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from pydantic import AnyHttpUrl
 
@@ -14,9 +14,31 @@ specimen_api = APIRouter(
 
 @specimen_api.get("/specimens", response_model=List[Specimen])
 async def list_specimens(
-    skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)
+    search: Optional[str] = Query(None, description="Search term for specimen ID or description"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100)
 ):
-    return await Specimen.find_all(fetch_links=True).skip(skip).limit(limit).to_list()
+    query_filter = {}
+    if search:
+        query_filter["$or"] = [
+            {"specimen_id": {"$regex": search, "$options": "i"}},
+            {"description": {"$regex": search, "$options": "i"}},
+        ]
+    
+    return await Specimen.find(query_filter, fetch_links=True).skip(skip).limit(limit).to_list()
+
+
+@specimen_api.get("/specimens/count", response_model=int)
+async def count_specimens(
+    search: Optional[str] = Query(None, description="Search term for specimen ID or description")
+):
+    query_filter = {}
+    if search:
+        query_filter["$or"] = [
+            {"specimen_id": {"$regex": search, "$options": "i"}},
+            {"description": {"$regex": search, "$options": "i"}},
+        ]
+    return await Specimen.find(query_filter).count()
 
 
 @specimen_api.get("/specimens/{specimen_id}/blocks", response_model=List[Block])
