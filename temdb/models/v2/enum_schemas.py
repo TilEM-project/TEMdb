@@ -23,4 +23,5 @@ class AcquisitionStatus(str, Enum):
     ABORTED = "aborted"
     QC_FAILED = "failed"
     QC_PASSED = "qc-passed"
+    QC_PENDING = "qc-pending"
     TO_BE_REIMAGED = "to be re-imaged"
