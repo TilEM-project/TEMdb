@@ -5,10 +5,10 @@ services:
     env_file:
       - ./dev.env    
     environment:
-      - MONGO_DATA_DIR=/usr/data/db
+      - MONGO_DATA_DIR=/data/db
       - MONGO_LOG_DIR=/dev/null
     volumes:
-      - testdb_data:/usr/data/db
+      - monogo_data:/data/db
     ports:
       - 27017:27017
 
@@ -50,4 +50,4 @@ services:
 
   
 volumes:
-  testdb_data:
+  monogo_data:
