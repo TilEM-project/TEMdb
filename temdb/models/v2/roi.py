@@ -1,7 +1,7 @@
 from typing import Dict, Optional, Union, List
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
-from beanie import Document, Link, Indexed
+from pydantic import BaseModel, Field, field_validator
+from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING
 
 from temdb.models.v2.section import Section
@@ -42,20 +42,37 @@ class ROIBase(BaseModel):
         None, description="Flag if auto generated ROI was used"
     )
     roi_parameters: Optional[Dict] = Field(None, description="Parameters of ROI")
-
+    vertices: Optional[List] = Field(None, description="Vertices of the ROI polygon")
 
 class ROICreate(ROIBase):
-    roi_id: int = Field(..., description="ID of region of interest")
+    roi_number: int = Field(..., description="Sequential number for this ROI within its parent context")
     section_id: str = Field(..., description="ID of section")
     specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")
+    substrate_media_id: str = Field(..., description="Media ID of the substrate this section is placed on")
+
     section_number: Optional[int] = Field(
         None, description="Number of section from collection"
     )
-    parent_roi_id: Optional[int] = Field(
-        None, description="ID of parent region of interest"
+    parent_roi_id: Optional[str] = Field(
+        None, description="Hierarchical ID of parent ROI (e.g., 'SPEC001.BLK001.SEC001.SUB001.ROI001')"
     )
 
+    @field_validator('parent_roi_id', mode='after')
+    @classmethod
+    def validate_parent_roi_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            if '.ROI' not in v:
+                raise ValueError('parent_roi_id must contain .ROI and follow format: SPEC###.BLK###.SEC###.SUB###.ROI###[.ROI###...]')
+            
+            parts = v.split('.')
+            if len(parts) < 5:  # SPEC.BLK.SEC.SUB.ROI
+                raise ValueError('parent_roi_id must follow format: SPEC###.BLK###.SEC###.SUB###.ROI###[.ROI###...]')
+            
+            if not parts[-1].startswith('ROI'):
+                raise ValueError('parent_roi_id must end with a ROI segment (e.g., ROI001)')
+        
+        return v
 
 class ROIUpdate(ROIBase):
     updated_at: Optional[datetime] = Field(
@@ -64,22 +81,32 @@ class ROIUpdate(ROIBase):
     )
 
 class ROIResponse(ROIBase):
-    roi_id: int = Field(..., description="ID of region of interest")
+    roi_id: str = Field(..., description="Hierarchical ID of ROI")
     section_id: str = Field(..., description="ID of section")
     specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")
+    substrate_media_id: str = Field(..., description="Media ID of the substrate")
+    hierarchy_level: int = Field(..., description="Depth level in ROI hierarchy (1=top-level, 2=child, etc.)")
+    is_parent: bool = Field(default=False, description="Whether this ROI has child ROIs")
 
 class ROI(Document):
-    roi_id: int = Field(
-        ..., description="Unique, human-readable integer ID for this ROI"
+    roi_id: str = Field(
+        ..., 
+        description="Hierarchical, globally unique ID (e.g., 'SPEC001.BLK001.SEC001.SUB001.ROI001' or 'SPEC001.BLK001.SEC001.SUB001.ROI001.ROI001')"
+    )
+    roi_number: int = Field(
+        ..., 
+        description="Sequential number for this ROI within its parent context"
     )
     section_id: str = Field(..., description="Human-readable ID of the parent Section")
-    cutting_session_id: str = Field(
-        ..., description="Human-readable ID of the parent Cutting Session"
-    )
     block_id: str = Field(..., description="Human-readable ID of the parent Block")
     specimen_id: str = Field(
         ..., description="Human-readable ID of the parent Specimen"
+    )
+    substrate_media_id: str = Field(..., description="Media ID of the substrate this section is placed on")
+    hierarchy_level: int = Field(
+        ..., 
+        description="Depth level in ROI hierarchy (1=top-level section ROI, 2=child ROI, etc.)"
     )
 
     section_ref: Link[Section] = Field(
@@ -107,30 +134,48 @@ class ROI(Document):
     edits: Optional[List] = Field(None)
     auto_roi: Optional[bool] = Field(None)
     roi_parameters: Optional[Dict] = Field(None)
+    vertices: Optional[List] = Field(None, description="Vertices of the ROI polygon")
     updated_at: Optional[datetime] = Field(None, description="Time of last update")
+
+    @classmethod
+    def generate_roi_id(cls, specimen_id: str, block_id: str, section_id: str, substrate_media_id: str, roi_number: int, parent_roi_id: Optional[str] = None) -> str:
+        """Generate hierarchical ROI ID including substrate."""
+        if parent_roi_id:
+            return f"{parent_roi_id}.ROI{roi_number:04d}"
+        else:
+            return f"{specimen_id}.{block_id}.{section_id}.{substrate_media_id}.ROI{roi_number:03d}"
+
+    @classmethod
+    def parse_hierarchy_level(cls, roi_id: str) -> int:
+        """Calculate hierarchy level from ROI ID."""
+        return roi_id.count('.ROI')
+
+    @property
+    def is_parent(self) -> bool:
+        """TODO Check if this ROI has children (computed property)."""
+        return False 
 
     class Settings:
         name = "rois"
         indexes = [
             IndexModel(
-                [("section_ref.id", ASCENDING), ("roi_id", ASCENDING)],
-                name="section_ref_roi_id_unique_index",
+                [("roi_id", ASCENDING)],
+                name="roi_id_unique_index",
                 unique=True,
             ),
             IndexModel([("section_id", ASCENDING)], name="section_id_index"),
-            IndexModel([("cutting_session_id", ASCENDING)], name="session_id_index"),
             IndexModel([("block_id", ASCENDING)], name="block_id_index"),
             IndexModel([("specimen_id", ASCENDING)], name="specimen_id_index"),
+            IndexModel([("substrate_media_id", ASCENDING)], name="substrate_media_id_index"),
+            IndexModel([("hierarchy_level", ASCENDING)], name="hierarchy_level_index"),
             IndexModel([("updated_at", ASCENDING)], name="updated_at_index"),
             IndexModel([("section_ref.id", ASCENDING)], name="section_ref_index"),
             IndexModel(
                 [("parent_roi_ref.id", ASCENDING)],
                 name="parent_roi_ref_index",
                 sparse=True,
-            ),  # sparse if not all ROIs have parents
+            ), 
             IndexModel([("barcode", ASCENDING)], name="barcode_index", sparse=True),
-            IndexModel([("section_id", ASCENDING)], name="section_hr_id_index"),
-            IndexModel([("cutting_session_id", ASCENDING)], name="session_hr_id_index"),
-            IndexModel([("block_id", ASCENDING)], name="block_hr_id_index"),
-            IndexModel([("specimen_id", ASCENDING)], name="specimen_hr_id_index"),
+            IndexModel([("section_id", ASCENDING), ("hierarchy_level", ASCENDING)], name="section_hierarchy_index"),
+            IndexModel([("specimen_id", ASCENDING), ("block_id", ASCENDING), ("section_id", ASCENDING), ("substrate_media_id", ASCENDING)], name="hierarchy_path_index"),
         ]

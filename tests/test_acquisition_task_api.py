@@ -109,7 +109,7 @@ async def test_create_acquisition_task_invalid_parent(
 ):
     """Test creating a task fails atomically if a parent doesn't exist (transaction test)."""
     task_id_hr = f"TASK_CREATE_INVALID_{int(datetime.now(timezone.utc).timestamp())}"
-    invalid_roi_id = 9999999
+    invalid_roi_id = "SPEC999.BLK999.CS999.SEC999.SUB999.ROI9999999"
     task_data = {
         "task_id": task_id_hr,
         "specimen_id": test_specimen.specimen_id,
@@ -281,7 +281,7 @@ async def test_create_tasks_batch_partial_success(
     """Test that batch creation fails at the invalid task but keeps valid ones."""
     task_id_1 = f"TASK_BATCH_PART_1_{int(datetime.now(timezone.utc).timestamp())}"
     task_id_2 = f"TASK_BATCH_PART_2_{int(datetime.now(timezone.utc).timestamp())}"
-    invalid_roi_id = 9999998
+    invalid_roi_id = "SPEC999.BLK999.CS999.SEC999.SUB999.ROI9999998"
     tasks_data = [
         {  # Valid task
             "task_id": task_id_1,

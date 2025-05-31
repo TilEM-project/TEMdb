@@ -420,50 +420,128 @@ async def test_delete_tile_from_acquisition(
     assert get_response.status_code == 404
 
 
-# @pytest.mark.asyncio
-# async def test_add_storage_location(async_client: AsyncClient, test_acquisition):
-#     """Test adding a storage location."""
-#     location_data = {
-#         "location_type": "s3",
-#         "base_path": "s3://test-bucket/acq_data",
-#         "metadata": {"region": "us-west-2"}
-#     }
-#     response = await async_client.post(
-#         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/storage-locations",
-#         json=location_data
-#     )
-#     assert response.status_code == 200 # Endpoint returns updated Acquisition
-#     response_data = response.json()
-#     assert "storage_locations" in response_data
-#     assert isinstance(response_data["storage_locations"], list)
-#     assert len(response_data["storage_locations"]) > 0
-#     added_loc = next((loc for loc in response_data["storage_locations"] if loc["base_path"] == location_data["base_path"]), None)
-#     assert added_loc is not None
-#     assert added_loc["location_type"] == "s3"
-#     assert added_loc["is_current"] is True # Should default to current
+@pytest.mark.asyncio
+async def test_get_acquisition_with_full_metadata(
+    async_client: AsyncClient, test_acquisition
+):
+    """Test retrieving an acquisition with complete hierarchy metadata."""
+    response = await async_client.get(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/metadata"
+    )
+    assert response.status_code == 200
+    response_data = response.json()
+    
+    assert "specimen" in response_data
+    assert "block" in response_data  
+    assert "cutting_session" in response_data
+    assert "section" in response_data
+    assert "substrate" in response_data
+    assert "roi" in response_data
+    assert "acquisition_task" in response_data
+    assert "acquisition" in response_data
+    
+    assert response_data["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id
+    assert response_data["acquisition"]["roi_id"] == test_acquisition.roi_id
+    
+    assert response_data["specimen"]["specimen_id"] == test_acquisition.specimen_id
+    assert response_data["roi"]["roi_id"] == test_acquisition.roi_id
+    assert response_data["acquisition_task"]["task_id"] == test_acquisition.acquisition_task_id
 
-# @pytest.mark.asyncio
-# async def test_get_current_storage_location(async_client: AsyncClient, test_acquisition):
-#     """Test getting the current storage location."""
-#     # 1. Add a location first (if not added by fixture)
-#     location_data = {"location_type": "local", "base_path": "/data/acq_current", "metadata": {}}
-#     await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/storage-locations", json=location_data)
 
-#     # 2. Get the current location
-#     response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/current-storage")
-#     assert response.status_code == 200
-#     response_data = response.json()
-#     assert response_data is not None
-#     assert response_data["base_path"] == "/data/acq_current"
-#     assert response_data["is_current"] is True
+@pytest.mark.asyncio
+async def test_get_acquisition_metadata_not_found(async_client: AsyncClient):
+    """Test retrieving metadata for a non-existent acquisition."""
+    non_existent_id = "NON_EXISTENT_ACQ_ID"
+    response = await async_client.get(f"/api/v2/acquisitions/{non_existent_id}/metadata")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
 
-# @pytest.mark.asyncio
-# async def test_get_minimap_uri(async_client: AsyncClient, test_acquisition):
-#     """Test getting the minimap URI."""
-#      # 1. Add a location first
-#     location_data = {"location_type": "local", "base_path": "/data/minimap_test", "metadata": {}}
-#     await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/storage-locations", json=location_data)
 
-#     response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/minimap-uri")
-#     assert response.status_code == 200
-#     assert response.json() == {"minimap_uri": "/data/minimap_test/minimap.png"}
+@pytest.mark.asyncio
+async def test_list_acquisitions_with_full_metadata(
+    async_client: AsyncClient,
+    test_acquisition,
+    test_specimen,
+    test_roi,
+):
+    """Test retrieving acquisitions list with aggregated metadata."""
+    response = await async_client.get("/api/v2/acquisitions/aggregated")
+    assert response.status_code == 200
+    response_data = response.json()
+    assert "acquisitions" in response_data
+    assert "metadata" in response_data
+    assert isinstance(response_data["acquisitions"], list)
+    
+    test_acq_found = None
+    for acq in response_data["acquisitions"]:
+        if acq["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id:
+            test_acq_found = acq
+            break
+    
+    assert test_acq_found is not None, "Test acquisition not found in aggregated results"
+    
+    assert "specimen" in test_acq_found
+    assert "block" in test_acq_found
+    assert "cutting_session" in test_acq_found  
+    assert "section" in test_acq_found
+    assert "substrate" in test_acq_found
+    assert "roi" in test_acq_found
+    assert "acquisition_task" in test_acq_found
+    assert "acquisition" in test_acq_found
+    
+    response_filtered = await async_client.get(
+        f"/api/v2/acquisitions/aggregated?specimen_id={test_specimen.specimen_id}"
+    )
+    assert response_filtered.status_code == 200
+    filtered_data = response_filtered.json()
+    assert len(filtered_data["acquisitions"]) >= 1
+    
+    for acq in filtered_data["acquisitions"]:
+        assert acq["specimen"]["specimen_id"] == test_specimen.specimen_id
+        
+    response_roi_filtered = await async_client.get(
+        f"/api/v2/acquisitions/aggregated?roi_id={test_roi.roi_id}"
+    )
+    assert response_roi_filtered.status_code == 200
+    roi_filtered_data = response_roi_filtered.json()
+    assert len(roi_filtered_data["acquisitions"]) >= 1
+    
+    for acq in roi_filtered_data["acquisitions"]:
+        assert acq["roi"]["roi_id"] == test_roi.roi_id
+
+
+@pytest.mark.asyncio
+async def test_list_acquisitions_aggregated_pagination(async_client: AsyncClient):
+    """Test pagination parameters for aggregated acquisitions endpoint."""
+    response = await async_client.get("/api/v2/acquisitions/aggregated?limit=1")
+    assert response.status_code == 200
+    response_data = response.json()
+    assert len(response_data["acquisitions"]) <= 1
+    
+    response_skip = await async_client.get("/api/v2/acquisitions/aggregated?skip=0&limit=1")
+    assert response_skip.status_code == 200
+    
+    assert "total_count" in response_data["metadata"]
+    assert "limit" in response_data["metadata"]
+    assert "skip" in response_data["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_acquisition_metadata_endpoints_status_filter(
+    async_client: AsyncClient, test_acquisition
+):
+    """Test filtering by acquisition status in metadata endpoints."""
+    response = await async_client.get(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/metadata"
+    )
+    assert response.status_code == 200
+    
+    status = test_acquisition.status.value if hasattr(test_acquisition.status, 'value') else test_acquisition.status
+    response_filtered = await async_client.get(
+        f"/api/v2/acquisitions/aggregated?status={status}"
+    )
+    assert response_filtered.status_code == 200
+    filtered_data = response_filtered.json()
+    
+    for acq in filtered_data["acquisitions"]:
+        assert acq["acquisition"]["status"] == status

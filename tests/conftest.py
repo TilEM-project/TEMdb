@@ -181,11 +181,14 @@ async def test_section(init_db, test_cutting_session: CuttingSession, test_subst
 async def test_roi(init_db, test_section: Section):
     """Creates a test ROI document linked to test_section."""
     roi = ROI(
-        roi_id=1001,
+        roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI001",
+        roi_number=1,
         section_id=test_section.section_id,
         cutting_session_id=test_section.cutting_session_id,
         block_id=test_section.block_id,
         specimen_id=test_section.specimen_id,
+        substrate_media_id="SUB001",
+        hierarchy_level=1,
         section_ref=test_section.id,
         parent_roi_ref=None,
         updated_at=datetime.now(timezone.utc),

@@ -15,6 +15,11 @@ from temdb.models.v2.acquisition import (
 )
 from temdb.models.v2.task import AcquisitionTask
 from temdb.models.v2.roi import ROI
+from temdb.models.v2.section import Section
+from temdb.models.v2.cutting_session import CuttingSession
+from temdb.models.v2.block import Block
+from temdb.models.v2.specimen import Specimen
+from temdb.models.v2.substrate import Substrate
 from temdb.models.v2.tile import Tile, TileCreate
 from fastapi import BackgroundTasks, status, Depends
 from temdb.config import get_config, BaseConfig
@@ -29,12 +34,14 @@ acquisition_api = APIRouter(
 
 logger = logging.getLogger(__name__)
 
-class TileAcquisitionRefView(BaseModel): 
-        
-    acquisition_ref: Optional[Any] = None 
+
+class TileAcquisitionRefView(BaseModel):
+
+    acquisition_ref: Optional[Any] = None
 
     class Settings:
-        projection = {"acquisition_ref": 1, "_id": 0} 
+        projection = {"acquisition_ref": 1, "_id": 0}
+
 
 @acquisition_api.get("/acquisitions", response_model=Dict[str, Any])
 async def list_acquisitions(
@@ -60,10 +67,20 @@ async def list_acquisitions(
     status: Optional[AcquisitionStatus] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    param_tile_focus_lt: Optional[float] = Query(None, description="Filter acquisitions where tile focus score is less than this value"),
-    param_tile_match_quality_lt: Optional[float] = Query(None, description="Filter acquisitions where tile match quality is less than this value"),
-    param_tile_dx_gt: Optional[float] = Query(None, description="Filter acquisitions where tile dx is greater than this value"),
-    param_tile_dy_gt: Optional[float] = Query(None, description="Filter acquisitions where tile dy is greater than this value"),
+    param_tile_focus_lt: Optional[float] = Query(
+        None,
+        description="Filter acquisitions where tile focus score is less than this value",
+    ),
+    param_tile_match_quality_lt: Optional[float] = Query(
+        None,
+        description="Filter acquisitions where tile match quality is less than this value",
+    ),
+    param_tile_dx_gt: Optional[float] = Query(
+        None, description="Filter acquisitions where tile dx is greater than this value"
+    ),
+    param_tile_dy_gt: Optional[float] = Query(
+        None, description="Filter acquisitions where tile dy is greater than this value"
+    ),
     fields: Optional[List[str]] = Query(
         None, description="Fields to return (e.g., ['acquisition_id', 'status'])"
     ),
@@ -81,10 +98,12 @@ async def list_acquisitions(
         if montage_set_name:
             main_filters.append(Acquisition.montage_set_name == montage_set_name)
         if magnification is not None:
-            main_filters.append(Acquisition.acquisition_settings.magnification == magnification)
+            main_filters.append(
+                Acquisition.acquisition_settings.magnification == magnification
+            )
         if status:
             main_filters.append(Acquisition.status == status)
-        
+
         if start_date and end_date:
             main_filters.append(Acquisition.start_time >= start_date)
             main_filters.append(Acquisition.start_time <= end_date)
@@ -99,18 +118,18 @@ async def list_acquisitions(
         if param_tile_focus_lt is not None:
             tile_filter_active_and_processed = True
 
-            tiles_with_matching_focus_docs = await Tile.find(
-                Tile.focus_score < param_tile_focus_lt 
-            ).project(
-                TileAcquisitionRefView 
-            ).to_list()
-            
+            tiles_with_matching_focus_docs = (
+                await Tile.find(Tile.focus_score < param_tile_focus_lt)
+                .project(TileAcquisitionRefView)
+                .to_list()
+            )
+
             current_focus_acq_ids = {
-                doc.acquisition_ref.id 
-                for doc in tiles_with_matching_focus_docs 
-                if hasattr(doc, 'acquisition_ref') and doc.acquisition_ref
+                doc.acquisition_ref.id
+                for doc in tiles_with_matching_focus_docs
+                if hasattr(doc, "acquisition_ref") and doc.acquisition_ref
             }
-            
+
             if acq_ids_from_tile_filters is None:
                 acq_ids_from_tile_filters = current_focus_acq_ids
             else:
@@ -119,24 +138,28 @@ async def list_acquisitions(
         # TODO: Implement filtering for match_quality and dX/dY based on Tile.matcher array.
 
         if param_tile_match_quality_lt is not None:
-            tile_filter_active_and_processed = True 
+            tile_filter_active_and_processed = True
             logger.warning(
                 f"API parameter 'param_tile_match_quality_lt' ({param_tile_match_quality_lt}) is accepted but not yet implemented for filtering acquisitions."
             )
 
         if param_tile_dx_gt is not None:
-            tile_filter_active_and_processed = True 
+            tile_filter_active_and_processed = True
             logger.warning(
                 f"API parameter 'param_tile_dx_gt' ({param_tile_dx_gt}) is accepted but not yet implemented for filtering acquisitions."
             )
 
         if param_tile_dy_gt is not None:
-            tile_filter_active_and_processed = True 
+            tile_filter_active_and_processed = True
             logger.warning(
                 f"API parameter 'param_tile_dy_gt' ({param_tile_dy_gt}) is accepted but not yet implemented for filtering acquisitions."
             )
 
-        if tile_filter_active_and_processed and acq_ids_from_tile_filters is not None and not acq_ids_from_tile_filters:
+        if (
+            tile_filter_active_and_processed
+            and acq_ids_from_tile_filters is not None
+            and not acq_ids_from_tile_filters
+        ):
             metadata = {
                 "total_count": 0,
                 "returned_count": 0,
@@ -149,15 +172,15 @@ async def list_acquisitions(
 
         if acq_ids_from_tile_filters is not None:
             main_filters.append(Acquisition.id.in_(list(acq_ids_from_tile_filters)))
-        
+
         find_query = Acquisition.find(*main_filters, fetch_links=False)
 
         # Field projection
         projection = None
         if fields:
             projection = {field: 1 for field in fields}
-            if "_id" not in fields: 
-                projection["_id"] = 1 
+            if "_id" not in fields:
+                projection["_id"] = 1
 
         if projection:
             find_query = find_query.project(
@@ -191,6 +214,7 @@ async def list_acquisitions(
     except Exception as e:
         logger.error(f"Error listing acquisitions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error retrieving acquisitions")
+
 
 @acquisition_api.post(
     "/acquisitions", response_model=Acquisition, status_code=status.HTTP_201_CREATED
@@ -281,9 +305,8 @@ async def create_acquisition(
         created_acq = await Acquisition.get(new_acq_id_internal, fetch_links=True)
         if created_acq:
             return created_acq
-    raise HTTPException(
-        500, "Failed to retrieve created acquisition after creation."
-    )
+    raise HTTPException(500, "Failed to retrieve created acquisition after creation.")
+
 
 @acquisition_api.get("/acquisitions/{acquisition_id}", response_model=Acquisition)
 async def get_acquisition(acquisition_id: str):
@@ -403,7 +426,7 @@ async def add_tiles_to_acquisition(
         new_tiles_to_insert = []
         for tile_item in tile_batch:
             if await Tile.find_one({"tile_id": tile_item.tile_id}).exists():
-                continue 
+                continue
 
             new_tiles_to_insert.append(
                 Tile(
@@ -445,6 +468,7 @@ async def add_tiles_to_acquisition(
         "num_batches": num_batches,
     }
 
+
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/tiles", response_model=Dict[str, Any]
 )
@@ -482,12 +506,16 @@ async def get_tiles_from_acquisition(
 
     tiles_list = await find_query.limit(limit).to_list()
     next_cursor = tiles_list[-1]["raster_index"] if tiles_list else None
-    
-    has_more = await Tile.find(query).sort(
-        ("raster_index", ASCENDING) 
-    ).skip(limit).limit(1).to_list()
 
-    has_more = len(has_more) > 0 
+    has_more = (
+        await Tile.find(query)
+        .sort(("raster_index", ASCENDING))
+        .skip(limit)
+        .limit(1)
+        .to_list()
+    )
+
+    has_more = len(has_more) > 0
 
     response.headers["Cache-Control"] = "private, max-age=300"
 
@@ -502,6 +530,7 @@ async def get_tiles_from_acquisition(
         },
     }
 
+
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=Tile
 )
@@ -514,7 +543,8 @@ async def get_tile_from_acquisition(acquisition_id: str, tile_id: str):
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
 
     tile = await Tile.find_one(
-        {"tile_id": tile_id, "acquisition_id": acquisition.acquisition_id}, fetch_links=True
+        {"tile_id": tile_id, "acquisition_id": acquisition.acquisition_id},
+        fetch_links=True,
     )
 
     if not tile:
@@ -612,9 +642,7 @@ async def delete_tile_from_acquisition(acquisition_id: str, tile_id: str):
     if not acquisition:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
 
-    tile = await Tile.find_one(
-        {"tile_id": tile_id, "acquisition_id": acquisition_id}
-    )
+    tile = await Tile.find_one({"tile_id": tile_id, "acquisition_id": acquisition_id})
 
     if not tile:
         raise HTTPException(
@@ -623,3 +651,325 @@ async def delete_tile_from_acquisition(acquisition_id: str, tile_id: str):
 
     await tile.delete()
     return None
+
+
+class AcquisitionFullMetadata(BaseModel):
+    """Acquisition with complete hierarchy metadata"""
+
+    acquisition: Acquisition
+    task: Optional[AcquisitionTask] = None
+    roi: Optional[ROI] = None
+    section: Optional[Section] = None
+    cutting_session: Optional[CuttingSession] = None
+    block: Optional[Block] = None
+    specimen: Optional[Specimen] = None
+    substrate: Optional[Substrate] = None
+
+
+@acquisition_api.get(
+    "/acquisitions/{acquisition_id}/metadata", response_model=AcquisitionFullMetadata
+)
+async def get_acquisition_with_full_metadata(acquisition_id: str):
+    """
+    Retrieve an acquisition with its complete metadata.
+
+    This endpoint returns the acquisition along with all related parent entities:
+    specimen → block → cutting session → section → substrate → roi → acquisition_task → acquisition
+    """
+    acquisition = await Acquisition.find_one(
+        Acquisition.acquisition_id == acquisition_id, fetch_links=True
+    )
+    if not acquisition:
+        raise HTTPException(
+            status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found"
+        )
+
+    result = AcquisitionFullMetadata(acquisition=acquisition)
+
+    if acquisition.acquisition_task_ref:
+        task = await AcquisitionTask.get(
+            acquisition.acquisition_task_ref.id, fetch_links=True
+        )
+        result.task = task
+
+        if task and task.roi_ref:
+            roi = await ROI.get(task.roi_ref.id, fetch_links=True)
+            result.roi = roi
+
+            if roi and roi.section_ref:
+                section = await Section.get(roi.section_ref.id, fetch_links=True)
+                result.section = section
+
+                if roi.substrate_media_id:
+                    substrate = await Substrate.find_one(
+                        Substrate.media_id == roi.substrate_media_id, fetch_links=True
+                    )
+                    result.substrate = substrate
+
+                if section and section.cutting_session_ref:
+                    cutting_session = await CuttingSession.get(
+                        section.cutting_session_ref.id, fetch_links=True
+                    )
+                    result.cutting_session = cutting_session
+
+                    if cutting_session and cutting_session.block_ref:
+                        block = await Block.get(
+                            cutting_session.block_ref.id, fetch_links=True
+                        )
+                        result.block = block
+
+                        if block and block.specimen_ref:
+                            specimen = await Specimen.get(
+                                block.specimen_ref.id, fetch_links=True
+                            )
+                            result.specimen = specimen
+
+    return result
+
+
+@acquisition_api.get("/acquisitions/aggregated", response_model=Dict[str, Any])
+async def list_acquisitions_with_hierarchy(
+    response: Response,
+    cursor: Optional[str] = Query(
+        None,
+        description="Cursor for pagination (e.g., last seen acquisition_id or _id)",
+    ),
+    limit: int = Query(50, ge=1, le=100),
+    sort_by: str = Query(
+        "start_time", description="Field to sort by (e.g., start_time, acquisition_id)"
+    ),
+    sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
+    specimen_id: Optional[str] = Query(
+        None, description="Filter by human-readable Specimen ID"
+    ),
+    roi_id: Optional[str] = Query(None, description="Filter by hierarchical ROI ID"),
+    acquisition_task_id: Optional[str] = Query(
+        None, description="Filter by human-readable Acquisition Task ID"
+    ),
+    substrate_media_id: Optional[str] = Query(
+        None, description="Filter by substrate media ID"
+    ),
+    status: Optional[AcquisitionStatus] = Query(None),
+) -> Dict[str, Any]:
+    """
+    Retrieve acquisitions with complete hierarchy metadata using MongoDB aggregation.
+
+    This endpoint performs a comprehensive aggregation to include all hierarchy levels:
+    specimen → block → cutting session → section → substrate → roi → acquisition_task → acquisition
+    """
+    try:
+        match_filters = {}
+
+        if specimen_id:
+            match_filters["specimen_id"] = specimen_id
+        if acquisition_task_id:
+            match_filters["acquisition_task_id"] = acquisition_task_id
+        if status:
+            match_filters["status"] = status.value
+
+        pipeline = []
+
+        if match_filters:
+            pipeline.append({"$match": match_filters})
+
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "acquisition_tasks",
+                        "localField": "acquisition_task_ref.id",
+                        "foreignField": "_id",
+                        "as": "task_info",
+                    }
+                },
+                {"$unwind": {"path": "$task_info", "preserveNullAndEmptyArrays": True}},
+            ]
+        )
+
+        # Lookup ROI
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "rois",
+                        "localField": "roi_ref.id",
+                        "foreignField": "_id",
+                        "as": "roi_info",
+                    }
+                },
+                {"$unwind": {"path": "$roi_info", "preserveNullAndEmptyArrays": True}},
+            ]
+        )
+
+        if roi_id:
+            pipeline.append({"$match": {"roi_info.roi_id": roi_id}})
+        if substrate_media_id:
+            pipeline.append(
+                {"$match": {"roi_info.substrate_media_id": substrate_media_id}}
+            )
+
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "sections",
+                        "localField": "roi_info.section_ref.id",
+                        "foreignField": "_id",
+                        "as": "section_info",
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$section_info",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+            ]
+        )
+
+        # Lookup substrate
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "substrates",
+                        "localField": "roi_info.substrate_media_id",
+                        "foreignField": "media_id",
+                        "as": "substrate_info",
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$substrate_info",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+            ]
+        )
+
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "cutting_sessions",
+                        "localField": "section_info.cutting_session_ref.id",
+                        "foreignField": "_id",
+                        "as": "cutting_session_info",
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$cutting_session_info",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+            ]
+        )
+
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "blocks",
+                        "localField": "cutting_session_info.block_ref.id",
+                        "foreignField": "_id",
+                        "as": "block_info",
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$block_info",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+            ]
+        )
+
+        pipeline.extend(
+            [
+                {
+                    "$lookup": {
+                        "from": "specimens",
+                        "localField": "block_info.specimen_ref.id",
+                        "foreignField": "_id",
+                        "as": "specimen_info",
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$specimen_info",
+                        "preserveNullAndEmptyArrays": True,
+                    }
+                },
+            ]
+        )
+
+        sort_key = sort_by if sort_by else "start_time"
+        sort_direction = sort_order if sort_order in [-1, 1] else -1
+        pipeline.append({"$sort": {sort_key: sort_direction}})
+
+        if cursor:
+            pass
+
+        pipeline.append({"$limit": limit})
+
+        results = await Acquisition.aggregate(
+            aggregation_pipeline=pipeline, projection_model=None
+        ).to_list()
+
+        count_pipeline = pipeline[:-1]
+        count_pipeline.append({"$count": "total"})
+        count_result = await Acquisition.aggregate(
+            aggregation_pipeline=count_pipeline, projection_model=None
+        ).to_list()
+
+        total_count = count_result[0]["total"] if count_result else 0
+
+        formatted_results = []
+        for result in results:
+            formatted_result = {
+                "acquisition": {
+                    k: v
+                    for k, v in result.items()
+                    if k
+                    not in [
+                        "task_info",
+                        "roi_info",
+                        "section_info",
+                        "substrate_info",
+                        "cutting_session_info",
+                        "block_info",
+                        "specimen_info",
+                    ]
+                },
+                "task": result.get("task_info"),
+                "roi": result.get("roi_info"),
+                "section": result.get("section_info"),
+                "substrate": result.get("substrate_info"),
+                "cutting_session": result.get("cutting_session_info"),
+                "block": result.get("block_info"),
+                "specimen": result.get("specimen_info"),
+            }
+            formatted_results.append(formatted_result)
+
+        next_cursor = str(results[-1]["_id"]) if results else None
+
+        metadata = {
+            "total_count": total_count,
+            "returned_count": len(formatted_results),
+            "limit": limit,
+            "sort_by": sort_key,
+            "sort_order": sort_direction,
+            "next_cursor": next_cursor,
+        }
+
+        response.headers["Cache-Control"] = "private, max-age=300"
+        response.headers["X-Total-Count"] = str(total_count)
+
+        return {"acquisitions": formatted_results, "metadata": metadata}
+
+    except Exception as e:
+        logger.error(f"Error in aggregated acquisitions query: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Error retrieving aggregated acquisitions"
+        )

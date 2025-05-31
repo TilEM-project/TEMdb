@@ -8,6 +8,7 @@ from temdb.models.error import APIErrorResponse
 from temdb.models.v2.roi import ROIResponse
 from temdb.models.v2.roi import ROI, ROICreate, ROIUpdate
 from temdb.models.v2.section import Section
+from temdb.models.v2.substrate import Substrate
 from temdb.models.v2.acquisition import Acquisition
 from temdb.models.v2.task import AcquisitionTask
 
@@ -60,7 +61,7 @@ async def list_rois(
 
 @roi_api.post("/rois", response_model=ROI, status_code=status.HTTP_201_CREATED)
 async def create_roi(roi_data: ROICreate):
-    """Create a new ROI, ensuring roi_id is unique within the parent section."""
+    """Create a new ROI with hierarchical ID generation."""
 
     section = await Section.find_one(Section.section_id == roi_data.section_id)
     if not section:
@@ -69,17 +70,18 @@ async def create_roi(roi_data: ROICreate):
             detail=f"Section with ID '{roi_data.section_id}' not found",
         )
 
-    existing_roi = await ROI.find_one(
-        {"roi_id": roi_data.roi_id, "section_ref.id": section.id}
-    )
-    if existing_roi:
+    substrate = await Substrate.find_one(Substrate.media_id == roi_data.substrate_media_id)
+    if not substrate:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ROI with ID '{roi_data.roi_id}' already exists in Section '{roi_data.section_id}'",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Substrate with media_id '{roi_data.substrate_media_id}' not found",
         )
 
+    parent_roi = None
     parent_roi_ref_id = None
-    if roi_data.parent_roi_id is not None:
+    hierarchy_level = 1
+    
+    if roi_data.parent_roi_id:
         parent_roi = await ROI.find_one(ROI.roi_id == roi_data.parent_roi_id)
         if not parent_roi:
             raise HTTPException(
@@ -87,15 +89,35 @@ async def create_roi(roi_data: ROICreate):
                 detail=f"Parent ROI with ID '{roi_data.parent_roi_id}' not found",
             )
         parent_roi_ref_id = parent_roi.id
+        hierarchy_level = parent_roi.hierarchy_level + 1
+
+    # Generate the hierarchical ROI ID
+    roi_id = ROI.generate_roi_id(
+        specimen_id=roi_data.specimen_id,
+        block_id=roi_data.block_id,
+        section_id=roi_data.section_id,
+        substrate_media_id=roi_data.substrate_media_id,
+        roi_number=roi_data.roi_number,
+        parent_roi_id=roi_data.parent_roi_id
+    )
+
+    # Check if ROI ID already exists
+    existing_roi = await ROI.find_one(ROI.roi_id == roi_id)
+    if existing_roi:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ROI with ID '{roi_id}' already exists",
+        )
 
     roi_payload = roi_data.model_dump(exclude={"section_id", "parent_roi_id"})
 
     new_roi = ROI(
         **roi_payload,
+        roi_id=roi_id,
+        hierarchy_level=hierarchy_level,
         section_ref=section.id,
         parent_roi_ref=parent_roi_ref_id,
         section_id=section.section_id,
-        cutting_session_id=section.cutting_session_id,
         updated_at=datetime.now(timezone.utc),
     )
 
@@ -130,10 +152,10 @@ async def create_roi(roi_data: ROICreate):
 )
 async def create_rois_batch(rois_data: List[ROICreate]):
     """
-    Creates multiple ROI documents from a list.
+    Creates multiple ROI documents from a list with hierarchical ID generation.
 
-    - Validates parent Section existence.
-    - Derives parent IDs (session, block, specimen) from the Section.
+    - Validates parent Section and Substrate existence.
+    - Generates hierarchical ROI IDs.
     - Performs bulk insert into the database.
     - Returns the list of created ROI documents.
     """
@@ -145,6 +167,7 @@ async def create_rois_batch(rois_data: List[ROICreate]):
 
     rois_to_insert = []
     parent_section_cache = {}
+    substrate_cache = {}
 
     for i, roi_create in enumerate(rois_data):
         section_id = roi_create.section_id
@@ -158,13 +181,37 @@ async def create_rois_batch(rois_data: List[ROICreate]):
             parent_section_cache[section_id] = section
         section = parent_section_cache[section_id]
 
-        roi_doc_data = roi_create.model_dump()
+        substrate_media_id = roi_create.substrate_media_id
+        if substrate_media_id not in substrate_cache:
+            substrate = await Substrate.find_one(Substrate.media_id == substrate_media_id)
+            if not substrate:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Substrate with media_id '{substrate_media_id}' not found for ROI item {i}.",
+                )
+            substrate_cache[substrate_media_id] = substrate
+
+        roi_id = ROI.generate_roi_id(
+            specimen_id=roi_create.specimen_id,
+            block_id=roi_create.block_id,
+            section_id=roi_create.section_id,
+            substrate_media_id=roi_create.substrate_media_id,
+            roi_number=roi_create.roi_number,
+            parent_roi_id=roi_create.parent_roi_id
+        )
+
+        hierarchy_level = ROI.parse_hierarchy_level(roi_id)
+
+        roi_doc_data = roi_create.model_dump(exclude={"section_id", "parent_roi_id"})
         roi_doc_data.update(
             {
+                "roi_id": roi_id,
+                "hierarchy_level": hierarchy_level,
                 "section_ref": section.id,
-                "cutting_session_id": section.cutting_session_id,
+                "section_id": section.section_id,
                 "block_id": section.block_id,
                 "specimen_id": section.specimen_id,
+                "updated_at": datetime.now(timezone.utc),
             }
         )
         roi_doc = ROI(**roi_doc_data)
@@ -187,12 +234,8 @@ async def create_rois_batch(rois_data: List[ROICreate]):
         )
 
 
-# get_roi remains the same (looks up by globally unique internal ID or non-unique roi_id int)
-# NOTE: If GET /rois/{roi_id} should *always* return a single unique ROI,
-# then roi_id *must* be globally unique. If it's just an integer label,
-# this endpoint might return multiple ROIs or needs context (e.g., /sections/{sid}/rois/{rid})
 @roi_api.get("/rois/{roi_id}", response_model=ROI)
-async def get_roi(roi_id: int):
+async def get_roi(roi_id: str):
     """Retrieve a specific ROI by its human-readable integer ID.
     WARNING: If roi_id is not globally unique, this may return an arbitrary ROI with this ID.
     Consider using a compound path like /sections/{section_id}/rois/{roi_id} for uniqueness.
@@ -205,9 +248,38 @@ async def get_roi(roi_id: int):
         )
     return roi
 
+@roi_api.get("/rois/{roi_id}/hierarchy", response_model=Dict)
+async def get_roi_hierarchy(roi_id: str):
+    """Get the full hierarchy path for an ROI."""
+    roi = await ROI.find_one(ROI.roi_id == roi_id, fetch_links=True)
+    if not roi:
+        raise HTTPException(
+            status_code=404, detail=f"ROI with ID '{roi_id}' not found"
+        )
+    
+    hierarchy_path = []
+    current_roi = roi
+    
+    while current_roi:
+        hierarchy_path.insert(0, {
+            "roi_id": current_roi.roi_id,
+            "hierarchy_level": current_roi.hierarchy_level,
+            "section_id": current_roi.section_id,
+        })
+        
+        if current_roi.parent_roi_ref:
+            current_roi = await ROI.get(current_roi.parent_roi_ref.id)
+        else:
+            break
+    
+    return {
+        "roi_id": roi_id,
+        "hierarchy_path": hierarchy_path,
+        "total_levels": len(hierarchy_path),
+    }
 
 @roi_api.patch("/rois/{roi_id}", response_model=ROI)
-async def update_roi(roi_id: int, updated_fields: ROIUpdate = Body(...)):
+async def update_roi(roi_id: str, updated_fields: ROIUpdate = Body(...)):
     """Update details (attributes from ROIBase) of a specific ROI."""
     roi = await ROI.find_one(ROI.roi_id == roi_id)
     if not roi:
@@ -237,7 +309,7 @@ async def update_roi(roi_id: int, updated_fields: ROIUpdate = Body(...)):
 
 
 @roi_api.delete("/rois/{roi_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_roi(roi_id: int):
+async def delete_roi(roi_id: str):
     """Delete a specific ROI."""
     roi = await ROI.find_one(ROI.roi_id == roi_id)
     if not roi:
@@ -295,11 +367,11 @@ async def list_section_rois(
 
 @roi_api.get("/rois/{roi_id}/children", response_model=Dict)
 async def get_child_rois(
-    roi_id: int,
+    roi_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
-    """Retrieve child ROIs for a given parent ROI using the parent's human-readable ID."""
+    """Retrieve child ROIs for a given parent ROI using the parent's hierarchical ID."""
     parent_roi = await ROI.find_one(ROI.roi_id == roi_id)
     if not parent_roi:
         raise HTTPException(
