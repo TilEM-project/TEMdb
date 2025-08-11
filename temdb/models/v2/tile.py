@@ -5,6 +5,7 @@ from beanie import Document, Link
 from pymongo import IndexModel, ASCENDING
 
 from temdb.models.v2.acquisition import Acquisition
+from temdb.models.v2.enum_schemas import MatchPosition
 
 
 class Matcher(BaseModel):
@@ -17,7 +18,7 @@ class Matcher(BaseModel):
     distance: float = Field(..., description="Distance between the tiles")
     rotation: float = Field(..., description="Rotation of the tile")
     match_quality: float = Field(..., description="Quality of the match")
-    position: int = Field(..., description="Position of the match")
+    position: MatchPosition = Field(..., description="Position of the match")
     pX: List[float] = Field(
         ..., description="X position of the points in the template tile"
     )
