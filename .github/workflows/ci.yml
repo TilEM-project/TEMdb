@@ -75,4 +75,4 @@ jobs:
           cache-to: type=gha,mode=max
           tags: |
             ${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
-            ${{ (startsWith(github.ref, 'refs/'tags') && '${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}' || '') }}
+            ${{ (startsWith(github.ref, 'refs/tags') && '${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}') }}
