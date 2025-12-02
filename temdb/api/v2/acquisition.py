@@ -1,31 +1,56 @@
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
 import logging
 import math
-from fastapi import APIRouter, Body, HTTPException, Query, Response
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from bson import DBRef, ObjectId
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
+from pydantic import BaseModel
 from pymongo import ASCENDING
+
+from temdb.config import BaseConfig, get_config
+from temdb.database import DatabaseManager
+from temdb.dependencies import get_db_manager
 from temdb.models.v2.acquisition import (
     Acquisition,
     AcquisitionCreate,
-    AcquisitionUpdate,
     AcquisitionStatus,
+    AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
 )
-from temdb.models.v2.task import AcquisitionTask
+from temdb.models.v2.block import Block
+from temdb.models.v2.cutting_session import CuttingSession
 from temdb.models.v2.roi import ROI
 from temdb.models.v2.section import Section
-from temdb.models.v2.cutting_session import CuttingSession
-from temdb.models.v2.block import Block
 from temdb.models.v2.specimen import Specimen
 from temdb.models.v2.substrate import Substrate
+from temdb.models.v2.task import AcquisitionTask
 from temdb.models.v2.tile import Tile, TileCreate
-from fastapi import BackgroundTasks, status, Depends
-from temdb.config import get_config, BaseConfig
-from pydantic import BaseModel
 
-from temdb.database import DatabaseManager
-from temdb.dependencies import get_db_manager
+
+def serialize_mongo_doc(doc: Any) -> Any:
+    if isinstance(doc, ObjectId):
+        return str(doc)
+    elif isinstance(doc, DBRef):
+        return {"collection": doc.collection, "id": str(doc.id)}
+    elif isinstance(doc, dict):
+        return {k: serialize_mongo_doc(v) for k, v in doc.items()}
+    elif isinstance(doc, list):
+        return [serialize_mongo_doc(item) for item in doc]
+    elif isinstance(doc, datetime):
+        return doc.isoformat()
+    return doc
+
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
@@ -656,7 +681,7 @@ class AcquisitionFullMetadata(BaseModel):
     """Acquisition with complete hierarchy metadata"""
 
     acquisition: Acquisition
-    task: Optional[AcquisitionTask] = None
+    acquisition_task: Optional[AcquisitionTask] = None
     roi: Optional[ROI] = None
     section: Optional[Section] = None
     cutting_session: Optional[CuttingSession] = None
@@ -689,7 +714,7 @@ async def get_acquisition_with_full_metadata(acquisition_id: str):
         task = await AcquisitionTask.get(
             acquisition.acquisition_task_ref.id, fetch_links=True
         )
-        result.task = task
+        result.acquisition_task = task
 
         if task and task.roi_ref:
             roi = await ROI.get(task.roi_ref.id, fetch_links=True)
@@ -726,7 +751,7 @@ async def get_acquisition_with_full_metadata(acquisition_id: str):
     return result
 
 
-@acquisition_api.get("/acquisitions/aggregated", response_model=Dict[str, Any])
+@acquisition_api.get("/aggregated/acquisitions", response_model=Dict[str, Any])
 async def list_acquisitions_with_hierarchy(
     response: Response,
     cursor: Optional[str] = Query(
@@ -776,7 +801,7 @@ async def list_acquisitions_with_hierarchy(
                 {
                     "$lookup": {
                         "from": "acquisition_tasks",
-                        "localField": "acquisition_task_ref.id",
+                        "localField": "acquisition_task_ref.$id",
                         "foreignField": "_id",
                         "as": "task_info",
                     }
@@ -791,7 +816,7 @@ async def list_acquisitions_with_hierarchy(
                 {
                     "$lookup": {
                         "from": "rois",
-                        "localField": "roi_ref.id",
+                        "localField": "roi_ref.$id",
                         "foreignField": "_id",
                         "as": "roi_info",
                     }
@@ -812,7 +837,7 @@ async def list_acquisitions_with_hierarchy(
                 {
                     "$lookup": {
                         "from": "sections",
-                        "localField": "roi_info.section_ref.id",
+                        "localField": "roi_info.section_ref.$id",
                         "foreignField": "_id",
                         "as": "section_info",
                     }
@@ -851,7 +876,7 @@ async def list_acquisitions_with_hierarchy(
                 {
                     "$lookup": {
                         "from": "cutting_sessions",
-                        "localField": "section_info.cutting_session_ref.id",
+                        "localField": "section_info.cutting_session_ref.$id",
                         "foreignField": "_id",
                         "as": "cutting_session_info",
                     }
@@ -870,7 +895,7 @@ async def list_acquisitions_with_hierarchy(
                 {
                     "$lookup": {
                         "from": "blocks",
-                        "localField": "cutting_session_info.block_ref.id",
+                        "localField": "cutting_session_info.block_ref.$id",
                         "foreignField": "_id",
                         "as": "block_info",
                     }
@@ -889,7 +914,7 @@ async def list_acquisitions_with_hierarchy(
                 {
                     "$lookup": {
                         "from": "specimens",
-                        "localField": "block_info.specimen_ref.id",
+                        "localField": "block_info.specimen_ref.$id",
                         "foreignField": "_id",
                         "as": "specimen_info",
                     }
@@ -927,27 +952,31 @@ async def list_acquisitions_with_hierarchy(
         formatted_results = []
         for result in results:
             formatted_result = {
-                "acquisition": {
-                    k: v
-                    for k, v in result.items()
-                    if k
-                    not in [
-                        "task_info",
-                        "roi_info",
-                        "section_info",
-                        "substrate_info",
-                        "cutting_session_info",
-                        "block_info",
-                        "specimen_info",
-                    ]
-                },
-                "task": result.get("task_info"),
-                "roi": result.get("roi_info"),
-                "section": result.get("section_info"),
-                "substrate": result.get("substrate_info"),
-                "cutting_session": result.get("cutting_session_info"),
-                "block": result.get("block_info"),
-                "specimen": result.get("specimen_info"),
+                "acquisition": serialize_mongo_doc(
+                    {
+                        k: v
+                        for k, v in result.items()
+                        if k
+                        not in [
+                            "task_info",
+                            "roi_info",
+                            "section_info",
+                            "substrate_info",
+                            "cutting_session_info",
+                            "block_info",
+                            "specimen_info",
+                        ]
+                    }
+                ),
+                "acquisition_task": serialize_mongo_doc(result.get("task_info")),
+                "roi": serialize_mongo_doc(result.get("roi_info")),
+                "section": serialize_mongo_doc(result.get("section_info")),
+                "substrate": serialize_mongo_doc(result.get("substrate_info")),
+                "cutting_session": serialize_mongo_doc(
+                    result.get("cutting_session_info")
+                ),
+                "block": serialize_mongo_doc(result.get("block_info")),
+                "specimen": serialize_mongo_doc(result.get("specimen_info")),
             }
             formatted_results.append(formatted_result)
 

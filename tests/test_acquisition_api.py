@@ -465,7 +465,7 @@ async def test_list_acquisitions_with_full_metadata(
     test_roi,
 ):
     """Test retrieving acquisitions list with aggregated metadata."""
-    response = await async_client.get("/api/v2/acquisitions/aggregated")
+    response = await async_client.get("/api/v2/aggregated/acquisitions")
     assert response.status_code == 200
     response_data = response.json()
     assert "acquisitions" in response_data
@@ -490,7 +490,7 @@ async def test_list_acquisitions_with_full_metadata(
     assert "acquisition" in test_acq_found
     
     response_filtered = await async_client.get(
-        f"/api/v2/acquisitions/aggregated?specimen_id={test_specimen.specimen_id}"
+        f"/api/v2/aggregated/acquisitions?specimen_id={test_specimen.specimen_id}"
     )
     assert response_filtered.status_code == 200
     filtered_data = response_filtered.json()
@@ -500,7 +500,7 @@ async def test_list_acquisitions_with_full_metadata(
         assert acq["specimen"]["specimen_id"] == test_specimen.specimen_id
         
     response_roi_filtered = await async_client.get(
-        f"/api/v2/acquisitions/aggregated?roi_id={test_roi.roi_id}"
+        f"/api/v2/aggregated/acquisitions?roi_id={test_roi.roi_id}"
     )
     assert response_roi_filtered.status_code == 200
     roi_filtered_data = response_roi_filtered.json()
@@ -513,17 +513,15 @@ async def test_list_acquisitions_with_full_metadata(
 @pytest.mark.asyncio
 async def test_list_acquisitions_aggregated_pagination(async_client: AsyncClient):
     """Test pagination parameters for aggregated acquisitions endpoint."""
-    response = await async_client.get("/api/v2/acquisitions/aggregated?limit=1")
+    response = await async_client.get("/api/v2/aggregated/acquisitions?limit=1")
     assert response.status_code == 200
     response_data = response.json()
     assert len(response_data["acquisitions"]) <= 1
-    
-    response_skip = await async_client.get("/api/v2/acquisitions/aggregated?skip=0&limit=1")
-    assert response_skip.status_code == 200
-    
+
+    # Verify metadata contains expected pagination info (cursor-based, not offset-based)
     assert "total_count" in response_data["metadata"]
     assert "limit" in response_data["metadata"]
-    assert "skip" in response_data["metadata"]
+    assert "next_cursor" in response_data["metadata"]
 
 
 @pytest.mark.asyncio
@@ -538,7 +536,7 @@ async def test_acquisition_metadata_endpoints_status_filter(
     
     status = test_acquisition.status.value if hasattr(test_acquisition.status, 'value') else test_acquisition.status
     response_filtered = await async_client.get(
-        f"/api/v2/acquisitions/aggregated?status={status}"
+        f"/api/v2/aggregated/acquisitions?status={status}"
     )
     assert response_filtered.status_code == 200
     filtered_data = response_filtered.json()

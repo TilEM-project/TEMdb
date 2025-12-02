@@ -146,15 +146,25 @@ def generate_section(
 
 
 def generate_roi(
-    section: Section, roi_int_id: int, parent_roi: ROI = None, **kwargs
+    section: Section, roi_number: int = 1, parent_roi: ROI = None, substrate_media_id: str = "SUB001", **kwargs
 ) -> ROI:
     """Generates an ROI instance linked to a Section, optionally to a parent ROI."""
+    # Generate hierarchical roi_id string
+    if parent_roi:
+        roi_id = f"{parent_roi.roi_id}.ROI{roi_number:03d}"
+        hierarchy_level = parent_roi.hierarchy_level + 1
+    else:
+        roi_id = f"{section.specimen_id}.{section.block_id}.{section.cutting_session_id}.{section.section_id}.{substrate_media_id}.ROI{roi_number:03d}"
+        hierarchy_level = 1
+
     defaults = {
-        "roi_id": roi_int_id,
+        "roi_id": roi_id,
+        "roi_number": roi_number,
         "section_id": section.section_id,
-        "cutting_session_id": section.cutting_session_id,
         "block_id": section.block_id,
         "specimen_id": section.specimen_id,
+        "substrate_media_id": substrate_media_id,
+        "hierarchy_level": hierarchy_level,
         "section_ref": section.id,
         "parent_roi_ref": parent_roi.id if parent_roi else None,
         "aperture_image": fake.file_path(extension="png") if fake.boolean() else None,
@@ -162,6 +172,7 @@ def generate_roi(
             fake.pyfloat(min_value=100.0, max_value=1000.0) if fake.boolean() else None
         ),
         "updated_at": datetime.now(timezone.utc),
+        "section_number": section.section_number,
     }
     defaults.update(kwargs)
     return ROI(**defaults)

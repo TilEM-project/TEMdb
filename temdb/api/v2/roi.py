@@ -46,7 +46,13 @@ async def list_rois(
     if block_id:
         query_filter["block_id"] = block_id
     if cutting_session_id:
-        query_filter["cutting_session_id"] = cutting_session_id
+        sections = await Section.find(
+            Section.cutting_session_id == cutting_session_id
+        ).to_list()
+        section_ids = [s.section_id for s in sections]
+        if not section_ids:
+            return []
+        query_filter["section_id"] = {"$in": section_ids}
     if section_id:
         query_filter["section_id"] = section_id
     if is_parent_roi is not None:

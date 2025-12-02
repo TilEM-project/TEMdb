@@ -91,11 +91,11 @@ class ROIResponse(ROIBase):
 
 class ROI(Document):
     roi_id: str = Field(
-        ..., 
+        ...,
         description="Hierarchical, globally unique ID (e.g., 'SPEC001.BLK001.SEC001.SUB001.ROI001' or 'SPEC001.BLK001.SEC001.SUB001.ROI001.ROI001')"
     )
     roi_number: int = Field(
-        ..., 
+        ...,
         description="Sequential number for this ROI within its parent context"
     )
     section_id: str = Field(..., description="Human-readable ID of the parent Section")
@@ -105,7 +105,7 @@ class ROI(Document):
     )
     substrate_media_id: str = Field(..., description="Media ID of the substrate this section is placed on")
     hierarchy_level: int = Field(
-        ..., 
+        ...,
         description="Depth level in ROI hierarchy (1=top-level section ROI, 2=child ROI, etc.)"
     )
 

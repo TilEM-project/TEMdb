@@ -8,8 +8,7 @@ import logging
 
 from typing import List, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Body
-from motor.motor_asyncio import AsyncIOMotorClient
+from fastapi import APIRouter, HTTPException, Body
 
 from temdb.models.v1.grids import Grid, GridUpdate, GridRecord
 
@@ -65,7 +64,7 @@ def find_valid_folders(root_dir):
 
 
 @grid_api.put("/grids/add_directory")
-async def add_directory(records: list[str], client: AsyncIOMotorClient = Depends()):
+async def add_directory(records: list[str]):
     add_count = 0
     try:
         for root_dir in records:
