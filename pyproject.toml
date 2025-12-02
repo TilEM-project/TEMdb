@@ -17,7 +17,7 @@ test = [
     "pytest-cov",
     "httpx",
     "faker",
-    "mongomock-motor",
+    "testcontainers[mongodb]",
 ]
 docs = [
     "mkdocs",

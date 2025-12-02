@@ -3,7 +3,6 @@ from typing import List, Optional, Dict, Any
 import logging
 import math
 from fastapi import APIRouter, Body, HTTPException, Query, Response
-from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING
 from temdb.models.v2.acquisition import (
     Acquisition,
@@ -58,7 +57,7 @@ async def list_acquisitions(
     specimen_id: Optional[str] = Query(
         None, description="Filter by human-readable Specimen ID"
     ),
-    roi_id: Optional[int] = Query(None, description="Filter by human-readable ROI ID"),
+    roi_id: Optional[str] = Query(None, description="Filter by human-readable ROI ID"),
     acquisition_task_id: Optional[str] = Query(
         None, description="Filter by human-readable Acquisition Task ID"
     ),

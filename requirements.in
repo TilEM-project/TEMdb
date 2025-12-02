@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-beanie
+beanie>=2.0.1
 pydantic
 pydantic-settings
 jinja2
