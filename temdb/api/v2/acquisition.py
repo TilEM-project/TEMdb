@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional
 from bson import DBRef, ObjectId
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Body,
     Depends,
     HTTPException,
@@ -433,63 +432,63 @@ async def add_tile_to_acquisition(acquisition_id: str, tile_data: TileCreate):
 async def add_tiles_to_acquisition(
     acquisition_id: str,
     tiles: List[TileCreate],
-    background_tasks: BackgroundTasks,
-    config: BaseConfig = Depends(get_config),
+    db_manager: DatabaseManager = Depends(get_db_manager),
 ):
-    """Add multiple tiles to an acquisition, using background tasks for large batches."""
+    """Add multiple tiles to an acquisition."""
     acquisition = await Acquisition.find_one(
         Acquisition.acquisition_id == acquisition_id
     )
     if not acquisition:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
 
-    async def process_tile_batch(tile_batch: List[TileCreate], acq_doc: Acquisition):
-        logger.info(
-            f"Processing batch of {len(tile_batch)} tiles for acquisition {acq_doc.acquisition_id}"
-        )
-        new_tiles_to_insert = []
-        for tile_item in tile_batch:
-            if await Tile.find_one({"tile_id": tile_item.tile_id}).exists():
-                continue
+    total_tiles = len(tiles)
+    collection = db_manager.db["tiles"]
+    logger.info(f"Received {total_tiles} tiles for acquisition {acquisition_id}")
 
-            new_tiles_to_insert.append(
-                Tile(
-                    **tile_item.model_dump(),
-                    acquisition_id=acq_doc.acquisition_id,
-                    acquisition_ref=acq_doc.id,
-                    roi_id=acq_doc.roi_id,
-                    specimen_id=acq_doc.specimen_id,
-                )
-            )
+    incoming_tile_ids = [t.tile_id for t in tiles]
+    existing_cursor = collection.find(
+        {"tile_id": {"$in": incoming_tile_ids}},
+        {"tile_id": 1}
+    )
+    existing_ids = {doc["tile_id"] async for doc in existing_cursor}
+
+    acquisition_ref = DBRef("acquisitions", acquisition.id)
+
+    docs_to_insert = [
+        {
+            "_id": ObjectId(),
+            **tile.model_dump(),
+            "acquisition_id": acquisition.acquisition_id,
+            "acquisition_ref": acquisition_ref,
+            "roi_id": acquisition.roi_id,
+            "specimen_id": acquisition.specimen_id,
+        }
+        for tile in tiles
+        if tile.tile_id not in existing_ids
+    ]
+
+    inserted_count = 0
+    skipped_count = len(existing_ids)
+
+    if docs_to_insert:
         try:
-            if new_tiles_to_insert:
-                await Tile.insert_many(new_tiles_to_insert)
-                logger.info(
-                    f"Inserted batch of {len(new_tiles_to_insert)} tiles for acquisition {acq_doc.acquisition_id}"
-                )
-        except Exception as e_batch:
+            result = await collection.insert_many(docs_to_insert, ordered=False)
+            inserted_count = len(result.inserted_ids)
+            logger.info(
+                f"Inserted {inserted_count} tiles for acquisition {acquisition_id}"
+            )
+        except Exception as e:
             logger.error(
-                f"Error inserting tile batch for acquisition {acq_doc.acquisition_id}: {e_batch}",
+                f"Error inserting tiles for acquisition {acquisition_id}: {e}",
                 exc_info=True,
             )
-
-    total_tiles = len(tiles)
-    num_batches = math.ceil(total_tiles / config.max_batch_size)
-    logger.info(
-        f"Received {total_tiles} tiles for acquisition {acquisition_id}, processing in {num_batches} batches."
-    )
-
-    for i in range(num_batches):
-        start_idx = i * config.max_batch_size
-        end_idx = start_idx + config.max_batch_size
-        batch = tiles[start_idx:end_idx]
-        background_tasks.add_task(process_tile_batch, batch, acquisition)
+            raise HTTPException(500, f"Error inserting tiles: {e}")
 
     return {
-        "message": f"Processing {total_tiles} tiles in {num_batches} background batches for acquisition {acquisition_id}.",
         "acquisition_id": acquisition_id,
-        "total_tiles": total_tiles,
-        "num_batches": num_batches,
+        "total_received": total_tiles,
+        "inserted": inserted_count,
+        "skipped_existing": skipped_count,
     }
 
 
@@ -510,9 +509,10 @@ async def get_tiles_from_acquisition(
     if not acquisition:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
 
-    query = {"acquisition_ref.id": acquisition.id}
+    # Build base query with Beanie syntax for Link field
+    filters = [Tile.acquisition_ref.id == acquisition.id]
     if cursor is not None:
-        query["raster_index"] = {"$gt": cursor}
+        filters.append(Tile.raster_index > cursor)
 
     projection = None
     if fields:
@@ -521,7 +521,7 @@ async def get_tiles_from_acquisition(
             projection["raster_index"] = 1
         projection["_id"] = 0
 
-    find_query = Tile.find(query, fetch_links=False)
+    find_query = Tile.find(*filters, fetch_links=False)
 
     if projection:
         find_query = find_query.project(projection_model=None, projection=projection)
@@ -529,10 +529,15 @@ async def get_tiles_from_acquisition(
     find_query = find_query.sort([("raster_index", ASCENDING)])
 
     tiles_list = await find_query.limit(limit).to_list()
-    next_cursor = tiles_list[-1]["raster_index"] if tiles_list else None
+    # Handle both Tile objects (no projection) and dicts (with projection)
+    if tiles_list:
+        last_tile = tiles_list[-1]
+        next_cursor = last_tile["raster_index"] if isinstance(last_tile, dict) else last_tile.raster_index
+    else:
+        next_cursor = None
 
     has_more = (
-        await Tile.find(query)
+        await Tile.find(*filters)
         .sort(("raster_index", ASCENDING))
         .skip(limit)
         .limit(1)

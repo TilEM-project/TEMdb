@@ -313,9 +313,9 @@ async def test_add_tiles_to_acquisition_bulk(
     )
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["message"].startswith("Processing")
-    assert response_data["total_tiles"] == num_tiles
-    assert response_data["num_batches"] == 1
+    assert response_data["total_received"] == num_tiles
+    assert response_data["inserted"] == num_tiles
+    assert response_data["skipped_existing"] == 0
 
 
 @pytest.mark.asyncio
