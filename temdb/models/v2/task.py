@@ -15,7 +15,7 @@ class AcquisitionTaskCreate(BaseModel):
     task_id: str = Field(..., description="Unique identifier for this task")
     specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")
-    roi_id: int = Field(..., description="ID of region of interest to be acquired")
+    roi_id: str = Field(..., description="ID of region of interest to be acquired")
     tags: List[str] = Field(default_factory=list, description="Tags for filtering")
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata"
@@ -50,7 +50,7 @@ class AcquisitionTask(Document):
     task_id: str = Field(..., description="Unique identifier for this task")
     specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")
-    roi_id: int = Field(..., description="ID of region of interest to be acquired")
+    roi_id: str = Field(..., description="ID of region of interest to be acquired")
 
     task_type: str = Field(
         "standard_acquisition", description="Type of acquisition task"

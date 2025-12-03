@@ -35,7 +35,7 @@ async def list_tasks(
     block_id: Optional[str] = Query(
         None, description="Filter by human-readable Block ID"
     ),
-    roi_id: Optional[int] = Query(None, description="Filter by human-readable ROI ID"),
+    roi_id: Optional[str] = Query(None, description="Filter by human-readable ROI ID"),
     task_type: Optional[str] = None,
 ):
     """List acquisition tasks using aggregation to fetch linked data."""

@@ -78,7 +78,7 @@ class AcquisitionParams(BaseModel):
 class AcquisitionCreate(BaseModel):
     montage_id: str = Field(..., description="ID of montage")
     acquisition_id: str = Field(..., description="ID of acquisition")
-    roi_id: int = Field(..., description="ID of region of interest")
+    roi_id: str = Field(..., description="ID of region of interest")
     acquisition_task_id: str = Field(..., description="ID of acquisition task session")
     hardware_settings: HardwareParams = Field(
         ..., description="Hardware settings of acquisition"
@@ -147,7 +147,7 @@ class Acquisition(Document):
     acquisition_id: str = Field(..., description="ID of acquisition")
     montage_id: str = Field(..., description="ID of montage")
     specimen_id: str = Field(..., description="ID of specimen")
-    roi_id: int = Field(..., description="ID of region of interest")
+    roi_id: str = Field(..., description="ID of region of interest")
     acquisition_task_id: str = Field(..., description="ID of acquisition task")
 
     specimen_ref: Link[Specimen] = Field(

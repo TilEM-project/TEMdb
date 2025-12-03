@@ -5,7 +5,8 @@ import pytest
 from beanie import init_beanie
 from fastapi import FastAPI
 from httpx import AsyncClient, ASGITransport
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
+from testcontainers.mongodb import MongoDbContainer
 
 from temdb.database import DatabaseManager
 from temdb.dependencies import get_db_manager
@@ -24,7 +25,6 @@ from temdb.models.v2.tile import Tile
 
 logging.basicConfig(level=logging.INFO)
 
-TEST_DATABASE_URL = "mongodb://localhost:27017/testdb"
 TEST_DB_NAME = "testdb"
 
 DOCUMENT_MODELS = [
@@ -41,11 +41,20 @@ DOCUMENT_MODELS = [
 ]
 
 
+@pytest.fixture(scope="session")
+def mongo_container():
+    """Start MongoDB container once per test session."""
+    with MongoDbContainer("mongo:8") as container:
+        yield container
+
+
 @pytest.fixture(scope="function")
-async def mongo_client():
-    """Create a MongoDB client for all tests."""
-    client = AsyncIOMotorClient(TEST_DATABASE_URL)
+async def mongo_client(mongo_container):
+    """Create a MongoDB client using the testcontainer."""
+    connection_url = mongo_container.get_connection_url()
+    client = AsyncMongoClient(connection_url)
     yield client
+    await client.close()
 
 
 @pytest.fixture(scope="function")
@@ -55,10 +64,10 @@ async def mongo_client_session(mongo_client):
 
 
 @pytest.fixture(scope="function")
-async def test_db_manager(mongo_client_session, init_db):
+async def test_db_manager(mongo_container, mongo_client_session, init_db):
     """Create DatabaseManager using the SAME client as Beanie."""
     db_manager = DatabaseManager(
-        mongodb_uri=TEST_DATABASE_URL, mongodb_name=TEST_DB_NAME
+        mongodb_uri=mongo_container.get_connection_url(), mongodb_name=TEST_DB_NAME
     )
     db_manager.client = mongo_client_session
     db_manager.db = mongo_client_session[TEST_DB_NAME]
@@ -181,15 +190,16 @@ async def test_section(init_db, test_cutting_session: CuttingSession, test_subst
 async def test_roi(init_db, test_section: Section):
     """Creates a test ROI document linked to test_section."""
     roi = ROI(
-        roi_id=1001,
+        roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI001",
+        roi_number=1,
         section_id=test_section.section_id,
-        cutting_session_id=test_section.cutting_session_id,
         block_id=test_section.block_id,
         specimen_id=test_section.specimen_id,
+        substrate_media_id="SUB001",
+        hierarchy_level=1,
         section_ref=test_section.id,
         parent_roi_ref=None,
         updated_at=datetime.now(timezone.utc),
-        # Add required fields from ROIBase if missing
         section_number=test_section.section_number,
     )
     await roi.insert()

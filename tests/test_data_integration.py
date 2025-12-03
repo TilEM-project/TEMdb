@@ -62,9 +62,9 @@ class TestDataIntegration:
          await section.insert()
          return await Section.get(section.id)
 
-    async def create_roi(self, section: Section, roi_id: int = 1) -> ROI:
+    async def create_roi(self, section: Section, roi_number: int = 1) -> ROI:
         """Helper to create and insert an ROI."""
-        roi = generate_roi(section, roi_id) 
+        roi = generate_roi(section, roi_number) 
 
         await roi.insert()
         return await ROI.get(roi.id)
@@ -165,7 +165,6 @@ class TestDataIntegration:
         assert roi.roi_id is not None
         assert roi.section_ref.ref.id == section.id
         assert roi.section_id == section.section_id
-        assert roi.cutting_session_id == cutting_session.cutting_session_id
         assert roi.block_id == block.block_id
         assert roi.specimen_id == specimen.specimen_id
 

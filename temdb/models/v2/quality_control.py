@@ -43,7 +43,7 @@ class BadFocusTileInfo(BaseModel):
     focus_score: float
     image_path: str
     stage_position: Dict[str, float]
-    roi_id: Optional[int] = None
+    roi_id: Optional[str] = None
     specimen_id: Optional[str] = None
 
 

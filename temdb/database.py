@@ -3,7 +3,7 @@ from copy import deepcopy
 from typing import Dict, List, Type, TypeVar
 
 from beanie import Document, init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from temdb.models.v1.grids import Grid
 from temdb.models.v2.acquisition import Acquisition
@@ -27,7 +27,7 @@ class DatabaseManager:
     def __init__(self, mongodb_uri: str, mongodb_name: str):
         self.mongo_url = mongodb_uri
         self.db_name = mongodb_name
-        self.client = AsyncIOMotorClient(mongodb_uri)
+        self.client = AsyncMongoClient(mongodb_uri)
         self.db = self.client[mongodb_name]
         self._static_models: List[Type[Document]] = [
             Grid,
