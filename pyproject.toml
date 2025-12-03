@@ -1,39 +1,51 @@
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "TEMdb"
-version = "0.1.0"
-authors = [
-    { name="Derrick Brittain", email="derrickb@alleninstitute.org" }
-]
-dynamic = ["dependencies"]
+name = "temdb-workspace"
+version = "2.0.0"
+description = "TEMdb monorepo workspace"
+requires-python = ">=3.10"
+dependencies = []
 
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "httpx",
-    "faker",
-    "testcontainers[mongodb]",
+[tool.uv.workspace]
+members = [
+    "packages/temdb-models",
+    "packages/temdb-client",
+    "packages/temdb",
 ]
-docs = [
-    "mkdocs",
-    "mkdocs-material",
-    "mkdocs-mermaid2-plugin",
-    "pymdown-extensions",
+
+[tool.uv.sources]
+temdb-models = { workspace = true }
+temdb-client = { workspace = true }
+temdb = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "temdb-models",
+    "temdb-client",
+    "temdb",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.25",
+    "testcontainers>=4.0",
+    "ruff>=0.1",
+    "faker>=22.0",
+    "bump-my-version>=1.2",
+    "pre-commit>=3.5",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
+    "ignore:The wait_for_logs function with string or callable predicates is deprecated:DeprecationWarning",
+]
 
+[tool.ruff]
+line-length = 120
+target-version = "py310"
 
-[tool.setuptools]
-py-modules = ["temdb"]
-
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

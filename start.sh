@@ -2,8 +2,9 @@
 
 set -e
 
-if ! command -v gunicorn &> /dev/null; then
-    echo "Error: gunicorn is not installed"
+if ! command -v uv &> /dev/null; then
+    echo "Error: uv is not installed"
+    echo "Install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
     exit 1
 fi
 
@@ -23,11 +24,10 @@ echo "Host: $HOST:$PORT"
 echo "App: $APP_MODULE"
 echo "=========================="
 
-# Start Gunicorn with Uvicorn workers
-exec gunicorn \
-    --bind $HOST:$PORT \
+exec python -m uvicorn "$APP_MODULE" \
+    --host $HOST \
+    --port $PORT \
     --workers $WORKERS \
-    --worker-class uvicorn.workers.UvicornWorker \
     --log-level $LOG_LEVEL \
     --access-logfile - \
     --error-logfile - \
