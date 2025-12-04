@@ -469,3 +469,46 @@ async def test_acquisition_metadata_endpoints_status_filter(async_client: AsyncC
 
     for acq in filtered_data["acquisitions"]:
         assert acq["acquisition"]["status"] == status
+
+
+@pytest.mark.asyncio
+async def test_add_tiles_bulk_with_gzip(async_client: AsyncClient, test_acquisition):
+    """Test that gzip-compressed requests are handled correctly."""
+    import gzip
+    import json
+
+    num_tiles = 100
+    tiles_data = []
+    for i in range(num_tiles):
+        tile_id_hr = f"TILE_GZIP_{i}_{int(datetime.now(timezone.utc).timestamp())}"
+        tiles_data.append(
+            {
+                "tile_id": tile_id_hr,
+                "raster_index": i + 1000,
+                "stage_position": {"x": float(i), "y": float(i + 1)},
+                "raster_position": {"row": i // 10, "col": i % 10},
+                "focus_score": 0.8,
+                "min_value": 10,
+                "max_value": 240,
+                "mean_value": 100,
+                "std_value": 20,
+                "image_path": f"/path/to/gzip/{tile_id_hr}.tif",
+            }
+        )
+
+    body = json.dumps(tiles_data).encode("utf-8")
+    compressed = gzip.compress(body)
+
+    # Verify compression actually reduced size
+    assert len(compressed) < len(body)
+
+    response = await async_client.post(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        content=compressed,
+        headers={"Content-Encoding": "gzip", "Content-Type": "application/json"},
+    )
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["total_received"] == num_tiles
+    assert response_data["inserted"] == num_tiles
+    assert response_data["skipped_existing"] == 0

@@ -1,8 +1,11 @@
+import gzip
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from temdb.server.api.v1.grids import grid_api
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
@@ -24,6 +27,44 @@ logger.setLevel(logging.DEBUG if config.debug else logging.INFO)
 logger.info(f"Debug mode: {config.debug}")
 
 
+class GzipRequestMiddleware:
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        content_encoding = headers.get(b"content-encoding", b"").decode()
+
+        if content_encoding == "gzip":
+            body_parts = []
+            while True:
+                message = await receive()
+                body_parts.append(message.get("body", b""))
+                if not message.get("more_body", False):
+                    break
+
+            compressed_body = b"".join(body_parts)
+            decompressed_body = gzip.decompress(compressed_body)
+
+            body_sent = False
+
+            async def new_receive() -> Message:
+                nonlocal body_sent
+                if not body_sent:
+                    body_sent = True
+                    return {"type": "http.request", "body": decompressed_body, "more_body": False}
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            await self.app(scope, new_receive, send)
+        else:
+            await self.app(scope, receive, send)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     mongodb_uri = app.state.mongodb_uri
@@ -37,7 +78,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app():
-    app = FastAPI(title=config.app_name, version=__version__, lifespan=lifespan)
+    app = FastAPI(
+        title=config.app_name,
+        version=__version__,
+        lifespan=lifespan,
+    )
+    app.add_middleware(GzipRequestMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.config = config
     logging.info(f"Mongo URI: {app.config.mongodb_uri}")
     logging.info(f"Database name: {app.config.mongodb_name}")

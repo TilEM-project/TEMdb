@@ -1,4 +1,6 @@
 import asyncio
+import gzip
+import json
 import logging
 from typing import Any, cast
 
@@ -111,6 +113,23 @@ class AsyncTEMdbClient:
     async def _async_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | list[Any]:
         self.logger.debug(f"Async Request: {method} {endpoint}")
         try:
+            if "json" in kwargs and method.upper() in ("POST", "PATCH", "PUT"):
+                body = json.dumps(kwargs.pop("json")).encode("utf-8")
+                if len(body) > 1000:
+                    self.logger.debug(f"Compressing request body: {len(body)} bytes")
+                    kwargs["content"] = gzip.compress(body)
+                    kwargs["headers"] = {
+                        **kwargs.get("headers", {}),
+                        "Content-Encoding": "gzip",
+                        "Content-Type": "application/json",
+                    }
+                else:
+                    kwargs["content"] = body
+                    kwargs["headers"] = {
+                        **kwargs.get("headers", {}),
+                        "Content-Type": "application/json",
+                    }
+
             response = await self._http_client.request(method, endpoint, **kwargs)
             response.raise_for_status()
             if response.status_code == 204:
