@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Test
+        run: uv run pytest
+
+  release:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        run: uv run bump-my-version bump ${{ inputs.bump }}
+
+      - name: Push changes
+        run: git push origin main --tags
+
+  publish-models:
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/temdb-models/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pull latest
+        run: git pull origin main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build temdb-models
+        run: python -m build packages/temdb-models
+
+      - name: Publish temdb-models
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/temdb-models/dist/
+
+  publish-client:
+    runs-on: ubuntu-latest
+    needs: [release, publish-models]
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/temdb-client/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pull latest
+        run: git pull origin main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build temdb-client
+        run: python -m build packages/temdb-client
+
+      - name: Publish temdb-client
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/temdb-client/dist/

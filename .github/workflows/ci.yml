@@ -1,78 +1,83 @@
-name: TEMdb CI
+name: CI
 
-on:
-  push:
-  pull_request:
+on: [push, pull_request]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      mongo:
-        image: mongo:latest
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ping: 1})' || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Test
+        run: uv run pytest
+
+  publish-models:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/temdb-models/
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      - name: Install build
+        run: pip install build
+
+      - name: Build temdb-models
+        run: python -m build packages/temdb-models
+
+      - name: Publish temdb-models
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-python-3.11-pip-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-python-3.11-pip-
-            ${{ runner.os }}-python-
-            ${{ runner.os }}-pip-
-            ${{ runner.os }}-
+          packages-dir: packages/temdb-models/dist/
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[test]"
-
-      - name: Run tests
-        run: |
-          pytest
-        env:
-          MONGODB_URI: mongodb://localhost:27017/
-          MONGODB_NAME: temdb
-          TEMDB_ENV: dev
-  docker:
+  publish-client:
     runs-on: ubuntu-latest
-    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, publish-models]
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/temdb-client/
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Docker login
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          username: ${{ vars.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-      - name: Generate image name
-        run: echo "IMAGE_NAME=$(echo ${GITHUB_REPOSITORY@L} | cut -d "/" -f 2)" >> ${GITHUB_ENV}
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          python-version: "3.11"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build temdb-client
+        run: python -m build packages/temdb-client
+
+      - name: Publish temdb-client
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          context: .
-          push: ${{ startsWith(github.ref, 'refs/tags') }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: |
-            ${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:latest
-            ${{ (startsWith(github.ref, 'refs/tags') && '${{ vars.DOCKER_USER }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}') }}
+          packages-dir: packages/temdb-client/dist/

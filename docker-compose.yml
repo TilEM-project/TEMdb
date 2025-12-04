@@ -1,9 +1,8 @@
 services:
-
   mongo:
     image: mongo:latest
     env_file:
-      - ./dev.env    
+      - ./dev.env
     environment:
       - MONGO_DATA_DIR=/data/db
       - MONGO_LOG_DIR=/dev/null
@@ -15,39 +14,28 @@ services:
   mongo-express:
     image: mongo-express
     env_file:
-      - ./dev.env    
+      - ./dev.env
     depends_on:
-        - mongo
+      - mongo
     ports:
-        - 8081:8081
-    command: ["bash", "-c", "sleep 10 && /docker-entrypoint.sh"]   
+      - 8081:8081
+    command: ["bash", "-c", "sleep 10 && /docker-entrypoint.sh"]
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - 80:80
+      - 8000:8000
     volumes:
-      - .:/app
+      - ./packages:/app/packages
+      - ./run.py:/app/run.py
     environment:
       - TEMDB_ENV=dev
+      - MONGODB_URI=mongodb://mongo:27017/
+      - MONGODB_NAME=temdb
     depends_on:
       - mongo
 
-  docs:
-      build:
-        context: .
-        dockerfile: Dockerfile.docs
-      ports:
-        - "8001:8000"
-      volumes:
-        - ./docs:/docs_app/docs
-        - ./mkdocs.yml:/docs_app/mkdocs.yml
-        # - ./generate_schema_diagram.py:/docs_app/generate_schema_diagram.py
-        # - ./temdb:/docs_app/temdb
-      restart: unless-stopped
-
-  
 volumes:
   mongo_data:
