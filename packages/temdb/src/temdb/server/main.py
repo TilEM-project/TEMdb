@@ -10,6 +10,7 @@ from temdb.server.api.v1.grids import grid_api
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
+from temdb.server.api.v2.lens_correction import lens_correction_api
 from temdb.server.api.v2.quality_control import qc_api
 from temdb.server.api.v2.roi import roi_api
 from temdb.server.api.v2.section import section_api
@@ -28,7 +29,6 @@ logger.info(f"Debug mode: {config.debug}")
 
 
 class GzipRequestMiddleware:
-
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
@@ -120,6 +120,7 @@ def create_app():
     app.include_router(roi_api, prefix=v2_prefix)
     app.include_router(acquisition_task_api, prefix=v2_prefix)
     app.include_router(acquisition_api, prefix=v2_prefix)
+    app.include_router(lens_correction_api, prefix=v2_prefix)
     app.include_router(qc_api, prefix=v2_prefix)
 
     @app.get("/")

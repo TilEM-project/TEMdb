@@ -121,3 +121,53 @@ class SyncAcquisitionResourceWrapper:
     def get_minimap_uri(self, acquisition_id: str) -> dict[str, str | None]:
         """Get the minimap URI."""
         return asyncio.run(self._async_resource.get_minimap_uri(acquisition_id))
+
+    def get_current_lens_correction(
+        self,
+        scope_id: str,
+        magnification: int,
+    ) -> AcquisitionResponse:
+        """Get the current lens correction for given scope and magnification."""
+        return asyncio.run(self._async_resource.get_current_lens_correction(scope_id, magnification))
+
+    def get_latest_lens_correction(self, scope_id: str) -> AcquisitionResponse:
+        """Get the most recent lens correction for a scope."""
+        return asyncio.run(self._async_resource.get_latest_lens_correction(scope_id))
+
+    def list_lens_corrections(
+        self,
+        scope_id: str | None = None,
+        magnification: int | None = None,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List lens correction acquisitions with optional filters."""
+        return asyncio.run(
+            self._async_resource.list_lens_corrections(scope_id, magnification, from_time, to_time, limit, offset)
+        )
+
+    def get_lens_correction(self, acquisition_id: str) -> AcquisitionResponse:
+        """Get the lens correction used by a specific acquisition."""
+        return asyncio.run(self._async_resource.get_lens_correction(acquisition_id))
+
+    def get_acquisitions_by_lens_correction(
+        self,
+        lens_correction_acquisition_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Get all acquisitions that used a specific lens correction."""
+        return asyncio.run(
+            self._async_resource.get_acquisitions_by_lens_correction(lens_correction_acquisition_id, limit, offset)
+        )
+
+    def find_orphan_acquisitions(
+        self,
+        scope_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Find acquisitions without a lens correction reference."""
+        return asyncio.run(self._async_resource.find_orphan_acquisitions(scope_id, limit, offset))
