@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .utils.uri import URI
+
 
 class Matcher(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -23,7 +25,7 @@ class Matcher(BaseModel):
 
 
 class TileBase(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     stage_position: dict[str, float] | None = Field(
         None, description="Stage position of the tile in stage coordinates in nm"
@@ -34,7 +36,7 @@ class TileBase(BaseModel):
     max_value: float | None = Field(None, description="Maximum pixel value of the tile")
     mean_value: float | None = Field(None, description="Mean pixel value of the tile")
     std_value: float | None = Field(None, description="Standard deviation of pixel values of the tile")
-    image_path: str | None = Field(None, description="URL to the image of the tile")
+    image_path: URI | None = Field(None, description="URL to the image of the tile")
     matcher: list[Matcher] | None = Field(None, description="List of matchers for the tile")
     supertile_id: str | None = Field(None, description="ID of the supertile the tile belongs to")
     supertile_raster_position: dict[str, int] | None = Field(
@@ -52,7 +54,7 @@ class TileCreate(TileBase):
     max_value: float = Field(..., description="Maximum pixel value of the tile")
     mean_value: float = Field(..., description="Mean pixel value of the tile")
     std_value: float = Field(..., description="Standard deviation of pixel values of the tile")
-    image_path: str = Field(..., description="URL to the image of the tile")
+    image_path: URI = Field(..., description="URL to the image of the tile")
 
 
 class TileUpdate(TileBase):
@@ -70,7 +72,7 @@ class TileResponse(TileBase):
     max_value: float = Field(..., description="Maximum pixel value of the tile")
     mean_value: float = Field(..., description="Mean pixel value of the tile")
     std_value: float = Field(..., description="Standard deviation of pixel values of the tile")
-    image_path: str = Field(..., description="URL to the image of the tile")
+    image_path: URI = Field(..., description="URL to the image of the tile")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
