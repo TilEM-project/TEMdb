@@ -283,6 +283,27 @@ async def create_acquisition(acq_data: AcquisitionCreate, db_manager: DatabaseMa
                 )
             replaces_acq_ref_id = prev_acq.id
 
+        if acq_data.lens_correction_acquisition_id:
+            if acq_data.lens_correction:
+                raise HTTPException(
+                    400,
+                    "Lens correction acquisitions cannot reference another lens correction",
+                )
+
+            referenced_lc = await Acquisition.find_one(
+                Acquisition.acquisition_id == acq_data.lens_correction_acquisition_id
+            )
+            if not referenced_lc:
+                raise HTTPException(
+                    400,
+                    f"Referenced lens correction acquisition not found: {acq_data.lens_correction_acquisition_id}",
+                )
+            if not referenced_lc.lens_correction:
+                raise HTTPException(
+                    400,
+                    f"Referenced acquisition is not a lens correction: {acq_data.lens_correction_acquisition_id}",
+                )
+
         new_acquisition = Acquisition(
             acquisition_id=acq_data.acquisition_id,
             montage_id=acq_data.montage_id,
@@ -298,6 +319,7 @@ async def create_acquisition(acq_data: AcquisitionCreate, db_manager: DatabaseMa
             status=acq_data.status,
             tilt_angle=acq_data.tilt_angle,
             lens_correction=acq_data.lens_correction,
+            lens_correction_acquisition_id=acq_data.lens_correction_acquisition_id,
             start_time=acq_data.start_time or datetime.now(timezone.utc),
             end_time=acq_data.end_time,
             montage_set_name=acq_data.montage_set_name,
@@ -658,6 +680,30 @@ async def get_acquisition_with_full_metadata(acquisition_id: str):
                             result.specimen = specimen
 
     return result
+
+
+@acquisition_api.get("/acquisitions/{acquisition_id}/lens-correction", response_model=Acquisition)
+async def get_acquisition_lens_correction(acquisition_id: str):
+    """
+    Get the lens correction acquisition that was used for this acquisition."""
+    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
+    if not acquisition:
+        raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+
+    if not acquisition.lens_correction_acquisition_id:
+        raise HTTPException(
+            status_code=404,
+            detail="This acquisition does not have a lens correction reference",
+        )
+
+    lc = await Acquisition.find_one(Acquisition.acquisition_id == acquisition.lens_correction_acquisition_id)
+    if not lc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Referenced lens correction not found: {acquisition.lens_correction_acquisition_id}",
+        )
+
+    return lc
 
 
 @acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])

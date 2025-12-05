@@ -93,6 +93,20 @@ class AcquisitionDocument(Document, AcquisitionBase):
                 name="replaces_acq_id_index",
                 sparse=True,
             ),
+            IndexModel(
+                [
+                    ("hardware_settings.scope_id", ASCENDING),
+                    ("acquisition_settings.magnification", ASCENDING),
+                    ("lens_correction", ASCENDING),
+                    ("start_time", DESCENDING),
+                ],
+                name="lens_correction_lookup_idx",
+            ),
+            IndexModel(
+                [("lens_correction_acquisition_id", ASCENDING)],
+                name="lens_correction_ref_idx",
+                sparse=True,
+            ),
         ]
 
     def get_current_storage_location(self) -> StorageLocation | None:

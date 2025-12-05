@@ -243,6 +243,9 @@ async def test_acquisition(
             "tile_overlap": 0.1,
             "saved_bit_depth": 8,
         },
+        lens_correction=False,
+        lens_correction_acquisition_id=None,
+        tilt_angle=0.0,
         status=AcquisitionStatus.IMAGING,
         start_time=datetime.now(timezone.utc),
     )

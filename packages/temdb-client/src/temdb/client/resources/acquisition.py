@@ -189,3 +189,74 @@ class AcquisitionResource(BaseResource):
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
         return await self._get("acquisitions/aggregated", params=params)
+
+    async def get_current_lens_correction(
+        self,
+        scope_id: str,
+        magnification: int,
+    ) -> AcquisitionResponse:
+        """Get the current lens correction for given scope and magnification."""
+        params = {"scope_id": scope_id, "magnification": magnification}
+        response_data = await self._get("lens-corrections/current", params=params)
+        return AcquisitionResponse.model_validate(response_data)
+
+    async def get_latest_lens_correction(
+        self,
+        scope_id: str,
+    ) -> AcquisitionResponse:
+        """Get the most recent lens correction for a scope."""
+        response_data = await self._get("lens-corrections/latest", params={"scope_id": scope_id})
+        return AcquisitionResponse.model_validate(response_data)
+
+    async def list_lens_corrections(
+        self,
+        scope_id: str | None = None,
+        magnification: int | None = None,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List lens correction acquisitions with optional filters."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if scope_id:
+            params["scope_id"] = scope_id
+        if magnification:
+            params["magnification"] = magnification
+        if from_time:
+            params["from_time"] = from_time.isoformat()
+        if to_time:
+            params["to_time"] = to_time.isoformat()
+        return await self._get("lens-corrections", params=params)
+
+    async def get_lens_correction(
+        self,
+        acquisition_id: str,
+    ) -> AcquisitionResponse:
+        """Get the lens correction used by a specific acquisition."""
+        response_data = await self._get(f"acquisitions/{acquisition_id}/lens-correction")
+        return AcquisitionResponse.model_validate(response_data)
+
+    async def get_acquisitions_by_lens_correction(
+        self,
+        lens_correction_acquisition_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Get all acquisitions that used a specific lens correction."""
+        return await self._get(
+            f"lens-corrections/{lens_correction_acquisition_id}/acquisitions",
+            params={"limit": limit, "offset": offset},
+        )
+
+    async def find_orphan_acquisitions(
+        self,
+        scope_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Find acquisitions without a lens correction reference."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if scope_id:
+            params["scope_id"] = scope_id
+        return await self._get("lens-corrections/orphans", params=params)

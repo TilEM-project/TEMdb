@@ -80,6 +80,11 @@ class AcquisitionBase(BaseModel):
     status: AcquisitionStatus | None = None
     tilt_angle: float | None = Field(None, description="Tilt angle of acquisition in degrees")
     lens_correction: bool | None = Field(None, description="Whether this acquisition is a lens correction calibration")
+    lens_correction_acquisition_id: str | None = Field(
+        None,
+        description="ID of the lens correction acquisition used for this acquisition. "
+        "Null for lens correction acquisitions themselves.",
+    )
     end_time: datetime | None = Field(None, description="End time of acquisition")
     storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
     montage_set_name: str | None = Field(None, description="Name of montage set")
