@@ -47,7 +47,7 @@ def test_uri_open():
     "obj_uri",
     ["s3://anotherbucket/other_obj", uri.URIObject("s3://anotherbucket/other_obj")],
 )
-def test_model(obj_uri):
+def test_model_validate(obj_uri):
     class Model(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
         uri: uri.URI
@@ -57,7 +57,7 @@ def test_model(obj_uri):
     assert obj.uri == obj_uri
 
 
-def test_model_error():
+def test_model_validate_error():
     class Model(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
         uri: uri.URI
@@ -67,3 +67,12 @@ def test_model_error():
         Model(uri=5, data=10)
 
     assert exc_info.value.error_count() == 2
+
+
+def test_model_serialize():
+    class Model(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+        uri: uri.URI
+
+    obj = Model(uri="/some/path")
+    assert obj.model_dump_json() == '{"uri":"/some/path"}'
