@@ -1,14 +1,14 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
+
+from temdb.models import SubstrateCreate, SubstrateUpdate
 from temdb.server.documents import (
     SectionDocument as Section,
 )
 from temdb.server.documents import (
     SubstrateDocument as Substrate,
 )
-
-from temdb.models import SubstrateCreate, SubstrateUpdate
 
 substrate_api = APIRouter(
     tags=["Substrates"],

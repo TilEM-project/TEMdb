@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+
 from temdb.server.documents import (
     AcquisitionDocument,
     AcquisitionTaskDocument,
@@ -12,7 +13,6 @@ from temdb.server.documents import (
     SubstrateDocument,
     TileDocument,
 )
-
 from tests.integration.generators import (
     generate_acquisition,
     generate_acquisition_task,
