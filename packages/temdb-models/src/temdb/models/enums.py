@@ -25,3 +25,12 @@ class AcquisitionStatus(str, Enum):
     QC_PASSED = "qc-passed"
     QC_PENDING = "qc-pending"
     TO_BE_REIMAGED = "to be re-imaged"
+
+
+class MatchPosition(str, Enum):
+    INVALID = "invalid"
+    CENTER = "center"
+    LEFT = "left"
+    TOP = "top"
+    RIGHT = "right"
+    BOTTOM = "bottom"

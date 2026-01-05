@@ -16,7 +16,7 @@ class TestMatcher:
             distance=5.83,
             rotation=0.5,
             match_quality=0.95,
-            position=0,
+            position="top",
             pX=[100.0, 200.0],
             pY=[100.0, 200.0],
             qX=[105.0, 205.0],
