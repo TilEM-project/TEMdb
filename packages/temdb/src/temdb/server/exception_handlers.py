@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
+
 from temdb.models import APIErrorResponse
 
 logger = logging.getLogger(__name__)

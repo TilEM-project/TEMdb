@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from faker import Faker
+
 from temdb.models import (
     AcquisitionParams,
     AcquisitionStatus,

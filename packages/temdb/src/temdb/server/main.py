@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
 from temdb.server.api.v1.grids import grid_api
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
@@ -28,7 +29,6 @@ logger.info(f"Debug mode: {config.debug}")
 
 
 class GzipRequestMiddleware:
-
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 

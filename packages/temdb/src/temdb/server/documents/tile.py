@@ -1,6 +1,7 @@
 from beanie import Document, Link
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
+
 from temdb.models import TileBase
 
 from .acquisition import AcquisitionDocument

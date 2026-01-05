@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from beanie import Document, Link
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
+
 from temdb.models import AcquisitionTaskBase, AcquisitionTaskStatus
 
 from .block import BlockDocument

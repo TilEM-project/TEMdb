@@ -14,6 +14,7 @@ from fastapi import (
 )
 from pydantic import BaseModel
 from pymongo import ASCENDING
+
 from temdb.models import (
     AcquisitionCreate,
     AcquisitionStatus,
