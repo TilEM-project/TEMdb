@@ -1,23 +1,127 @@
 # TEMdb
 
-This repository contains a data management system designed to handle data related to the TilEM pipeline. The system manages metadata for specimens, blocks, cutting sessions, sections, regions of interest (ROIs), imaging sessions, acquisitions and tiles.
+Metadata database for TEM sample sectioning and image acquisition.
 
-## Project Overview
+TEMdb tracks the complete TilEM imaging workflow—from specimen sectioning through final tile acquisition. It provides a REST API for managing metadata and a Python SDK for integration with acquisition software and analysis pipelines.
 
-### What It Models
+## Data Model
 
-- **Specimens**: Samples prepared for imaging. Each specimen can have multiple blocks.
-  
-- **Blocks**: Subdivisions of a specimen. Blocks represent specific physical portions of a specimen prepared for sectioning and imaging.
-  
-- **Cutting Sessions**: Sessions where blocks are sectioned into sections, which are then placed on different media types for imaging.
-  
-- **Sections**: Thin slices of a block that are imaged. Sections are placed on a medium like a grid or support film for imaging.
-  
-- **Regions of Interest (ROIs)**: Specific areas within section(s) defined for imaging. ROIs can be created and adjusted based on the imaging requirements.
-  
-- **Imaging Sessions**: Sessions where ROIs are imaged. Imaging sessions are associated with specific sections and they manage multiple ROIs.
-  
-- **Acquisitions**: Each acquisition refers to the process of capturing image data from an ROI.
-  
-- **Tiles**: Individual images captured during an acquisition. A series of tiles form a montage of the ROI.
+TEMdb models the TilEM pipeline as a hierarchy:
+
+```
+Specimen
+  └── Block
+        └── Cutting Session
+              └── Section
+                    └── ROI (Region of Interest)
+                          └── Acquisition Task
+                                └── Acquisition
+                                      └── Tile
+```
+
+- **Specimen** - Sample prepared for imaging
+- **Block** - Physical portion of a specimen prepared for sectioning
+- **Cutting Session** - Session where blocks are sectioned
+- **Section** - Thin slice placed on a substrate (grid or support film)
+- **ROI** - Region within section(s) targeted for imaging
+- **Acquisition Task** - Planned imaging task with parameters
+- **Acquisition** - Completed imaging run
+- **Tile** - Individual image in the acquisition montage
+
+## Packages
+
+### temdb-models (`packages/temdb-models/`)
+
+Shared Pydantic models defining the API schema. Provides:
+- `*Base` - Core fields for each entity
+- `*Create` - Input models for creating entities
+- `*Update` - Partial update models
+- `*Response` - API response models
+
+```python
+from temdb.models import SpecimenCreate, TileCreate, AcquisitionStatus
+```
+
+### temdb-client (`packages/temdb-client/`)
+
+Python SDK with async and sync clients for the TEMdb API.
+
+```python
+from temdb.client import AsyncTEMdbClient, SyncTEMdbClient
+from temdb.models import TileCreate
+
+async with AsyncTEMdbClient("https://temdb.example.com") as client:
+    specimens = await client.specimen.list()
+    await client.acquisition.add_tiles_bulk("ACQ001", [TileCreate(...)])
+
+with SyncTEMdbClient("https://temdb.example.com") as client:
+    specimens = client.specimen.list()
+```
+
+### temdb (`packages/temdb/`)
+
+FastAPI server with MongoDB/Beanie ODM backend. Provides:
+- REST API at `/api/v2/` for all entities
+- Beanie Document models extending shared schemas
+
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/) for dependency management.
+
+```bash
+# Setup
+uv sync
+uv run pre-commit install
+
+# Run tests (uses testcontainers for MongoDB)
+uv run pytest
+
+# Run server with hot reload
+uv run --package temdb uvicorn temdb.server.main:app --reload
+
+# Lint and format
+uv run ruff check .
+uv run ruff format .
+```
+
+### Pre-commit Hooks
+
+Pre-commit hooks run automatically on `git commit`:
+- Trailing whitespace and EOF fixes
+- YAML/TOML validation
+- Ruff linting and formatting
+- Debug statement detection
+
+Run manually: `uv run pre-commit run --all-files`
+
+### Docker
+
+```bash
+# Start MongoDB + server + Mongo Express
+docker-compose up
+
+# API: http://localhost:8000
+# Mongo Express: http://localhost:8081
+```
+
+### Releasing
+
+Releases are managed via GitHub Actions. To release a new version:
+
+1. Go to **Actions → Release → Run workflow**
+2. Select bump type (patch/minor/major)
+3. Click **Run workflow**
+
+This runs tests, bumps versions in all packages, creates a git tag, and publishes `temdb-models` and `temdb-client` to PyPI.
+
+## Architecture
+
+```
+temdb-models (shared schemas)
+       │
+   ┌───┴───┐
+   ▼       ▼
+client   server
+```
+
+The server does not depend on the client. Both import from `temdb-models`.

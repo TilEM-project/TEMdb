@@ -2,19 +2,23 @@ FROM python:3.11-slim
 
 WORKDIR /docs_app
 
-COPY requirements.txt .
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Copy packages for schema generation (only need models and server)
+COPY packages/temdb-models/ ./packages/temdb-models/
+COPY packages/temdb/ ./packages/temdb/
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Install server package (includes models) for model introspection
+RUN uv pip install --system ./packages/temdb-models ./packages/temdb mkdocs mkdocs-material
 
+# Copy docs and mkdocs config
 COPY mkdocs.yml .
 COPY docs/ ./docs/
-
-COPY temdb/ ./temdb/
+COPY generate_schema_diagram.py .
 
 EXPOSE 8000
 
 ENV NAME DocsSite
 
 CMD ["mkdocs", "serve", "--dev-addr", "0.0.0.0:8000", "--dirtyreload"]
-

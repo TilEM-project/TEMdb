@@ -1,5 +1,3 @@
-# filename: generate_schema_diagram.py
-
 import importlib
 import inspect
 import pkgutil
@@ -9,42 +7,37 @@ from enum import Enum as PyEnum
 from pathlib import Path
 from typing import (
     ForwardRef,
-    List,
-    Optional,
-    Set,
-    Type,
     Union,
     get_args,
     get_origin,
 )
 
-from pydantic import BaseModel
 from beanie import Document, Link
+from pydantic import BaseModel
 
-PROJECT_ROOT = Path(__file__).parent 
-MODELS_DIR_REL = "temdb/models/v2"
-DOCS_DIR = PROJECT_ROOT / "docs" 
+PROJECT_ROOT = Path(__file__).parent
+DOCUMENTS_DIR_REL = "packages/temdb/src/temdb/server/documents"
+DOCS_DIR = PROJECT_ROOT / "docs"
 MODELS_DOCS_DIR = DOCS_DIR / "models"
 
 
-
-sys.path.insert(0, str(PROJECT_ROOT))
+# Add the server package to the path
+sys.path.insert(0, str(PROJECT_ROOT / "packages/temdb/src"))
 
 WORKFLOW_GROUPS = {
     "Preparation": {
-        "Specimen",
-        "Block",
-        "CuttingSession",
-        "Section",
+        "SpecimenDocument",
+        "BlockDocument",
+        "CuttingSessionDocument",
+        "SectionDocument",
     },
     "Imaging": {
-        "Section",
-        "ROI",
-        "AcquisitionTask",
-        "Acquisition",
-        "Tile",
+        "SectionDocument",
+        "ROIDocument",
+        "AcquisitionTaskDocument",
+        "AcquisitionDocument",
+        "TileDocument",
     },
-   
 }
 
 EXCLUDE_FIELDS_FROM_ERD = {
@@ -57,7 +50,7 @@ EXCLUDE_FIELDS_FROM_ERD = {
 EXCLUDE_FIELDS_FROM_DETAIL = {"id", "revision_id"}
 
 
-def _parse_type(field_type: Type) -> tuple[str, Optional[str], bool]:
+def _parse_type(field_type: type) -> tuple[str, str | None, bool]:
     origin = get_origin(field_type)
     args = get_args(field_type)
     target_model_name = None
@@ -67,10 +60,10 @@ def _parse_type(field_type: Type) -> tuple[str, Optional[str], bool]:
         return _parse_type(inner_type)
     collection_suffix = ""
     is_list_or_set = False
-    if origin in (list, List):
+    if origin is list:
         is_list_or_set = True
         collection_suffix = "[]"
-    elif origin in (set, Set):
+    elif origin is set:
         is_list_or_set = True
         collection_suffix = "[]"
     if is_list_or_set:
@@ -86,10 +79,8 @@ def _parse_type(field_type: Type) -> tuple[str, Optional[str], bool]:
     if origin is Link:
         if args:
             target_model = args[0]
-            if isinstance(target_model, (str, ForwardRef)):
-                target_model_name = (
-                    str(target_model).split(".")[-1].replace("'", "").replace('"', "")
-                )
+            if isinstance(target_model, str | ForwardRef):
+                target_model_name = str(target_model).split(".")[-1].replace("'", "").replace('"', "")
             elif hasattr(target_model, "__name__"):
                 target_model_name = target_model.__name__
             else:
@@ -129,34 +120,29 @@ def _parse_type(field_type: Type) -> tuple[str, Optional[str], bool]:
                 return "object", None, False
         return type_name, None, False
     fallback_type = re.sub(r"[\[\].,\'\s]", "", str(field_type))
-    fallback_type = (
-        (fallback_type[:20] + "...") if len(fallback_type) > 20 else fallback_type
-    )
+    fallback_type = (fallback_type[:20] + "...") if len(fallback_type) > 20 else fallback_type
     return fallback_type, None, False
 
 
-def find_beanie_models(base_path: Path, models_rel_path: str) -> List[Type[Document]]:
-    models_abs_path = base_path / models_rel_path
-    models_package = models_rel_path.replace("/", ".")
+def find_beanie_models(base_path: Path, documents_rel_path: str) -> list[type[Document]]:
+    documents_abs_path = base_path / documents_rel_path
+    # The package name for imports is temdb.server.documents
+    documents_package = "temdb.server.documents"
     discovered_models = []
-    print(f"Searching for models in: {models_abs_path}")
-    print(f"Using package prefix: {models_package}")
-    for _, module_name, _ in pkgutil.walk_packages([str(models_abs_path)]):
+    print(f"Searching for documents in: {documents_abs_path}")
+    print(f"Using package prefix: {documents_package}")
+    for _, module_name, _ in pkgutil.walk_packages([str(documents_abs_path)]):
         if module_name in ["base", "enum_schemas"]:
             print(f"  Skipping module: {module_name}")
             continue
         try:
-            full_module_name = f"{models_package}.{module_name}"
+            full_module_name = f"{documents_package}.{module_name}"
             print(f"  Importing module: {full_module_name}")
             module = importlib.import_module(full_module_name)
             for name, obj in inspect.getmembers(module):
-                if (
-                    inspect.isclass(obj)
-                    and issubclass(obj, Document)
-                    and obj is not Document
-                ):
+                if inspect.isclass(obj) and issubclass(obj, Document) and obj is not Document:
                     if obj.__module__ == full_module_name:
-                        print(f"    Found Beanie model: {name}")
+                        print(f"    Found Beanie Document: {name}")
                         discovered_models.append(obj)
         except ImportError as e:
             print(f"    Error importing {full_module_name}: {e}")
@@ -165,7 +151,7 @@ def find_beanie_models(base_path: Path, models_rel_path: str) -> List[Type[Docum
     return discovered_models
 
 
-def generate_model_markdown_page(model: Type[Document]) -> str:
+def generate_model_markdown_page(model: type[Document]) -> str:
     model_name = model.__name__
     markdown = f"# {model_name} Model\n\n"
     model_doc = inspect.getdoc(model)
@@ -178,9 +164,7 @@ def generate_model_markdown_page(model: Type[Document]) -> str:
     for field_name, field_info in fields.items():
         if field_name in EXCLUDE_FIELDS_FROM_DETAIL:
             continue
-        field_type_hint = getattr(
-            field_info, "annotation", getattr(field_info, "outer_type_", None)
-        )
+        field_type_hint = getattr(field_info, "annotation", getattr(field_info, "outer_type_", None))
         if field_type_hint is None:
             mermaid_type, target_link_model, _ = "unknown", None, False
         else:
@@ -204,9 +188,7 @@ def generate_model_markdown_page(model: Type[Document]) -> str:
     return markdown
 
 
-def generate_erd_markdown(
-    all_models: List[Type[Document]], core_group_models: Set[str]
-) -> str:
+def generate_erd_markdown(all_models: list[type[Document]], core_group_models: set[str]) -> str:
     """
     Generates a Mermaid ERD Markdown string for a specific group of models,
     including directly linked models for context.
@@ -219,11 +201,9 @@ def generate_erd_markdown(
 
     for model_name in core_models_in_group:
         model = all_model_map[model_name]
-        fields = getattr(model, "model_fields",  {})
+        fields = getattr(model, "model_fields", {})
         for _, field_info in fields.items():
-            field_type_hint = getattr(
-                field_info, "annotation", getattr(field_info, "outer_type_", None)
-            )
+            field_type_hint = getattr(field_info, "annotation", getattr(field_info, "outer_type_", None))
             if field_type_hint:
                 _, target_link_model, _ = _parse_type(field_type_hint)
                 if target_link_model and target_link_model in all_model_map:
@@ -234,17 +214,13 @@ def generate_erd_markdown(
         if model_name in core_models_in_group:
             continue
 
-        fields = getattr(model, "model_fields",  {})
+        fields = getattr(model, "model_fields", {})
         for _, field_info in fields.items():
-            field_type_hint = getattr(
-                field_info, "annotation", getattr(field_info, "outer_type_", None)
-            )
+            field_type_hint = getattr(field_info, "annotation", getattr(field_info, "outer_type_", None))
             if field_type_hint:
                 _, target_link_model, _ = _parse_type(field_type_hint)
                 if target_link_model and target_link_model in core_models_in_group:
-                    related_models_to_add.add(
-                        model_name
-                    ) 
+                    related_models_to_add.add(model_name)
                     break
 
     models_in_diagram.update(related_models_to_add)
@@ -253,9 +229,7 @@ def generate_erd_markdown(
     class_definitions = []
     relationships = []
 
-    for model_name in sorted(
-        list(models_in_diagram)
-    ):
+    for model_name in sorted(list(models_in_diagram)):
         model = all_model_map[model_name]
         class_def = f"    {model_name} {{\n"
         fields = getattr(model, "model_fields", {})
@@ -264,23 +238,17 @@ def generate_erd_markdown(
             if field_name in EXCLUDE_FIELDS_FROM_ERD:
                 continue
 
-            field_type_hint = getattr(
-                field_info, "annotation", getattr(field_info, "outer_type_", None)
-            )
+            field_type_hint = getattr(field_info, "annotation", getattr(field_info, "outer_type_", None))
             if field_type_hint is None:
                 mermaid_type, target_link_model, is_link_list = "unknown", None, False
             else:
-                mermaid_type, target_link_model, is_link_list = _parse_type(
-                    field_type_hint
-                )
+                mermaid_type, target_link_model, is_link_list = _parse_type(field_type_hint)
 
             description = (
                 getattr(
                     field_info,
                     "description",
-                    getattr(
-                        getattr(field_info, "field_info", None), "description", None
-                    ),
+                    getattr(getattr(field_info, "field_info", None), "description", None),
                 )
                 or ""
             )
@@ -318,13 +286,13 @@ def generate_erd_markdown(
 def main():
     """Main function to generate grouped ERDs and individual model pages."""
     print("--- Starting Schema Documentation Generation ---")
-    all_models = find_beanie_models(PROJECT_ROOT, MODELS_DIR_REL)
+    all_models = find_beanie_models(PROJECT_ROOT, DOCUMENTS_DIR_REL)
     if not all_models:
         print("No Beanie models found. Exiting.")
         return
 
     print("\n--- Generating Grouped ERD Diagrams ---")
-    DOCS_DIR.mkdir(parents=True, exist_ok=True) 
+    DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
     for group_name, core_models_set in WORKFLOW_GROUPS.items():
         print(f"\n--- Generating ERD for Group: {group_name} ---")
@@ -332,9 +300,7 @@ def main():
         group_erd_filename = DOCS_DIR / f"schema_{group_name}_erd.md"
         print(f"--- Writing {group_name} ERD diagram to: {group_erd_filename} ---")
         with open(group_erd_filename, "w") as f:
-            f.write(
-                f"# {group_name} Workflow Schema.\n\n{group_erd_content}"
-            )
+            f.write(f"# {group_name} Workflow Schema.\n\n{group_erd_content}")
 
     print("\n--- Generating Individual Model Pages ---")
     MODELS_DOCS_DIR.mkdir(parents=True, exist_ok=True)
