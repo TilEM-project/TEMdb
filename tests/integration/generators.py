@@ -1,13 +1,6 @@
 from datetime import datetime, timezone
 
 from faker import Faker
-from temdb.models import (
-    AcquisitionParams,
-    AcquisitionStatus,
-    AcquisitionTaskStatus,
-    HardwareParams,
-    SectionQuality,
-)
 from temdb.server.documents import (
     AcquisitionDocument,
     AcquisitionTaskDocument,
@@ -18,6 +11,14 @@ from temdb.server.documents import (
     SpecimenDocument,
     SubstrateDocument,
     TileDocument,
+)
+
+from temdb.models import (
+    AcquisitionParams,
+    AcquisitionStatus,
+    AcquisitionTaskStatus,
+    HardwareParams,
+    SectionQuality,
 )
 
 fake = Faker()

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from beanie import Document
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
+
 from temdb.models import SpecimenBase
 
 

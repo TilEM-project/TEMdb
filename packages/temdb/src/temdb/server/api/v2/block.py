@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Body, HTTPException, Query, status
-from temdb.models import BlockCreate, BlockUpdate
 from temdb.server.documents import (
     BlockDocument as Block,
 )
@@ -9,6 +8,8 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SpecimenDocument as Specimen,
 )
+
+from temdb.models import BlockCreate, BlockUpdate
 
 block_api = APIRouter(
     tags=["Blocks"],

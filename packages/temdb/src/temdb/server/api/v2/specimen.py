@@ -2,13 +2,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import AnyHttpUrl
-from temdb.models import SpecimenCreate, SpecimenUpdate
 from temdb.server.documents import (
     BlockDocument as Block,
 )
 from temdb.server.documents import (
     SpecimenDocument as Specimen,
 )
+
+from temdb.models import SpecimenCreate, SpecimenUpdate
 
 specimen_api = APIRouter(
     tags=["Specimens"],

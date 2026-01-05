@@ -3,13 +3,6 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pymongo.errors import BulkWriteError
-from temdb.models import (
-    APIErrorResponse,
-    SectionCreate,
-    SectionMetrics,
-    SectionQuality,
-    SectionUpdate,
-)
 from temdb.server.documents import (
     CuttingSessionDocument as CuttingSession,
 )
@@ -21,6 +14,14 @@ from temdb.server.documents import (
 )
 from temdb.server.documents import (
     SubstrateDocument as Substrate,
+)
+
+from temdb.models import (
+    APIErrorResponse,
+    SectionCreate,
+    SectionMetrics,
+    SectionQuality,
+    SectionUpdate,
 )
 
 section_api = APIRouter(

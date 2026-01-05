@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pymongo.errors import BulkWriteError
-from temdb.models import APIErrorResponse, ROICreate, ROIResponse, ROIUpdate
 from temdb.server.documents import (
     AcquisitionDocument as Acquisition,
 )
@@ -19,6 +18,8 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SubstrateDocument as Substrate,
 )
+
+from temdb.models import APIErrorResponse, ROICreate, ROIResponse, ROIUpdate
 
 roi_api = APIRouter(
     tags=["ROIs"],

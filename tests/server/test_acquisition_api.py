@@ -2,8 +2,9 @@ from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
-from temdb.models import AcquisitionStatus
 from temdb.server.config import config
+
+from temdb.models import AcquisitionStatus
 
 TEST_MAX_BATCH_SIZE = 10
 config.max_batch_size = TEST_MAX_BATCH_SIZE

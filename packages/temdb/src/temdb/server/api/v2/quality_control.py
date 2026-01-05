@@ -4,16 +4,17 @@ from enum import Enum
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from temdb.models import (
-    AcquisitionFocusScoresResponse,
-    APIErrorResponse,
-    TileFocusScore,
-)
 from temdb.server.documents import (
     AcquisitionDocument as Acquisition,
 )
 from temdb.server.documents import (
     TileDocument as Tile,
+)
+
+from temdb.models import (
+    AcquisitionFocusScoresResponse,
+    APIErrorResponse,
+    TileFocusScore,
 )
 
 qc_api = APIRouter(

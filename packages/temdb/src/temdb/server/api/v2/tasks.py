@@ -1,11 +1,6 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from temdb.models import (
-    AcquisitionTaskCreate,
-    AcquisitionTaskStatus,
-    AcquisitionTaskUpdate,
-)
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.documents import (
@@ -22,6 +17,12 @@ from temdb.server.documents import (
 )
 from temdb.server.documents import (
     SpecimenDocument as Specimen,
+)
+
+from temdb.models import (
+    AcquisitionTaskCreate,
+    AcquisitionTaskStatus,
+    AcquisitionTaskUpdate,
 )
 
 acquisition_task_api = APIRouter(

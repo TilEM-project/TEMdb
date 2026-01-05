@@ -14,14 +14,6 @@ from fastapi import (
 )
 from pydantic import BaseModel
 from pymongo import ASCENDING
-from temdb.models import (
-    AcquisitionCreate,
-    AcquisitionStatus,
-    AcquisitionUpdate,
-    StorageLocation,
-    StorageLocationCreate,
-    TileCreate,
-)
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.documents import (
@@ -50,6 +42,15 @@ from temdb.server.documents import (
 )
 from temdb.server.documents import (
     TileDocument as Tile,
+)
+
+from temdb.models import (
+    AcquisitionCreate,
+    AcquisitionStatus,
+    AcquisitionUpdate,
+    StorageLocation,
+    StorageLocationCreate,
+    TileCreate,
 )
 
 

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Body, HTTPException, Query, status
-from temdb.models import CuttingSessionCreate, CuttingSessionUpdate
 from temdb.server.documents import (
     BlockDocument as Block,
 )
@@ -9,6 +8,8 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SectionDocument as Section,
 )
+
+from temdb.models import CuttingSessionCreate, CuttingSessionUpdate
 
 cutting_session_api = APIRouter(
     tags=["Cutting Sessions"],
