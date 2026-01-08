@@ -1,6 +1,7 @@
 from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.client.resources.block import BlockResource
 from temdb.client.resources.cutting_session import CuttingSessionResource
+from temdb.client.resources.montage import MontageResource
 from temdb.client.resources.roi import ROIResource
 from temdb.client.resources.section import SectionResource
 from temdb.client.resources.specimen import SpecimenResource
@@ -11,6 +12,7 @@ __all__ = [
     "AcquisitionResource",
     "BlockResource",
     "CuttingSessionResource",
+    "MontageResource",
     "ROIResource",
     "SectionResource",
     "SpecimenResource",

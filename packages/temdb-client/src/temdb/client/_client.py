@@ -16,6 +16,7 @@ from .exceptions import NotFoundError, TEMdbClientError
 from .resources.acquisition import AcquisitionResource
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
+from .resources.montage import MontageResource
 from .resources.roi import ROIResource
 from .resources.section import SectionResource
 from .resources.specimen import SpecimenResource
@@ -25,6 +26,7 @@ from .resources.sync_wrappers import (
     SyncAcquisitionTaskResourceWrapper,
     SyncBlockResourceWrapper,
     SyncCuttingSessionResourceWrapper,
+    SyncMontageResourceWrapper,
     SyncROIResourceWrapper,
     SyncSectionResourceWrapper,
     SyncSpecimenResourceWrapper,
@@ -72,6 +74,7 @@ class AsyncTEMdbClient:
         self._roi = ROIResource(self._async_request, self.api_url)
         self._acquisition = AcquisitionResource(self._async_request, self.api_url)
         self._section = SectionResource(self._async_request, self.api_url)
+        self._montage = MontageResource(self._async_request, self.api_url)
 
     @property
     def specimen(self) -> SpecimenResource:
@@ -104,6 +107,10 @@ class AsyncTEMdbClient:
     @property
     def section(self) -> SectionResource:
         return self._section
+
+    @property
+    def montage(self) -> MontageResource:
+        return self._montage
 
     @retry(
         stop=stop_after_attempt(3),
@@ -196,6 +203,7 @@ class SyncTEMdbClient:
         self._acquisition_task = SyncAcquisitionTaskResourceWrapper(self._async_client.acquisition_task)
         self._roi = SyncROIResourceWrapper(self._async_client.roi)
         self._section = SyncSectionResourceWrapper(self._async_client.section)
+        self._montage = SyncMontageResourceWrapper(self._async_client.montage)
 
     @property
     def acquisition(self) -> SyncAcquisitionResourceWrapper:
@@ -228,6 +236,10 @@ class SyncTEMdbClient:
     @property
     def section(self) -> SyncSectionResourceWrapper:
         return self._section
+
+    @property
+    def montage(self) -> SyncMontageResourceWrapper:
+        return self._montage
 
     def health_check(self) -> dict[str, Any]:
         """Check if the API is available."""

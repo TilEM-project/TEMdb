@@ -78,6 +78,12 @@ from temdb.models.tile import (
     TileResponse,
     TileUpdate,
 )
+from temdb.models.tilespec import (
+    AsyncTileSpecData,
+    PaginatedTileResponse,
+    TileSpecData,
+    TileSpecMetadata,
+)
 
 __all__ = [
     # Enums
@@ -150,4 +156,9 @@ __all__ = [
     "AcquisitionFocusScoresResponse",
     "BadFocusTileInfo",
     "BadFocusTilesResponse",
+    # TileSpec Export
+    "TileSpecMetadata",
+    "PaginatedTileResponse",
+    "AsyncTileSpecData",
+    "TileSpecData",
 ]
