@@ -55,6 +55,7 @@ class AsyncTEMdbClient:
         headers = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+            headers["X-API-Key"] = api_key
 
         self._http_client = httpx.AsyncClient(
             base_url=self.api_url,
