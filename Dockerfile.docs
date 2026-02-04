@@ -19,6 +19,6 @@ COPY generate_schema_diagram.py .
 
 EXPOSE 8000
 
-ENV NAME DocsSite
+ENV NAME=DocsSite
 
 CMD ["mkdocs", "serve", "--dev-addr", "0.0.0.0:8000", "--dirtyreload"]
