@@ -20,21 +20,13 @@ from temdb.server.documents import (
     SubstrateDocument,
     TileDocument,
 )
+from tests.client_integration.generators import generate_specimen as _generate_specimen
 
 fake = Faker()
 
 
 def generate_specimen(**kwargs) -> SpecimenDocument:
-    defaults = {
-        "specimen_id": f"SPEC_{fake.unique.word()}_{int(datetime.now(timezone.utc).timestamp())}",
-        "description": fake.text(max_nb_chars=150),
-        "specimen_images": {fake.image_url() for _ in range(fake.random_int(min=0, max=2))},
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": None,
-        "functional_imaging_metadata": ({"source": fake.word()} if fake.boolean() else None),
-    }
-    defaults.update(kwargs)
-    return SpecimenDocument(**defaults)
+    return SpecimenDocument(**_generate_specimen(**kwargs).__dict__)
 
 
 def generate_block(specimen: SpecimenDocument, **kwargs) -> BlockDocument:
