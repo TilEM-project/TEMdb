@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from faker import Faker
 
 from temdb.models import (
+    BlockCreate,
+    CuttingSessionCreate,
     SpecimenCreate,
 )
 
@@ -22,39 +24,36 @@ def generate_specimen(**kwargs) -> SpecimenCreate:
     return SpecimenCreate(**defaults)
 
 
-# def generate_block(specimen: SpecimenDocument, **kwargs) -> BlockDocument:
-#     defaults = {
-#         "block_id": f"BLOCK_{specimen.specimen_id}_{fake.unique.random_number(digits=3)}",
-#         "specimen_id": specimen.specimen_id,
-#         "specimen_ref": specimen.id,
-#         "microCT_info": (
-#             {"resolution": fake.pyfloat(min_value=1.0, max_value=10.0, right_digits=2)} if fake.boolean() else None
-#         ),
-#     }
-#     defaults.update(kwargs)
-#     return BlockDocument(**defaults)
-#
-#
-# def generate_cutting_session(specimen: SpecimenDocument, block: BlockDocument, **kwargs) -> CuttingSessionDocument:
-#     defaults = {
-#         "cutting_session_id": f"CUT_{block.block_id}_{fake.unique.random_number(digits=4)}",
-#         "specimen_id": specimen.specimen_id,
-#         "block_id": block.block_id,
-#         "specimen_ref": specimen.id,
-#         "block_ref": block.id,
-#         "start_time": fake.past_datetime(start_date="-1y", tzinfo=timezone.utc),
-#         "end_time": (fake.past_datetime(start_date="-1y", tzinfo=timezone.utc) if fake.boolean() else None),
-#         "operator": fake.name(),
-#         "sectioning_device": fake.word().capitalize() + " Microtome",
-#         "media_type": "tape",
-#     }
-#     if defaults["end_time"] and defaults["end_time"] < defaults["start_time"]:
-#         defaults["end_time"] = defaults["start_time"] + fake.time_delta(end_datetime=datetime.now(timezone.utc))
-#
-#     defaults.update(kwargs)
-#     return CuttingSessionDocument(**defaults)
-#
-#
+def generate_block(specimen_id: str, **kwargs) -> BlockCreate:
+    defaults = {
+        "block_id": f"BLOCK_{specimen_id}_{fake.unique.random_number(digits=3)}",
+        "specimen_id": specimen_id,
+        "microCT_info": (
+            {"resolution": fake.pyfloat(min_value=1.0, max_value=10.0, right_digits=2)} if fake.boolean() else None
+        ),
+    }
+    defaults.update(kwargs)
+    return BlockCreate(**defaults)
+
+
+def generate_cutting_session(specimen_id: str, block_id: str, **kwargs) -> CuttingSessionCreate:
+    defaults = {
+        "cutting_session_id": f"CUT_{block_id}_{fake.unique.random_number(digits=4)}",
+        "specimen_id": specimen_id,
+        "block_id": block_id,
+        "start_time": fake.past_datetime(start_date="-1y", tzinfo=timezone.utc),
+        "end_time": (fake.past_datetime(start_date="-1y", tzinfo=timezone.utc) if fake.boolean() else None),
+        "operator": fake.name(),
+        "sectioning_device": fake.word().capitalize() + " Microtome",
+        "media_type": "tape",
+    }
+    if defaults["end_time"] and defaults["end_time"] < defaults["start_time"]:
+        defaults["end_time"] = defaults["start_time"] + fake.time_delta(end_datetime=datetime.now(timezone.utc))
+
+    defaults.update(kwargs)
+    return CuttingSessionCreate(**defaults)
+
+
 # def generate_substrate(cutting_session: CuttingSessionDocument, **kwargs) -> SubstrateDocument:
 #     defaults = {
 #         "media_id": f"MEDIA_{cutting_session.cutting_session_id}_{fake.unique.random_number(digits=4)}",

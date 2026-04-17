@@ -21,6 +21,7 @@ from temdb.server.documents import (
     TileDocument,
 )
 from temdb.server.main import create_app
+from tests.client_integration.generators import generate_block, generate_specimen
 
 TEST_DB_NAME = "testdb"
 
@@ -94,3 +95,25 @@ def event_loop():
     loop = policy.new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="function")
+async def specimen(async_client):
+    specimen = generate_specimen(created_at=None, specimen_images=None)
+    old_specimens = await async_client.specimen.list()
+    await async_client.specimen.create(specimen)
+    yield await async_client.specimen.get(specimen.specimen_id)
+    await async_client.specimen.delete(specimen.specimen_id)
+    specimens = await async_client.specimen.list()
+    assert old_specimens == specimens
+
+
+@pytest.fixture(scope="function")
+async def block(specimen, async_client):
+    block = generate_block(specimen.specimen_id)
+    old_blocks = await async_client.block.list_all()
+    await async_client.block.create(block)
+    yield await async_client.block.get(specimen.specimen_id, block.block_id)
+    await async_client.block.delete(specimen.specimen_id)
+    blocks = await async_client.block.list_all()
+    assert old_blocks == blocks
