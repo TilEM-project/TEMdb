@@ -28,10 +28,13 @@ async def test_specimen(async_client, created_at, specimen_images):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("microCT_info", (..., None))
-async def test_block(async_client, specimen, microCT_info):
+@pytest.mark.parametrize("histology", (..., "2OS + UA"))
+async def test_block(async_client, specimen, microCT_info, histology):
     kwargs = {}
     if microCT_info is not ...:
         kwargs["microCT_info"] = microCT_info
+    if histology is not ...:
+        kwargs["histology"] = histology
     block = generate_block(specimen.specimen_id, **kwargs)
     old_blocks = await async_client.block.list_all()
     await async_client.block.create(block)
