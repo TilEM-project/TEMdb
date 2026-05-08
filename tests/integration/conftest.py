@@ -3,6 +3,8 @@ import logging
 import pytest
 from beanie import init_beanie
 from pymongo import AsyncMongoClient
+from testcontainers.mongodb import MongoDbContainer
+
 from temdb.server.documents import (
     AcquisitionDocument,
     AcquisitionTaskDocument,
@@ -14,7 +16,6 @@ from temdb.server.documents import (
     SubstrateDocument,
     TileDocument,
 )
-from testcontainers.mongodb import MongoDbContainer
 
 logging.basicConfig(level=logging.INFO)
 

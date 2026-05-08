@@ -6,6 +6,8 @@ from beanie import init_beanie
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pymongo import AsyncMongoClient
+from testcontainers.mongodb import MongoDbContainer
+
 from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
@@ -21,7 +23,6 @@ from temdb.server.documents import (
     TileDocument,
 )
 from temdb.server.main import create_app
-from testcontainers.mongodb import MongoDbContainer
 
 logging.basicConfig(level=logging.INFO)
 

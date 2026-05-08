@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .enums import MatchPosition
 from .utils.uri import URI
 
 
@@ -17,7 +18,7 @@ class Matcher(BaseModel):
     distance: float = Field(..., description="Distance between the tiles")
     rotation: float = Field(..., description="Rotation of the tile")
     match_quality: float = Field(..., description="Quality of the match")
-    position: int = Field(..., description="Position of the match")
+    position: MatchPosition = Field(..., description="Position of the match")
     pX: list[float] = Field(..., description="X position of the points in the template tile")
     pY: list[float] = Field(..., description="Y position of the points in the template tile")
     qX: list[float] = Field(..., description="X position of the points in the reference tile")

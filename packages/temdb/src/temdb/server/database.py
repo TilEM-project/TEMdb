@@ -4,6 +4,7 @@ from typing import TypeVar
 
 from beanie import Document, init_beanie
 from pymongo import AsyncMongoClient
+
 from temdb.server.documents import (
     AcquisitionDocument,
     AcquisitionTaskDocument,
