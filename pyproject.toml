@@ -4,7 +4,8 @@ version = "2.0.0"
 description = "TEMdb monorepo workspace"
 requires-python = ">=3.10"
 dependencies = [
-    "smart-open>=7.5.0",
+    "platformdirs>=4.5.0",
+    "smart-open[s3]>=7.5.0",
 ]
 
 [tool.uv.workspace]
