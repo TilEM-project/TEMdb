@@ -1,6 +1,7 @@
 import logging
 from typing import Annotated
 
+import boto3
 import yaml
 from platformdirs import user_config_path
 from pydantic import BaseModel, BeforeValidator, PlainSerializer, ValidationError, field_validator
@@ -24,7 +25,7 @@ class _DataLocation(BaseModel):
 
 
 class _S3DataLocation(_DataLocation):
-    host: str = "s3.amazonaws.com"
+    host: str = None
     port: int = 443
     bucket: str = None
     region: str = "us-east-1"
@@ -35,12 +36,16 @@ class _S3DataLocation(_DataLocation):
     @property
     def transport_params(self):
         return {
-            "client_kwargs": {
-                "region_name": self.region,
-                "aws_access_key_id": self.access_key_id,
-                "aws_secret_access_key": self.secret_access_key,
-                "use_ssl": self.use_ssl,
-            }
+            "client": boto3.client(
+                "s3",
+                region_name=self.region,
+                aws_access_key_id=self.access_key_id,
+                aws_secret_access_key=self.secret_access_key,
+                use_ssl=self.use_ssl,
+                endpoint_url=None
+                if self.host is None
+                else f"{'https' if self.use_ssl else 'http'}://{self.host}:{self.port}",
+            ),
         }
 
     def match(self, bucket_id=None, host=None, port=None, region=None, **kwargs):
