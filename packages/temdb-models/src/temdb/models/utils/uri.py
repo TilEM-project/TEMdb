@@ -33,10 +33,13 @@ class _S3DataLocation(_DataLocation):
     secret_access_key: str = None
     use_ssl: bool = True
 
-    @property
-    def transport_params(self):
-        return {
-            "client": boto3.client(
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            self._client = boto3.client(
                 "s3",
                 region_name=self.region,
                 aws_access_key_id=self.access_key_id,
@@ -45,7 +48,14 @@ class _S3DataLocation(_DataLocation):
                 endpoint_url=None
                 if self.host is None
                 else f"{'https' if self.use_ssl else 'http'}://{self.host}:{self.port}",
-            ),
+            )
+        return self._client
+
+    @property
+    def transport_params(self):
+        self._get_client()
+        return {
+            "client": self._get_client(),
         }
 
     def match(self, bucket_id=None, host=None, port=None, region=None, **kwargs):

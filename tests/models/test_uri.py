@@ -223,98 +223,91 @@ def test_s3_data_location_match():
 
 
 def test_data_location_config_get_transport_params_by_bucket():
-    with patch("temdb.models.utils.uri.boto3.client") as mock_boto3_client:
-        mock_client_1 = "mock_s3_client_1"
-        mock_client_2 = "mock_s3_client_2"
-        mock_boto3_client.side_effect = [mock_client_1, mock_client_2]
+    config = uri._DataLocationConfig(
+        data_locations=[
+            {
+                "transport": "s3",
+                "bucket": "bucket1",
+                "region": "us-west-2",
+                "access_key_id": "key1",
+                "secret_access_key": "secret1",
+            },
+            {
+                "transport": "s3",
+                "bucket": "bucket2",
+                "region": "us-east-1",
+                "access_key_id": "key2",
+                "secret_access_key": "secret2",
+            },
+        ]
+    )
 
-        config = uri._DataLocationConfig(
-            data_locations=[
-                {
-                    "transport": "s3",
-                    "bucket": "bucket1",
-                    "region": "us-west-2",
-                    "access_key_id": "key1",
-                    "secret_access_key": "secret1",
-                },
-                {
-                    "transport": "s3",
-                    "bucket": "bucket2",
-                    "region": "us-east-1",
-                    "access_key_id": "key2",
-                    "secret_access_key": "secret2",
-                },
-            ]
-        )
-
+    with (
+        patch.object(config.data_locations[0], "_get_client", return_value="client_bucket1"),
+        patch.object(config.data_locations[1], "_get_client", return_value="client_bucket2"),
+    ):
         params1 = config.get_transport_params(bucket_id="bucket1")
-        assert "client" in params1
+        assert params1 == {"client": "client_bucket1"}
 
         params2 = config.get_transport_params(bucket_id="bucket2")
-        assert "client" in params2
+        assert params2 == {"client": "client_bucket2"}
 
         params_empty = config.get_transport_params(bucket_id="nonexistent")
         assert params_empty == {}
 
 
 def test_data_location_config_get_transport_params_by_host():
-    with patch("temdb.models.utils.uri.boto3.client") as mock_boto3_client:
-        mock_client_1 = "mock_s3_client_1"
-        mock_client_2 = "mock_s3_client_2"
-        mock_boto3_client.side_effect = [mock_client_1, mock_client_2]
+    config = uri._DataLocationConfig(
+        data_locations=[
+            {
+                "transport": "s3",
+                "host": "ceph1.example.com",
+                "region": "us-west-2",
+                "access_key_id": "key1",
+                "secret_access_key": "secret1",
+            },
+            {
+                "transport": "s3",
+                "host": "ceph2.example.com",
+                "port": 9000,
+                "region": "us-east-1",
+                "access_key_id": "key2",
+                "secret_access_key": "secret2",
+            },
+        ]
+    )
 
-        config = uri._DataLocationConfig(
-            data_locations=[
-                {
-                    "transport": "s3",
-                    "host": "ceph1.example.com",
-                    "region": "us-west-2",
-                    "access_key_id": "key1",
-                    "secret_access_key": "secret1",
-                },
-                {
-                    "transport": "s3",
-                    "host": "ceph2.example.com",
-                    "port": 9000,
-                    "region": "us-east-1",
-                    "access_key_id": "key2",
-                    "secret_access_key": "secret2",
-                },
-            ]
-        )
-
+    with (
+        patch.object(config.data_locations[0], "_get_client", return_value="client_ceph1"),
+        patch.object(config.data_locations[1], "_get_client", return_value="client_ceph2"),
+    ):
         params1 = config.get_transport_params(host="ceph1.example.com")
-        assert "client" in params1
+        assert params1 == {"client": "client_ceph1"}
 
         params2 = config.get_transport_params(host="ceph2.example.com", port=9000)
-        assert "client" in params2
+        assert params2 == {"client": "client_ceph2"}
 
         params_empty = config.get_transport_params(host="nonexistent.example.com")
         assert params_empty == {}
 
 
-def test_data_location_config_get_transport_params_first_match():
+def test_s3_data_location_client_caching():
     with patch("temdb.models.utils.uri.boto3.client") as mock_boto3_client:
         mock_client = "mock_s3_client"
         mock_boto3_client.return_value = mock_client
 
-        config = uri._DataLocationConfig(
-            data_locations=[
-                {
-                    "transport": "s3",
-                    "bucket": "bucket1",
-                    "access_key_id": "key1",
-                    "secret_access_key": "secret1",
-                },
-                {
-                    "transport": "s3",
-                    "bucket": "bucket1",
-                    "access_key_id": "key2",
-                    "secret_access_key": "secret2",
-                },
-            ]
+        location = uri._S3DataLocation(
+            transport="s3",
+            bucket="bucket1",
+            region="us-west-2",
+            access_key_id="key1",
+            secret_access_key="secret1",
         )
 
-        params = config.get_transport_params(bucket_id="bucket1")
-        assert "client" in params
+        params1 = location.transport_params
+        params2 = location.transport_params
+
+        assert params1["client"] == mock_client
+        assert params2["client"] == mock_client
+        assert params1["client"] is params2["client"]
         assert mock_boto3_client.call_count == 1
