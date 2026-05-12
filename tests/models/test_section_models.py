@@ -51,7 +51,10 @@ class TestSectionCreate:
             section_number=1,
             media_id="MEDIA001",
             barcode="BC123456",
-            optical_image={"url": "http://example.com/image.png"},
+            optical_image={
+                "image_path": "http://example.com/image.png",
+                "metadata": {"this": "that", "those": "these", "one": 2},
+            },
             section_metrics=SectionMetrics(quality=SectionQuality.GOOD),
         )
         assert section.barcode == "BC123456"

@@ -3,8 +3,10 @@ from copy import deepcopy
 from typing import TypeVar
 
 from beanie import Document, init_beanie
+from beanie.odm.utils.encoder import DEFAULT_CUSTOM_ENCODERS
 from pymongo import AsyncMongoClient
 
+from temdb.models.utils.uri import URI
 from temdb.server.documents import (
     AcquisitionDocument,
     AcquisitionTaskDocument,
@@ -17,6 +19,9 @@ from temdb.server.documents import (
     SubstrateDocument,
     TileDocument,
 )
+
+# Register URI encoder with Beanie
+DEFAULT_CUSTOM_ENCODERS[URI] = URI.serialize
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
