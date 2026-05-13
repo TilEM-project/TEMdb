@@ -160,6 +160,12 @@ class URI(metaclass=_URIMeta):
     def __hash__(self):
         return hash(self.uri)
 
+    def __str__(self):
+        return self.uri
+
+    def __repr__(self):
+        return f"URI({self.uri})"
+
     @property
     def _transport_params(self):
         parsed = parse_uri(self.uri)

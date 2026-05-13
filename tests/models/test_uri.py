@@ -4,34 +4,35 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from pytest import mark, raises
 from yaml import safe_load
 
-from temdb.models.utils import uri
+from temdb.models import URI
+from temdb.models.utils.uri import _DataConfig, _DataLocationConfig, _S3DataLocation
 
 
 def test_uri_create():
     obj_uri = "s3://somebucket/some_obj"
-    obj = uri.URI(obj_uri)
+    obj = URI(obj_uri)
     assert obj.uri == obj_uri
 
 
 @mark.parametrize(
     "obj_uri",
-    ["s3://anotherbucket/other_obj", uri.URI("s3://anotherbucket/other_obj")],
+    ["s3://anotherbucket/other_obj", URI("s3://anotherbucket/other_obj")],
 )
 def test_uri_validate(obj_uri):
-    obj = uri.URI.validate(obj_uri)
-    assert isinstance(obj, uri.URI)
+    obj = URI.validate(obj_uri)
+    assert isinstance(obj, URI)
     assert obj.uri == obj_uri
 
 
 def test_uri_validate_error():
     with raises(ValueError):
-        uri.URI.validate(10)
+        URI.validate(10)
 
 
 def test_uri_serialize():
     obj_uri = "s3://somebucket/some_obj"
-    obj = uri.URI(obj_uri)
-    serialized = uri.URI.serialize(obj)
+    obj = URI(obj_uri)
+    serialized = URI.serialize(obj)
     assert isinstance(serialized, str)
     assert serialized == obj_uri
 
@@ -80,7 +81,7 @@ def test_uri_open(obj_uri, transport_params):
         patch("temdb.models.utils.uri.open") as mock_open,
         patch("temdb.models.utils.uri._DataLocationConfig.get_transport_params", return_value=transport_params),
     ):
-        obj = uri.URI(obj_uri)
+        obj = URI(obj_uri)
         file = obj.open("rw")
         mock_open.assert_called_once_with(obj_uri, mode="rw", transport_params=transport_params)
         assert file == mock_open()
@@ -88,22 +89,22 @@ def test_uri_open(obj_uri, transport_params):
 
 @mark.parametrize(
     "obj_uri",
-    ["s3://anotherbucket/other_obj", uri.URI("s3://anotherbucket/other_obj")],
+    ["s3://anotherbucket/other_obj", URI("s3://anotherbucket/other_obj")],
 )
 def test_model_validate(obj_uri):
     class Model(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
-        uri: uri.URI.Type
+        uri: URI.Type
 
     obj = Model(uri=obj_uri)
-    assert isinstance(obj.uri, uri.URI)
+    assert isinstance(obj.uri, URI)
     assert obj.uri == obj_uri
 
 
 def test_model_validate_error():
     class Model(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
-        uri: uri.URI.Type
+        uri: URI.Type
         data: str
 
     with raises(ValidationError) as exc_info:
@@ -115,7 +116,7 @@ def test_model_validate_error():
 def test_model_serialize():
     class Model(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
-        uri: uri.URI.Type
+        uri: URI.Type
 
     obj = Model(uri="/some/path")
     assert obj.model_dump_json() == '{"uri":"/some/path"}'
@@ -140,7 +141,7 @@ data_locations:
     with open(tmp_path / config_file, "w") as f:
         f.write(yaml_data)
     with patch("temdb.models.utils.uri.user_config_path", return_value=tmp_path):
-        data = uri._DataConfig.load()
+        data = _DataConfig.load()
         data_locations = data.data_locations
         for i, location in enumerate(safe_load(yaml_data)["data_locations"]):
             for key, val in location.items():
@@ -151,7 +152,7 @@ def test_load_config_bad(tmp_path):
     with open(tmp_path / "data_config.yaml", "w") as f:
         f.write("This is not parsable")
     with patch("temdb.models.utils.uri.user_config_path", return_value=tmp_path):
-        data = uri._DataConfig.load()
+        data = _DataConfig.load()
         assert data.data_locations == []
 
 
@@ -159,7 +160,7 @@ def test_load_config_missing(tmp_path):
     with open(tmp_path / "data_config.yaml", "w") as f:
         f.write("This is not parsable")
     with patch("temdb.models.utils.uri.user_config_path", return_value=tmp_path):
-        data = uri._DataConfig.load()
+        data = _DataConfig.load()
         assert data.data_locations == []
 
 
@@ -190,7 +191,7 @@ def test_s3_data_location_transport_params(
         if secret_access_key is not None:
             kwargs["secret_access_key"] = secret_access_key
 
-        location = uri._S3DataLocation(**kwargs)
+        location = _S3DataLocation(**kwargs)
 
         params = location.transport_params
 
@@ -207,7 +208,7 @@ def test_s3_data_location_transport_params(
 
 
 def test_s3_data_location_match():
-    location = uri._S3DataLocation(
+    location = _S3DataLocation(
         transport="s3",
         bucket="my-bucket",
         region="us-west-2",
@@ -223,7 +224,7 @@ def test_s3_data_location_match():
 
 
 def test_data_location_config_get_transport_params_by_bucket():
-    config = uri._DataLocationConfig(
+    config = _DataLocationConfig(
         data_locations=[
             {
                 "transport": "s3",
@@ -257,7 +258,7 @@ def test_data_location_config_get_transport_params_by_bucket():
 
 
 def test_data_location_config_get_transport_params_by_host():
-    config = uri._DataLocationConfig(
+    config = _DataLocationConfig(
         data_locations=[
             {
                 "transport": "s3",
@@ -296,7 +297,7 @@ def test_s3_data_location_client_caching():
         mock_client = "mock_s3_client"
         mock_boto3_client.return_value = mock_client
 
-        location = uri._S3DataLocation(
+        location = _S3DataLocation(
             transport="s3",
             bucket="bucket1",
             region="us-west-2",

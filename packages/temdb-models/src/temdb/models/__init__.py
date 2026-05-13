@@ -78,6 +78,7 @@ from temdb.models.tile import (
     TileResponse,
     TileUpdate,
 )
+from temdb.models.utils.uri import URI
 
 __all__ = [
     # Enums
@@ -150,4 +151,6 @@ __all__ = [
     "AcquisitionFocusScoresResponse",
     "BadFocusTileInfo",
     "BadFocusTilesResponse",
+    # Utils
+    "URI",
 ]
