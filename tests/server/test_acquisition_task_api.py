@@ -130,7 +130,7 @@ async def test_list_acquisition_tasks_skip_completed(
     test_roi,
     test_acquisition_task,
 ):
-    pending_acquisition = AcquisitionDocument(
+    failed_acquisition = AcquisitionDocument(
         acquisition_id="TEST_ACQ_QC_PENDING_001",
         montage_id="TEST_MONTAGE_QC_PENDING_001",
         specimen_id=test_specimen.specimen_id,
@@ -154,7 +154,7 @@ async def test_list_acquisition_tasks_skip_completed(
             "tile_overlap": 0.1,
             "saved_bit_depth": 8,
         },
-        status=AcquisitionStatus.QC_PENDING,
+        status=AcquisitionStatus.QC_FAILED,
         start_time=datetime.now(timezone.utc),
     )
     passed_acquisition = AcquisitionDocument(
@@ -184,7 +184,7 @@ async def test_list_acquisition_tasks_skip_completed(
         status=AcquisitionStatus.QC_PASSED,
         start_time=datetime.now(timezone.utc),
     )
-    await pending_acquisition.insert()
+    await failed_acquisition.insert()
     await passed_acquisition.insert()
 
     default_response = await async_client.get("/api/v2/acquisition-tasks")
