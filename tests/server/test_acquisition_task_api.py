@@ -20,7 +20,9 @@ async def test_list_acquisition_tasks_filtered(
     test_specimen,
     test_block,
     test_roi,
+    test_roi2,
     test_acquisition_task,
+    test_acquisition_task2,
 ):
     """Test filtering acquisition tasks."""
 
@@ -56,6 +58,13 @@ async def test_list_acquisition_tasks_filtered(
     res_status_data = response_status.json()
     assert isinstance(res_status_data, list)
     assert all(task["status"] == AcquisitionTaskStatus.PLANNED.value for task in res_status_data)
+
+    response_media = await async_client.get(f"/api/v2/acquisition-tasks?media_id={test_roi2.substrate_media_id}")
+    assert response_media.status_code == 200
+    res_media_data = response_media.json()
+    assert isinstance(res_media_data, list)
+    assert len(res_media_data) >= 1
+    assert all(task["roi_ref"]["substrate_media_id"] == test_roi2.substrate_media_id for task in res_media_data)
 
 
 @pytest.mark.asyncio
