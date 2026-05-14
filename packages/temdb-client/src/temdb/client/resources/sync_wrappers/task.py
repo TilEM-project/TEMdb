@@ -28,6 +28,7 @@ class SyncAcquisitionTaskResourceWrapper:
         block_id: str | None = None,
         roi_id: int | None = None,
         task_type: str | None = None,
+        media_id: str | None = None,
         **kwargs: Any,
     ) -> list[AcquisitionTaskResponse]:
         """List acquisition tasks."""
@@ -40,6 +41,7 @@ class SyncAcquisitionTaskResourceWrapper:
                 block_id=block_id,
                 roi_id=roi_id,
                 task_type=task_type,
+                media_id=media_id,
                 **kwargs,
             )
         )
