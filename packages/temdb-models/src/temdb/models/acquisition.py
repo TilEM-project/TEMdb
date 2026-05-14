@@ -97,7 +97,7 @@ class AcquisitionCreate(AcquisitionBase):
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
     tilt_angle: float = Field(..., description="Tilt angle of acquisition in degrees")
     lens_correction: bool = Field(..., description="Whether this acquisition is a lens correction calibration")
-    status: AcquisitionStatus = Field(default=AcquisitionStatus.IMAGING, description="Status of acquisition")
+    status: AcquisitionStatus = Field(default=AcquisitionStatus.QC_PENDING, description="Status of acquisition")
     start_time: datetime | None = Field(None, description="Start time of acquisition (defaults to now if not provided)")
 
 

@@ -30,6 +30,7 @@ class SectionDocument(Document, SectionBase):
     block_id: str = Field(..., description="Human-readable ID of the block")
     specimen_id: str = Field(..., description="Human-readable ID of the specimen")
     media_id: str = Field(..., description="Human-readable ID of the substrate")
+    destroyed: bool = Field(False, description="Denotes if the section has been destroyed.")
 
     cutting_session_ref: Link[CuttingSessionDocument] = Field(
         ..., description="Internal Link to the cutting session document"

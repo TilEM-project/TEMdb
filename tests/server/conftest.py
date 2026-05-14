@@ -8,7 +8,6 @@ from httpx import ASGITransport, AsyncClient
 from pymongo import AsyncMongoClient
 from testcontainers.mongodb import MongoDbContainer
 
-from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.documents import (
@@ -206,7 +205,6 @@ async def test_acquisition_task(
         roi_ref=test_roi.id,
         task_type="standard_acquisition",
         version=1,
-        status=AcquisitionTaskStatus.PLANNED,
         created_at=datetime.now(timezone.utc),
     )
     await acquisition_task.insert()
@@ -244,7 +242,6 @@ async def test_acquisition(
             "tile_overlap": 0.1,
             "saved_bit_depth": 8,
         },
-        status=AcquisitionStatus.IMAGING,
         start_time=datetime.now(timezone.utc),
     )
     await acquisition.insert()

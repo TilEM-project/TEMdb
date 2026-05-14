@@ -25,7 +25,6 @@ from temdb.models.cutting_session import (
 )
 from temdb.models.enums import (
     AcquisitionStatus,
-    AcquisitionTaskStatus,
     SectionQuality,
 )
 from temdb.models.error import APIErrorResponse
@@ -82,7 +81,6 @@ from temdb.models.tile import (
 __all__ = [
     # Enums
     "AcquisitionStatus",
-    "AcquisitionTaskStatus",
     "SectionQuality",
     # Tile
     "Matcher",

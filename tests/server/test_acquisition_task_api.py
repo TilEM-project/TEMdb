@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
-from temdb.models import AcquisitionTaskStatus
+from temdb.models import AcquisitionStatus
+from temdb.server.documents import (
+    AcquisitionDocument,
+    AcquisitionTaskDocument,
+    ROIDocument,
+    SectionDocument,
+)
 
 
 @pytest.mark.asyncio
@@ -51,11 +57,145 @@ async def test_list_acquisition_tasks_filtered(
     assert len(res_spec_data) >= 1
     assert all(task["specimen_ref"]["id"] == str(test_specimen.id) for task in res_spec_data)
 
-    response_status = await async_client.get(f"/api/v2/acquisition-tasks?status={AcquisitionTaskStatus.PLANNED.value}")
-    assert response_status.status_code == 200
-    res_status_data = response_status.json()
-    assert isinstance(res_status_data, list)
-    assert all(task["status"] == AcquisitionTaskStatus.PLANNED.value for task in res_status_data)
+
+@pytest.mark.asyncio
+async def test_list_acquisition_tasks_skip_destroyed(
+    async_client: AsyncClient,
+    test_specimen,
+    test_block,
+    test_cutting_session,
+    test_substrate,
+    test_acquisition_task,
+):
+    destroyed_section = SectionDocument(
+        section_id="TEST_SECTION_DESTROYED_001",
+        section_number=2,
+        timestamp=datetime.now(timezone.utc),
+        cutting_session_id=test_cutting_session.cutting_session_id,
+        block_id=test_block.block_id,
+        specimen_id=test_specimen.specimen_id,
+        cutting_session_ref=test_cutting_session.id,
+        substrate_ref=test_substrate.id,
+        destroyed=True,
+        media_id="TEST_MEDIA_001",
+    )
+    await destroyed_section.insert()
+
+    destroyed_roi = ROIDocument(
+        roi_id="SPEC001.BLK001.CS001.SEC002.SUB001.ROI001",
+        roi_number=1,
+        section_id=destroyed_section.section_id,
+        block_id=test_block.block_id,
+        specimen_id=test_specimen.specimen_id,
+        substrate_media_id="SUB001",
+        hierarchy_level=1,
+        section_ref=destroyed_section.id,
+        parent_roi_ref=None,
+        updated_at=datetime.now(timezone.utc),
+        section_number=destroyed_section.section_number,
+    )
+    await destroyed_roi.insert()
+
+    destroyed_task = AcquisitionTaskDocument(
+        task_id="TEST_TASK_DESTROYED_001",
+        specimen_id=test_specimen.specimen_id,
+        block_id=test_block.block_id,
+        roi_id=destroyed_roi.roi_id,
+        specimen_ref=test_specimen.id,
+        block_ref=test_block.id,
+        roi_ref=destroyed_roi.id,
+        task_type="standard_acquisition",
+        version=1,
+        created_at=datetime.now(timezone.utc),
+    )
+    await destroyed_task.insert()
+
+    default_response = await async_client.get("/api/v2/acquisition-tasks")
+    assert default_response.status_code == 200
+    default_ids = {task["task_id"] for task in default_response.json()}
+    assert test_acquisition_task.task_id in default_ids
+    assert destroyed_task.task_id not in default_ids
+
+    include_response = await async_client.get("/api/v2/acquisition-tasks?skip_destroyed=false")
+    assert include_response.status_code == 200
+    include_ids = {task["task_id"] for task in include_response.json()}
+    assert destroyed_task.task_id in include_ids
+
+
+@pytest.mark.asyncio
+async def test_list_acquisition_tasks_skip_completed(
+    async_client: AsyncClient,
+    test_specimen,
+    test_block,
+    test_roi,
+    test_acquisition_task,
+):
+    pending_acquisition = AcquisitionDocument(
+        acquisition_id="TEST_ACQ_QC_PENDING_001",
+        montage_id="TEST_MONTAGE_QC_PENDING_001",
+        specimen_id=test_specimen.specimen_id,
+        roi_id=test_roi.roi_id,
+        acquisition_task_id=test_acquisition_task.task_id,
+        specimen_ref=test_specimen.id,
+        roi_ref=test_roi.id,
+        acquisition_task_ref=test_acquisition_task.id,
+        hardware_settings={
+            "scope_id": "TEST_SCOPE_001",
+            "camera_model": "Test Camera",
+            "camera_serial": "12345",
+            "camera_bit_depth": 16,
+            "media_type": "tape",
+        },
+        acquisition_settings={
+            "magnification": 1000,
+            "spot_size": 2,
+            "exposure_time": 100,
+            "tile_size": [4096, 4096],
+            "tile_overlap": 0.1,
+            "saved_bit_depth": 8,
+        },
+        status=AcquisitionStatus.QC_PENDING,
+        start_time=datetime.now(timezone.utc),
+    )
+    passed_acquisition = AcquisitionDocument(
+        acquisition_id="TEST_ACQ_QC_PASSED_001",
+        montage_id="TEST_MONTAGE_QC_PASSED_001",
+        specimen_id=test_specimen.specimen_id,
+        roi_id=test_roi.roi_id,
+        acquisition_task_id=test_acquisition_task.task_id,
+        specimen_ref=test_specimen.id,
+        roi_ref=test_roi.id,
+        acquisition_task_ref=test_acquisition_task.id,
+        hardware_settings={
+            "scope_id": "TEST_SCOPE_001",
+            "camera_model": "Test Camera",
+            "camera_serial": "12345",
+            "camera_bit_depth": 16,
+            "media_type": "tape",
+        },
+        acquisition_settings={
+            "magnification": 1000,
+            "spot_size": 2,
+            "exposure_time": 100,
+            "tile_size": [4096, 4096],
+            "tile_overlap": 0.1,
+            "saved_bit_depth": 8,
+        },
+        status=AcquisitionStatus.QC_PASSED,
+        start_time=datetime.now(timezone.utc),
+    )
+    await pending_acquisition.insert()
+    await passed_acquisition.insert()
+
+    default_response = await async_client.get("/api/v2/acquisition-tasks")
+    assert default_response.status_code == 200
+    default_ids = {task["task_id"] for task in default_response.json()}
+    assert test_acquisition_task.task_id not in default_ids
+
+    include_response = await async_client.get("/api/v2/acquisition-tasks?skip_completed=false")
+    assert include_response.status_code == 200
+    include_ids = {task["task_id"] for task in include_response.json()}
+    assert test_acquisition_task.task_id in include_ids
 
 
 @pytest.mark.asyncio
@@ -75,7 +215,6 @@ async def test_create_acquisition_task(async_client: AsyncClient, test_specimen,
     assert response.status_code == 201
     response_data = response.json()
     assert response_data["task_id"] == task_id_hr
-    assert response_data["status"] == AcquisitionTaskStatus.PLANNED.value
     assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
     assert response_data["block_ref"]["id"] == str(test_block.id)
     assert response_data["roi_ref"]["id"] == str(test_roi.id)
@@ -124,15 +263,13 @@ async def test_get_acquisition_task_not_found(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_update_acquisition_task(async_client: AsyncClient, test_acquisition_task):
-    """Test updating a task's status and metadata."""
+    """Test updating a task's metadata."""
     update_data = {
-        "status": AcquisitionTaskStatus.IN_PROGRESS.value,
         "metadata": {"updated_key": "updated_value"},
     }
     response = await async_client.patch(f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}", json=update_data)
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["status"] == AcquisitionTaskStatus.IN_PROGRESS.value
     assert response_data["metadata"]["updated_key"] == "updated_value"
     assert response_data["task_id"] == test_acquisition_task.task_id
     assert "updated_at" in response_data
@@ -183,21 +320,6 @@ async def test_delete_task(async_client: AsyncClient, test_specimen, test_block,
 
 
 @pytest.mark.asyncio
-async def test_update_task_status(async_client: AsyncClient, test_acquisition_task):
-    """Test updating task status via the dedicated endpoint."""
-    status_update = {"status": AcquisitionTaskStatus.COMPLETED.value}
-    response = await async_client.post(
-        f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}/status",
-        json=status_update,
-    )
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data["status"] == AcquisitionTaskStatus.COMPLETED.value
-    assert response_data["task_id"] == test_acquisition_task.task_id
-    assert response_data["updated_at"] is not None
-
-
-@pytest.mark.asyncio
 async def test_create_tasks_batch(async_client: AsyncClient, test_specimen, test_block, test_roi):
     """Test creating multiple tasks in a batch."""
     task_id_1 = f"TASK_BATCH_1_{int(datetime.now(timezone.utc).timestamp())}"
@@ -226,7 +348,6 @@ async def test_create_tasks_batch(async_client: AsyncClient, test_specimen, test
     assert len(response_data) == 2
     assert response_data[0]["task_id"] == task_id_1
     assert response_data[1]["task_id"] == task_id_2
-    assert response_data[0]["status"] == AcquisitionTaskStatus.PLANNED.value
     assert response_data[1]["task_type"] == "alignment_task"
     assert response_data[0]["roi_ref"]["id"] == str(test_roi.id)
     assert response_data[1]["roi_ref"]["id"] == str(test_roi.id)
