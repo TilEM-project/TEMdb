@@ -37,11 +37,11 @@ When querying data from the database, `URI` objects are automatically returned. 
 ```python
 specimen = client.specimen.get("my_dummy_specimen")
 
-first_image_uri = next(iter(specimen.specimen_images))
-
-with first_image_uri.open() as remote_file:
-   with open("downloaded_image.png", "wb") as local_file:
-      local_file.write(remote_file.read())
+for image_uri in specimen.specimen_images:
+   with image_uri.open() as remote_file:
+      with open("downloaded_image.png", "wb") as local_file:
+         local_file.write(remote_file.read())
+   break
 ```
 
 Of course, the remote file data could be read directly, rather than saved to a local file.
