@@ -7,8 +7,6 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from temdb.models import BlockBase
 
-from .specimen import SpecimenDocument  # noqa: F401
-
 
 class BlockDocument(Document, BlockBase):
     """MongoDB document for block data."""
@@ -23,9 +21,7 @@ class BlockDocument(Document, BlockBase):
         default_factory=lambda: datetime.now(timezone.utc),
         description="Time when block metadata was created",
     )
-    updated_at: datetime | None = Field(
-        None, description="Time when block metadata was last updated"
-    )
+    updated_at: datetime | None = Field(None, description="Time when block metadata was last updated")
 
     class Settings:
         name = "blocks"
