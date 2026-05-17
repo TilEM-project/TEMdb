@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 
-from beanie import Document, Link
+from beanie import Document
+from beanie.odm.fields import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from temdb.models import BlockBase
 
-from .specimen import SpecimenDocument
+from .specimen import SpecimenDocument  # noqa: F401
 
 
 class BlockDocument(Document, BlockBase):
@@ -14,13 +15,17 @@ class BlockDocument(Document, BlockBase):
 
     block_id: str = Field(..., description="ID of the block within the specimen")
     specimen_id: str = Field(..., description="ID of specimen this block belongs to")
-    specimen_ref: Link[SpecimenDocument] = Field(..., description="Internal link to the specimen document")
+    specimen_ref: PydanticObjectId = Field(
+        ..., description="ObjectId of the specimen document"
+    )
     description: str | None = Field(None, description="Description of the block")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Time when block metadata was created",
     )
-    updated_at: datetime | None = Field(None, description="Time when block metadata was last updated")
+    updated_at: datetime | None = Field(
+        None, description="Time when block metadata was last updated"
+    )
 
     class Settings:
         name = "blocks"
@@ -30,6 +35,6 @@ class BlockDocument(Document, BlockBase):
                 unique=True,
                 name="specimen_block_id_index",
             ),
-            IndexModel([("specimen_ref.id", ASCENDING)], name="specimen_ref_index"),
+            IndexModel([("specimen_ref", ASCENDING)], name="specimen_ref_index"),
             IndexModel([("created_at", DESCENDING)], name="created_at_index"),
         ]
