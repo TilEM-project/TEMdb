@@ -23,6 +23,7 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SubstrateDocument as Substrate,
 )
+from temdb.server.responses.section import SectionRead
 
 section_api = APIRouter(
     tags=["Sections"],
@@ -31,7 +32,11 @@ section_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-@section_api.get("/sections", response_model=list[Section])
+def _to_reads(sections: list[Section]) -> list[SectionRead]:
+    return [SectionRead.from_doc(s) for s in sections]
+
+
+@section_api.get("/sections", response_model=list[SectionRead])
 async def list_sections(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -42,7 +47,7 @@ async def list_sections(
     limit: int = Query(10, ge=1, le=100),
 ):
     """Retrieve a list of sections with optional filters and pagination."""
-    query_filter = {}
+    query_filter: dict = {}
     if specimen_id:
         query_filter["specimen_id"] = specimen_id
     if block_id:
@@ -54,7 +59,8 @@ async def list_sections(
     if quality:
         query_filter["section_metrics.quality"] = quality
 
-    return await Section.find(query_filter, fetch_links=True).skip(skip).limit(limit).to_list()
+    sections = await Section.find(query_filter).skip(skip).limit(limit).to_list()
+    return _to_reads(sections)
 
 
 @section_api.get("/sections/count", response_model=int)
@@ -65,7 +71,7 @@ async def count_sections(
     media_id: str | None = Query(None, description="Filter by media ID"),
     quality: SectionQuality | None = Query(None, description="Filter by section quality"),
 ):
-    query_filter = {}
+    query_filter: dict = {}
     if specimen_id:
         query_filter["specimen_id"] = specimen_id
     if block_id:
@@ -82,7 +88,7 @@ async def count_sections(
 
 @section_api.get(
     "/sections/sessions/{cutting_session_id}",
-    response_model=list[Section],
+    response_model=list[SectionRead],
 )
 async def list_cutting_session_sections(
     cutting_session_id: str,
@@ -91,7 +97,7 @@ async def list_cutting_session_sections(
 ):
     """Retrieve sections associated with a specific cutting session using its human-readable ID."""
     sections = (
-        await Section.find({"cutting_session_id": cutting_session_id}, fetch_links=True)
+        await Section.find({"cutting_session_id": cutting_session_id})
         .sort("+section_number")
         .skip(skip)
         .limit(limit)
@@ -100,12 +106,12 @@ async def list_cutting_session_sections(
     if not sections and not await CuttingSession.find_one({"cutting_session_id": cutting_session_id}):
         raise HTTPException(status_code=404, detail=f"Cutting Session '{cutting_session_id}' not found")
 
-    return sections
+    return _to_reads(sections)
 
 
 @section_api.get(
     "/sections/blocks/{block_id}",
-    response_model=list[Section],
+    response_model=list[SectionRead],
 )
 async def list_block_sections(
     block_id: str,
@@ -114,19 +120,18 @@ async def list_block_sections(
 ):
     """Retrieve sections associated with a specific block using its human-readable ID."""
     sections = (
-        await Section.find({"block_id": block_id}, fetch_links=True)
+        await Section.find({"block_id": block_id})
         .sort([("cutting_session_id", 1), ("section_number", 1)])
         .skip(skip)
         .limit(limit)
         .to_list()
     )
-
-    return sections
+    return _to_reads(sections)
 
 
 @section_api.get(
     "/sections/specimens/{specimen_id}",
-    response_model=list[Section],
+    response_model=list[SectionRead],
 )
 async def list_specimen_sections(
     specimen_id: str,
@@ -135,40 +140,37 @@ async def list_specimen_sections(
 ):
     """Retrieve sections associated with a specific specimen using its human-readable ID."""
     sections = (
-        await Section.find({"specimen_id": specimen_id}, fetch_links=True)
+        await Section.find({"specimen_id": specimen_id})
         .sort([("block_id", 1), ("cutting_session_id", 1), ("section_number", 1)])
         .skip(skip)
         .limit(limit)
         .to_list()
     )
-
-    return sections
+    return _to_reads(sections)
 
 
 @section_api.get(
     "/sections/sessions/{cutting_session_id}/sections/{section_id}",
-    response_model=Section,
+    response_model=SectionRead,
 )
 async def get_section(cutting_session_id: str, section_id: str):
     """Retrieve a specific section by its human-readable ID and its session's human-readable ID."""
     section = await Section.find_one(
         {"section_id": section_id, "cutting_session_id": cutting_session_id},
-        fetch_links=True,
     )
     if not section:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
-    return section
+    return SectionRead.from_doc(section)
 
 
-@section_api.post("/sections", response_model=Section, status_code=status.HTTP_201_CREATED)
+@section_api.post("/sections", response_model=SectionRead, status_code=status.HTTP_201_CREATED)
 async def create_section(section_data: SectionCreate):
     """Create a new section."""
     cut_session = await CuttingSession.find_one(
         CuttingSession.cutting_session_id == section_data.cutting_session_id,
-        fetch_links=True,
     )
     if not cut_session:
         raise HTTPException(
@@ -181,7 +183,7 @@ async def create_section(section_data: SectionCreate):
     existing_section = await Section.find_one(
         {
             "section_id": new_section_id,
-            "cutting_session_ref.id": cut_session.id,
+            "cutting_session_ref": cut_session.id,
         }
     )
     if existing_section:
@@ -190,10 +192,7 @@ async def create_section(section_data: SectionCreate):
             detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
         )
 
-    substrate = await Substrate.find_one(
-        Substrate.media_id == section_data.media_id,
-        fetch_links=True,
-    )
+    substrate = await Substrate.find_one(Substrate.media_id == section_data.media_id)
 
     new_section = Section(
         section_id=new_section_id,
@@ -210,13 +209,12 @@ async def create_section(section_data: SectionCreate):
         barcode=section_data.barcode,
     )
     await new_section.insert()
-    created_section = await Section.get(new_section.id, fetch_links=True)
-    return created_section
+    return SectionRead.from_doc(new_section)
 
 
 @section_api.post(
     "/sections/batch",
-    response_model=list[Section],
+    response_model=list[SectionRead],
     status_code=status.HTTP_201_CREATED,
     summary="Create multiple Sections in bulk",
     responses={
@@ -247,7 +245,7 @@ async def create_sections_batch(sections_data: list[SectionCreate]):
         )
 
     sections_to_insert = []
-    parent_cache = {}
+    parent_cache: dict = {}
 
     for i, section_create in enumerate(sections_data):
         session_id = section_create.cutting_session_id
@@ -295,7 +293,7 @@ async def create_sections_batch(sections_data: list[SectionCreate]):
 
     try:
         await Section.insert_many(sections_to_insert)
-        return sections_to_insert
+        return _to_reads(sections_to_insert)
     except BulkWriteError as e:
         logger.error(f"BulkWriteError during section batch insert: {e.details}")
         raise HTTPException(
@@ -315,7 +313,7 @@ async def create_sections_batch(sections_data: list[SectionCreate]):
 
 @section_api.patch(
     "/sections/sessions/{cutting_session_id}/sections/{section_id}",
-    response_model=Section,
+    response_model=SectionRead,
 )
 async def update_section(
     cutting_session_id: str,
@@ -362,8 +360,7 @@ async def update_section(
     if needs_save:
         await section.save()
 
-    updated_section = await Section.get(section.id, fetch_links=True)
-    return updated_section
+    return SectionRead.from_doc(section)
 
 
 @section_api.delete(
@@ -379,7 +376,7 @@ async def delete_section(cutting_session_id: str, section_id: str):
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
 
-    roi_count = await ROI.find(ROI.section_ref.id == section.id).count()
+    roi_count = await ROI.find(ROI.section_ref == section.id).count()
     if roi_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -390,7 +387,7 @@ async def delete_section(cutting_session_id: str, section_id: str):
     return None
 
 
-@section_api.get("/sections/media/{media_id}", response_model=list[Section])
+@section_api.get("/sections/media/{media_id}", response_model=list[SectionRead])
 async def list_sections_by_media(
     media_id: str,
     skip: int = Query(0, ge=0),
@@ -398,14 +395,16 @@ async def list_sections_by_media(
     relative_position: int | None = None,
 ):
     """Retrieve sections by media type and ID."""
-    query = {"media_id": media_id}
+    query: dict = {"media_id": media_id}
     if relative_position is not None:
         query["relative_position"] = relative_position
 
-    return await Section.find(query, fetch_links=True).skip(skip).limit(limit).to_list()
+    sections = await Section.find(query).skip(skip).limit(limit).to_list()
+    return _to_reads(sections)
 
 
-@section_api.get("/sections/barcode/{barcode}", response_model=list[Section])
+@section_api.get("/sections/barcode/{barcode}", response_model=list[SectionRead])
 async def get_sections_by_barcode(barcode: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)):
     """Retrieve sections by barcode."""
-    return await Section.find({"barcode": barcode}, fetch_links=True).skip(skip).limit(limit).to_list()
+    sections = await Section.find({"barcode": barcode}).skip(skip).limit(limit).to_list()
+    return _to_reads(sections)
