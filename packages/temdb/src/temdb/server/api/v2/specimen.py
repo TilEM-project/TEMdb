@@ -22,21 +22,21 @@ async def list_specimens(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
 ):
-    query_filter = {}
+    query_filter: dict = {}
     if search:
         query_filter["$or"] = [
             {"specimen_id": {"$regex": search, "$options": "i"}},
             {"description": {"$regex": search, "$options": "i"}},
         ]
 
-    return await Specimen.find(query_filter, fetch_links=True).skip(skip).limit(limit).to_list()
+    return await Specimen.find(query_filter).skip(skip).limit(limit).to_list()
 
 
 @specimen_api.get("/specimens/count", response_model=int)
 async def count_specimens(
     search: str | None = Query(None, description="Search term for specimen ID or description"),
 ):
-    query_filter = {}
+    query_filter: dict = {}
     if search:
         query_filter["$or"] = [
             {"specimen_id": {"$regex": search, "$options": "i"}},
@@ -81,7 +81,7 @@ async def create_specimen(specimen_data: SpecimenCreate):
 @specimen_api.get("/specimens/{specimen_id}", response_model=Specimen)
 async def get_specimen(specimen_id: str):
     """Retrieve a specific specimen by its human-readable ID."""
-    specimen = await Specimen.find_one(Specimen.specimen_id == specimen_id, fetch_links=True)
+    specimen = await Specimen.find_one(Specimen.specimen_id == specimen_id)
     if not specimen:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,8 +125,7 @@ async def update_specimen(specimen_id: str, updated_fields: SpecimenUpdate = Bod
         specimen.updated_at = datetime.now(timezone.utc)
         await specimen.save()
 
-    updated_specimen = await Specimen.get(specimen.id, fetch_links=True)
-    return updated_specimen
+    return specimen
 
 
 @specimen_api.delete("/specimens/{specimen_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -139,7 +138,7 @@ async def delete_specimen(specimen_id: str):
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
 
-    block_count = await Block.find(Block.specimen_ref.id == specimen.id).count()
+    block_count = await Block.find(Block.specimen_ref == specimen.id).count()
 
     if block_count > 0:
         raise HTTPException(
@@ -169,15 +168,13 @@ async def add_specimen_image(specimen_id: str, image_url: AnyHttpUrl = Body(...,
         specimen.specimen_images = set()
 
     if str(image_url) in specimen.specimen_images:
-        fetched_specimen = await Specimen.get(specimen.id, fetch_links=True)
-        return fetched_specimen
+        return specimen
 
     specimen.specimen_images.add(str(image_url))
     specimen.updated_at = datetime.now(timezone.utc)
     await specimen.save()
 
-    updated_specimen = await Specimen.get(specimen.id, fetch_links=True)
-    return updated_specimen
+    return specimen
 
 
 @specimen_api.delete(
@@ -209,5 +206,4 @@ async def remove_specimen_image(
     specimen.updated_at = datetime.now(timezone.utc)
     await specimen.save()
 
-    updated_specimen = await Specimen.get(specimen.id, fetch_links=True)
-    return updated_specimen
+    return specimen
