@@ -57,8 +57,8 @@ async def test_create_cutting_session(async_client: AsyncClient, test_specimen, 
 
     assert response_data["specimen_id"] == test_specimen.specimen_id
 
-    assert response_data["block_ref"]["id"] == str(test_block.id)
-    assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
+    assert response_data["block_ref"] == str(test_block.id)
+    assert response_data["specimen_ref"] == str(test_specimen.id)
 
 
 @pytest.mark.asyncio

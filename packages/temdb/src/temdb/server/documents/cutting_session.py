@@ -1,13 +1,11 @@
 from datetime import datetime, timezone
 
-from beanie import Document, Link
+from beanie import Document
+from beanie.odm.fields import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from temdb.models import CuttingSessionBase
-
-from .block import BlockDocument
-from .specimen import SpecimenDocument
 
 
 class CuttingSessionDocument(Document, CuttingSessionBase):
@@ -22,8 +20,8 @@ class CuttingSessionDocument(Document, CuttingSessionBase):
     sectioning_device: str = Field(..., description="Microtome/Device used for sectioning")
     media_type: str = Field(..., description="Type of substrate the sections are placed upon")
 
-    specimen_ref: Link[SpecimenDocument] = Field(..., description="Internal link to the specimen document")
-    block_ref: Link[BlockDocument] = Field(..., description="Internal link to the block document")
+    specimen_ref: PydanticObjectId = Field(..., description="ObjectId of the specimen document")
+    block_ref: PydanticObjectId = Field(..., description="ObjectId of the block document")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime | None = Field(None)
 
@@ -38,7 +36,7 @@ class CuttingSessionDocument(Document, CuttingSessionBase):
             IndexModel([("specimen_id", ASCENDING)], name="specimen_hr_id_index"),
             IndexModel([("block_id", ASCENDING)], name="block_hr_id_index"),
             IndexModel(
-                [("block_ref.id", ASCENDING), ("start_time", DESCENDING)],
+                [("block_ref", ASCENDING), ("start_time", DESCENDING)],
                 name="block_ref_start_time_index",
             ),
             IndexModel(
