@@ -37,7 +37,7 @@ async def test_create_block(async_client: AsyncClient, test_specimen):
     assert response_data["block_id"] == block_id_hr
     assert response_data["specimen_id"] == test_specimen.specimen_id
     assert response_data["microCT_info"] == {"resolution": 2.0, "unit": "um"}
-    assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
+    assert response_data["specimen_ref"] == str(test_specimen.id)
 
     await async_client.delete(f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}")
 
