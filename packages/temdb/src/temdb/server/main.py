@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from temdb.server.api.v1.grids import grid_api
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
@@ -67,11 +66,10 @@ class GzipRequestMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongodb_uri = app.state.mongodb_uri
-    mongodb_name = app.state.mongodb_name
+    database_url = app.state.database_url
 
-    logger.info(f"Connecting to database: {mongodb_uri}, database name: {mongodb_name}")
-    db_manager = DatabaseManager(mongodb_uri, mongodb_name)
+    logger.info(f"Connecting to SQL database: {database_url if database_url else 'disabled'}")
+    db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     await db_manager.initialize()
     yield
@@ -86,10 +84,8 @@ def create_app():
     app.add_middleware(GzipRequestMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.config = config
-    logging.info(f"Mongo URI: {app.config.mongodb_uri}")
-    logging.info(f"Database name: {app.config.mongodb_name}")
-    app.state.mongodb_uri = app.config.mongodb_uri
-    app.state.mongodb_name = app.config.mongodb_name
+    logging.info(f"SQL database URL configured: {bool(app.config.database_url)}")
+    app.state.database_url = app.config.database_url
 
     origins = [
         "http://localhost:5173",
@@ -104,10 +100,6 @@ def create_app():
     )
 
     register_exception_handlers(app)
-
-    # V1 API routes (legacy)
-    v1_prefix = "/api/v1"
-    app.include_router(grid_api, prefix=v1_prefix)
 
     # V2 API routes
     v2_prefix = "/api/v2"

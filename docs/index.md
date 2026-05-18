@@ -28,8 +28,8 @@ TEMdb models the typical flow of a sample through the Sectioning and Imaging pip
 ## Technical Overview
 
 * **Backend:** [FastAPI](https://fastapi.tiangolo.com/) (Python web framework)
-* **Database:** [MongoDB](https://www.mongodb.com/) (NoSQL document database)
-* **ODM:** [Beanie](https://beanie-odm.dev/) (Asynchronous Python ODM for MongoDB based on Pydantic)
+* **Database:** [PostgreSQL](https://www.postgresql.org/) (relational database)
+* **ORM:** [SQLAlchemy](https://www.sqlalchemy.org/)
 * **Deployment (Local):** [Docker Compose](https://docs.docker.com/compose/)
 
 ## Navigating This Documentation

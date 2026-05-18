@@ -60,9 +60,9 @@ with SyncTEMdbClient("https://temdb.example.com") as client:
 
 ### temdb (`packages/temdb/`)
 
-FastAPI server with MongoDB/Beanie ODM backend. Provides:
+FastAPI server backed by PostgreSQL and SQLAlchemy. Provides:
 - REST API at `/api/v2/` for all entities
-- Beanie Document models extending shared schemas
+- SQLAlchemy-based persistence for all server resources
 
 ## Development
 
@@ -73,7 +73,7 @@ Requires [uv](https://docs.astral.sh/uv/) for dependency management.
 uv sync
 uv run pre-commit install
 
-# Run tests (uses testcontainers for MongoDB)
+# Run tests (uses testcontainers for PostgreSQL)
 uv run pytest
 
 # Run server with hot reload
@@ -97,11 +97,10 @@ Run manually: `uv run pre-commit run --all-files`
 ### Docker
 
 ```bash
-# Start MongoDB + server + Mongo Express
+# Start PostgreSQL + server
 docker-compose up
 
 # API: http://localhost:8000
-# Mongo Express: http://localhost:8081
 ```
 
 ### Releasing

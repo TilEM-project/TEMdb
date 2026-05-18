@@ -1,25 +1,12 @@
 services:
-  mongo:
-    image: mongo:latest
+  postgres:
+    image: postgres:16
     env_file:
       - ./dev.env
-    environment:
-      - MONGO_DATA_DIR=/data/db
-      - MONGO_LOG_DIR=/dev/null
     volumes:
-      - mongo_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - 27017:27017
-
-  mongo-express:
-    image: mongo-express
-    env_file:
-      - ./dev.env
-    depends_on:
-      - mongo
-    ports:
-      - 8081:8081
-    command: ["bash", "-c", "sleep 10 && /docker-entrypoint.sh"]
+      - 5432:5432
 
   app:
     build:
@@ -30,12 +17,10 @@ services:
     volumes:
       - ./packages:/app/packages
       - ./run.py:/app/run.py
-    environment:
-      - TEMDB_ENV=dev
-      - MONGODB_URI=mongodb://mongo:27017/
-      - MONGODB_NAME=temdb
+    env_file:
+      - ./dev.env
     depends_on:
-      - mongo
+      - postgres
 
 volumes:
-  mongo_data:
+  postgres_data:

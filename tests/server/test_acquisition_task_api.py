@@ -7,11 +7,13 @@ from temdb.models import AcquisitionTaskStatus
 
 
 @pytest.mark.asyncio
-async def test_list_acquisition_tasks_unfiltered(async_client: AsyncClient):
+async def test_list_acquisition_tasks_unfiltered(async_client: AsyncClient, test_acquisition_task):
     """Test retrieving a list of all acquisition tasks."""
     response = await async_client.get("/api/v2/acquisition-tasks")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    response_data = response.json()
+    assert isinstance(response_data, list)
+    assert any(task["task_id"] == test_acquisition_task.task_id for task in response_data)
 
 
 @pytest.mark.asyncio
@@ -110,9 +112,9 @@ async def test_get_acquisition_task(async_client: AsyncClient, test_acquisition_
     response_data = response.json()
     assert response_data["task_id"] == test_acquisition_task.task_id
     assert response_data["_id"] == str(test_acquisition_task.id)
-    assert response_data["specimen_ref"]["id"] == str(test_acquisition_task.specimen_ref.ref.id)
-    assert response_data["block_ref"]["id"] == str(test_acquisition_task.block_ref.ref.id)
-    assert response_data["roi_ref"]["id"] == str(test_acquisition_task.roi_ref.ref.id)
+    assert response_data["specimen_id"] == test_acquisition_task.specimen_id
+    assert response_data["block_id"] == test_acquisition_task.block_id
+    assert response_data["roi_id"] == test_acquisition_task.roi_id
 
 
 @pytest.mark.asyncio

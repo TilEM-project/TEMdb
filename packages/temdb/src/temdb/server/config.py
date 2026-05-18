@@ -5,8 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class BaseConfig(BaseSettings):
     app_name: str = "TEMDB"
-    mongodb_uri: str
-    mongodb_name: str
+    database_url: str | None = None
     max_batch_size: int = 5000
     model_config = SettingsConfigDict(
         case_sensitive=False,
@@ -16,8 +15,6 @@ class BaseConfig(BaseSettings):
 
 class DevConfig(BaseConfig):
     debug: bool = True
-    mongodb_uri: str = "mongodb://mongo:27017/"
-    mongodb_name: str = "temdb"
     model_config = SettingsConfigDict(
         case_sensitive=False,
         env_file="dev.env",

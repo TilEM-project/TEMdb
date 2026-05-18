@@ -172,7 +172,7 @@ class AcquisitionResource(BaseResource):
         end_date: datetime | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """List acquisitions with complete hierarchy metadata using MongoDB aggregation."""
+        """List acquisitions with complete hierarchy metadata."""
         params = {
             "cursor": cursor,
             "limit": limit,
