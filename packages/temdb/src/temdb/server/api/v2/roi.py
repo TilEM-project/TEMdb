@@ -20,6 +20,7 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SubstrateDocument as Substrate,
 )
+from temdb.server.responses.roi import ROIRead
 
 roi_api = APIRouter(
     tags=["ROIs"],
@@ -28,7 +29,11 @@ roi_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-@roi_api.get("/rois", response_model=list[ROI])
+def _to_reads(rois: list[ROI]) -> list[ROIRead]:
+    return [ROIRead.from_doc(r) for r in rois]
+
+
+@roi_api.get("/rois", response_model=list[ROIRead])
 async def list_rois(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -39,7 +44,7 @@ async def list_rois(
     limit: int = Query(10, ge=1, le=100),
 ):
     """Retrieve a list of ROIs with optional filters and pagination."""
-    query_filter = {}
+    query_filter: dict = {}
     if specimen_id:
         query_filter["specimen_id"] = specimen_id
     if block_id:
@@ -55,10 +60,11 @@ async def list_rois(
     if is_parent_roi is not None:
         pass
 
-    return await ROI.find(query_filter, fetch_links=True).skip(skip).limit(limit).to_list()
+    rois = await ROI.find(query_filter).skip(skip).limit(limit).to_list()
+    return _to_reads(rois)
 
 
-@roi_api.post("/rois", response_model=ROI, status_code=status.HTTP_201_CREATED)
+@roi_api.post("/rois", response_model=ROIRead, status_code=status.HTTP_201_CREATED)
 async def create_roi(roi_data: ROICreate):
     """Create a new ROI with hierarchical ID generation."""
     section = await Section.find_one(Section.section_id == roi_data.section_id)
@@ -118,8 +124,7 @@ async def create_roi(roi_data: ROICreate):
     )
 
     await new_roi.insert()
-    created_roi = await ROI.get(new_roi.id, fetch_links=True)
-    return created_roi
+    return ROIRead.from_doc(new_roi)
 
 
 @roi_api.post(
@@ -155,8 +160,8 @@ async def create_rois_batch(rois_data: list[ROICreate]):
         )
 
     rois_to_insert = []
-    parent_section_cache = {}
-    substrate_cache = {}
+    parent_section_cache: dict = {}
+    substrate_cache: dict = {}
 
     for i, roi_create in enumerate(rois_data):
         section_id = roi_create.section_id
@@ -226,27 +231,27 @@ async def create_rois_batch(rois_data: list[ROICreate]):
         )
 
 
-@roi_api.get("/rois/{roi_id}", response_model=ROI)
+@roi_api.get("/rois/{roi_id}", response_model=ROIRead)
 async def get_roi(roi_id: str):
-    """Retrieve a specific ROI by its human-readable integer ID."""
-    roi = await ROI.find_one(ROI.roi_id == roi_id, fetch_links=True)
+    """Retrieve a specific ROI by its human-readable ID."""
+    roi = await ROI.find_one(ROI.roi_id == roi_id)
     if not roi:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"ROI with ID '{roi_id}' not found",
         )
-    return roi
+    return ROIRead.from_doc(roi)
 
 
 @roi_api.get("/rois/{roi_id}/hierarchy", response_model=dict)
 async def get_roi_hierarchy(roi_id: str):
     """Get the full hierarchy path for an ROI."""
-    roi = await ROI.find_one(ROI.roi_id == roi_id, fetch_links=True)
+    roi = await ROI.find_one(ROI.roi_id == roi_id)
     if not roi:
         raise HTTPException(status_code=404, detail=f"ROI with ID '{roi_id}' not found")
 
     hierarchy_path = []
-    current_roi = roi
+    current_roi: ROI | None = roi
 
     while current_roi:
         hierarchy_path.insert(
@@ -259,7 +264,7 @@ async def get_roi_hierarchy(roi_id: str):
         )
 
         if current_roi.parent_roi_ref:
-            current_roi = await ROI.get(current_roi.parent_roi_ref.id)
+            current_roi = await ROI.get(current_roi.parent_roi_ref)
         else:
             break
 
@@ -270,7 +275,7 @@ async def get_roi_hierarchy(roi_id: str):
     }
 
 
-@roi_api.patch("/rois/{roi_id}", response_model=ROI)
+@roi_api.patch("/rois/{roi_id}", response_model=ROIRead)
 async def update_roi(roi_id: str, updated_fields: ROIUpdate = Body(...)):
     """Update details (attributes from ROIBase) of a specific ROI."""
     roi = await ROI.find_one(ROI.roi_id == roi_id)
@@ -294,8 +299,7 @@ async def update_roi(roi_id: str, updated_fields: ROIUpdate = Body(...)):
         roi.updated_at = datetime.now(timezone.utc)
         await roi.save()
 
-    updated_roi = await ROI.get(roi.id, fetch_links=True)
-    return updated_roi
+    return ROIRead.from_doc(roi)
 
 
 @roi_api.delete("/rois/{roi_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -308,21 +312,21 @@ async def delete_roi(roi_id: str):
             detail=f"ROI with ID '{roi_id}' not found",
         )
 
-    child_rois_count = await ROI.find(ROI.parent_roi_ref.id == roi.id).count()
+    child_rois_count = await ROI.find(ROI.parent_roi_ref == roi.id).count()
     if child_rois_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot delete ROI '{roi_id}' as it has {child_rois_count} child ROIs",
         )
 
-    task_count = await AcquisitionTask.find(AcquisitionTask.roi_ref.id == roi.id).count()
+    task_count = await AcquisitionTask.find(AcquisitionTask.roi_ref == roi.id).count()
     if task_count > 0:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete ROI '{roi_id}' as it has {task_count} associated Acquisition Tasks.",
         )
 
-    acq_count = await Acquisition.find(Acquisition.roi_ref.id == roi.id).count()
+    acq_count = await Acquisition.find(Acquisition.roi_ref == roi.id).count()
     if acq_count > 0:
         raise HTTPException(
             status_code=400,
@@ -333,7 +337,7 @@ async def delete_roi(roi_id: str):
     return None
 
 
-@roi_api.get("/sections/{section_id}/rois", response_model=list[ROI])
+@roi_api.get("/sections/{section_id}/rois", response_model=list[ROIRead])
 async def list_section_rois(
     section_id: str,
     skip: int = Query(0, ge=0),
@@ -341,12 +345,12 @@ async def list_section_rois(
 ):
     """Retrieve ROIs associated with a specific section using its human-readable ID."""
     rois = (
-        await ROI.find({"section_id": section_id}, fetch_links=True).sort("+roi_id").skip(skip).limit(limit).to_list()
+        await ROI.find({"section_id": section_id}).sort("+roi_id").skip(skip).limit(limit).to_list()
     )
     if not rois and not await Section.find_one({"section_id": section_id}):
         raise HTTPException(status_code=404, detail=f"Section '{section_id}' not found")
 
-    return rois
+    return _to_reads(rois)
 
 
 @roi_api.get("/rois/{roi_id}/children", response_model=dict)
@@ -361,18 +365,20 @@ async def get_child_rois(
         raise HTTPException(status_code=404, detail=f"Parent ROI with ID '{roi_id}' not found")
 
     children_rois = (
-        await ROI.find(ROI.parent_roi_ref.id == parent_roi.id, fetch_links=True)
+        await ROI.find(ROI.parent_roi_ref == parent_roi.id)
         .sort("+roi_id")
         .skip(skip)
         .limit(limit)
         .to_list()
     )
 
-    total_child_rois = await ROI.find(ROI.parent_roi_ref.id == parent_roi.id).count()
+    total_child_rois = await ROI.find(ROI.parent_roi_ref == parent_roi.id).count()
     more_results = skip + limit < total_child_rois
 
+    children_reads = _to_reads(children_rois)
+
     return {
-        "children": children_rois,
+        "children": children_reads,
         "metadata": {
             "skip": skip,
             "limit": limit,

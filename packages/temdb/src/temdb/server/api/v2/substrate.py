@@ -9,6 +9,7 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SubstrateDocument as Substrate,
 )
+from temdb.server.responses.section import SectionRead
 
 substrate_api = APIRouter(
     tags=["Substrates"],
@@ -23,14 +24,13 @@ async def list_substrates(
     limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
 ):
     """Retrieve a list of substrates with optional filters and pagination."""
-    query_filter = {}
+    query_filter: dict = {}
     if media_type:
         query_filter["media_type"] = media_type
     if status:
         query_filter["status"] = status
 
-    substrates = await Substrate.find(query_filter, fetch_links=False).skip(skip).limit(limit).to_list()
-    return substrates
+    return await Substrate.find(query_filter).skip(skip).limit(limit).to_list()
 
 
 @substrate_api.post("/substrates", response_model=Substrate, status_code=status.HTTP_201_CREATED)
@@ -116,7 +116,7 @@ async def delete_substrate(media_id: str):
             detail=f"Substrate with media_id '{media_id}' not found",
         )
 
-    section_count = await Section.find(Section.substrate_ref.id == substrate.id).count()
+    section_count = await Section.find(Section.substrate_ref == substrate.id).count()
     if section_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -128,7 +128,7 @@ async def delete_substrate(media_id: str):
     return None
 
 
-@substrate_api.get("/substrates/{media_id}/sections", response_model=list[Section])
+@substrate_api.get("/substrates/{media_id}/sections", response_model=list[SectionRead])
 async def get_substrate_sections(
     media_id: str,
     skip: int = Query(0, ge=0),
@@ -143,11 +143,11 @@ async def get_substrate_sections(
         )
 
     sections = (
-        await Section.find(Section.substrate_ref.id == substrate.id, fetch_links=True)
+        await Section.find(Section.substrate_ref == substrate.id)
         .sort([("section_number", 1)])
         .skip(skip)
         .limit(limit)
         .to_list()
     )
 
-    return sections
+    return [SectionRead.from_doc(s) for s in sections]

@@ -24,15 +24,20 @@ from temdb.server.documents import (
 from temdb.server.documents import (
     SpecimenDocument as Specimen,
 )
+from temdb.server.responses.task import AcquisitionTaskRead
 
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
 )
 
 
+def _to_read(task: AcquisitionTask) -> AcquisitionTaskRead:
+    return AcquisitionTaskRead.from_doc(task)
+
+
 @acquisition_task_api.get(
     "/acquisition-tasks",
-    response_model=list[AcquisitionTask],
+    response_model=list[AcquisitionTaskRead],
 )
 async def list_tasks(
     skip: int = Query(0, ge=0),
@@ -43,124 +48,29 @@ async def list_tasks(
     roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
     task_type: str | None = None,
 ):
-    """List acquisition tasks using aggregation to fetch linked data."""
-    match_filters = {}
+    """List acquisition tasks."""
+    query: dict = {}
     if status:
-        match_filters["status"] = status
+        query["status"] = status
     if task_type:
-        match_filters["task_type"] = task_type
-
-    specimen_internal_id = None
+        query["task_type"] = task_type
     if specimen_id:
-        specimen = await Specimen.find_one(Specimen.specimen_id == specimen_id)
-        if not specimen:
-            return []
-        specimen_internal_id = specimen.id
-        match_filters["specimen_ref.$id"] = specimen_internal_id
-
+        query["specimen_id"] = specimen_id
     if block_id:
-        block_query_dict = {"block_id": block_id}
-        if specimen_internal_id:
-            block_query = Block.find(block_query_dict, Block.specimen_ref.id == specimen_internal_id)
-        else:
-            block_query = Block.find(block_query_dict)
-        block = await block_query.first_or_none()
-        if not block:
-            return []
-        match_filters["block_ref.$id"] = block.id
-
+        query["block_id"] = block_id
     if roi_id:
-        roi = await ROI.find_one(ROI.roi_id == roi_id)
-        if not roi:
-            return []
-        if block_id and roi.block_id != block_id:
-            return []
-        if specimen_id and hasattr(roi, "specimen_id") and roi.specimen_id != specimen_id:
-            return []
-        match_filters["roi_ref.$id"] = roi.id
+        query["roi_id"] = roi_id
 
-    pipeline = []
-
-    if match_filters:
-        pipeline.append({"$match": match_filters})
-
-    pipeline.append(
-        {
-            "$lookup": {
-                "from": Specimen.Settings.name,
-                "localField": "specimen_ref.$id",
-                "foreignField": "_id",
-                "as": "specimen_data",
-            }
-        }
-    )
-    pipeline.append({"$unwind": {"path": "$specimen_data", "preserveNullAndEmptyArrays": True}})
-
-    pipeline.append(
-        {
-            "$lookup": {
-                "from": Block.Settings.name,
-                "localField": "block_ref.$id",
-                "foreignField": "_id",
-                "as": "block_data",
-            }
-        }
-    )
-    pipeline.append({"$unwind": {"path": "$block_data", "preserveNullAndEmptyArrays": True}})
-
-    pipeline.append(
-        {
-            "$lookup": {
-                "from": ROI.Settings.name,
-                "localField": "roi_ref.$id",
-                "foreignField": "_id",
-                "as": "roi_data",
-            }
-        }
-    )
-    pipeline.append({"$unwind": {"path": "$roi_data", "preserveNullAndEmptyArrays": True}})
-
-    if skip > 0:
-        pipeline.append({"$skip": skip})
-    pipeline.append({"$limit": limit})
-
-    pipeline.append(
-        {
-            "$project": {
-                "_id": 1,
-                "task_id": 1,
-                "specimen_id": 1,
-                "block_id": 1,
-                "roi_id": 1,
-                "task_type": 1,
-                "version": 1,
-                "status": 1,
-                "created_at": 1,
-                "updated_at": 1,
-                "started_at": 1,
-                "completed_at": 1,
-                "error_message": 1,
-                "tags": 1,
-                "metadata": 1,
-                "specimen_ref": "$specimen_data",
-                "block_ref": "$block_data",
-                "roi_ref": "$roi_data",
-            }
-        }
-    )
-
-    results_list = await AcquisitionTask.aggregate(pipeline).to_list(length=None)
-    return results_list
+    tasks = await AcquisitionTask.find(query).skip(skip).limit(limit).to_list()
+    return [AcquisitionTaskRead.from_doc(t) for t in tasks]
 
 
 @acquisition_task_api.post(
     "/acquisition-tasks",
-    response_model=AcquisitionTask,
+    response_model=AcquisitionTaskRead,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_task(
-    task_data: AcquisitionTaskCreate,
-):
+async def create_task(task_data: AcquisitionTaskCreate):
     """Create a new acquisition task with sequential operations."""
     try:
         specimen = await Specimen.find_one(Specimen.specimen_id == task_data.specimen_id)
@@ -169,7 +79,7 @@ async def create_task(
 
         block = await Block.find_one(
             Block.block_id == task_data.block_id,
-            Block.specimen_ref.id == specimen.id,
+            Block.specimen_ref == specimen.id,
         )
         if not block:
             raise HTTPException(
@@ -204,13 +114,8 @@ async def create_task(
             task_type=task_data.task_type,
         )
 
-        insert_result = await new_task.insert()
-
-        created_task = await AcquisitionTask.get(insert_result.id, fetch_links=True)
-        if created_task:
-            return created_task
-
-        raise HTTPException(status_code=500, detail="Failed to retrieve created task after insertion.")
+        await new_task.insert()
+        return _to_read(new_task)
 
     except HTTPException:
         raise
@@ -218,20 +123,20 @@ async def create_task(
         raise HTTPException(500, f"Failed to create task due to an internal error: {str(e)}")
 
 
-@acquisition_task_api.get("/acquisition-tasks/{task_id}", response_model=AcquisitionTask)
+@acquisition_task_api.get("/acquisition-tasks/{task_id}", response_model=AcquisitionTaskRead)
 async def get_task(task_id: str, version: int | None = None):
-    query = {"task_id": task_id}
+    query: dict = {"task_id": task_id}
     if version:
         query["version"] = version
     sort_order = [("version", -1)] if not version else None
-    task = await AcquisitionTask.find_one(query, sort=sort_order, fetch_links=True)
+    task = await AcquisitionTask.find_one(query, sort=sort_order)
     if not task:
         detail = f"Acquisition task ID '{task_id}'" + (f" version {version}" if version else "") + " not found."
         raise HTTPException(status_code=404, detail=detail)
-    return task
+    return _to_read(task)
 
 
-@acquisition_task_api.patch("/acquisition-tasks/{task_id}", response_model=AcquisitionTask)
+@acquisition_task_api.patch("/acquisition-tasks/{task_id}", response_model=AcquisitionTaskRead)
 async def update_task(task_id: str, updated_fields: AcquisitionTaskUpdate = Body(...)):
     existing_task = await AcquisitionTask.find_one({"task_id": task_id}, sort=[("version", -1)])
     if not existing_task:
@@ -247,8 +152,7 @@ async def update_task(task_id: str, updated_fields: AcquisitionTaskUpdate = Body
     if needs_save:
         existing_task.updated_at = datetime.now(timezone.utc)
         await existing_task.save()
-    updated_task = await AcquisitionTask.get(existing_task.id, fetch_links=True)
-    return updated_task
+    return _to_read(existing_task)
 
 
 @acquisition_task_api.delete("/acquisition-tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -256,43 +160,45 @@ async def delete_task(task_id: str):
     task = await AcquisitionTask.find_one({"task_id": task_id})
     if not task:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    acq_count = await Acquisition.find(Acquisition.acquisition_task_ref.id == task.id).count()
+    acq_count = await Acquisition.find(Acquisition.acquisition_task_ref == task.id).count()
     if acq_count > 0:
         raise HTTPException(400, f"Cannot delete task '{task_id}': {acq_count} acquisitions exist.")
     await task.delete()
     return None
 
 
-@acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=list[Acquisition])
+@acquisition_task_api.get(
+    "/acquisition-tasks/{task_id}/acquisitions",
+    response_model=list,
+)
 async def get_task_acquisitions(task_id: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)):
     task = await AcquisitionTask.find_one({"task_id": task_id})
     if not task:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    acquisitions = (
-        await Acquisition.find(Acquisition.acquisition_task_ref.id == task.id, fetch_links=True)
+    return (
+        await Acquisition.find(Acquisition.acquisition_task_ref == task.id)
         .skip(skip)
         .limit(limit)
         .to_list()
     )
-    return acquisitions
 
 
-@acquisition_task_api.post("/acquisition-tasks/{task_id}/status", response_model=AcquisitionTask)
+@acquisition_task_api.post("/acquisition-tasks/{task_id}/status", response_model=AcquisitionTaskRead)
 async def update_task_status(task_id: str, status: AcquisitionTaskStatus = Body(..., embed=True)):
     existing_task = await AcquisitionTask.find_one({"task_id": task_id}, sort=[("version", -1)])
     if not existing_task:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     if existing_task.status == status:
-        return await AcquisitionTask.get(existing_task.id, fetch_links=True)
+        return _to_read(existing_task)
     existing_task.status = status
     existing_task.updated_at = datetime.now(timezone.utc)
     await existing_task.save()
-    return await AcquisitionTask.get(existing_task.id, fetch_links=True)
+    return _to_read(existing_task)
 
 
 @acquisition_task_api.post(
     "/acquisition-tasks/batch",
-    response_model=list[AcquisitionTask],
+    response_model=list[AcquisitionTaskRead],
     status_code=status.HTTP_201_CREATED,
 )
 async def create_tasks_batch(
@@ -322,7 +228,7 @@ async def create_tasks_batch(
 
             block = await Block.find_one(
                 Block.block_id == task_data.block_id,
-                Block.specimen_ref.id == specimen.id,
+                Block.specimen_ref == specimen.id,
             )
             if not block:
                 raise HTTPException(
@@ -371,4 +277,4 @@ async def create_tasks_batch(
     if not created_tasks:
         raise HTTPException(500, "Failed to retrieve created tasks after batch insertion.")
 
-    return created_tasks
+    return [AcquisitionTaskRead.from_doc(t) for t in created_tasks]

@@ -1,13 +1,11 @@
 from datetime import datetime, timezone
 
-from beanie import Document, Link
+from beanie import Document
+from beanie.odm.fields import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from temdb.models import SectionBase
-
-from .cutting_session import CuttingSessionDocument
-from .substrate import SubstrateDocument
 
 
 class SectionDocument(Document, SectionBase):
@@ -31,10 +29,8 @@ class SectionDocument(Document, SectionBase):
     specimen_id: str = Field(..., description="Human-readable ID of the specimen")
     media_id: str = Field(..., description="Human-readable ID of the substrate")
 
-    cutting_session_ref: Link[CuttingSessionDocument] = Field(
-        ..., description="Internal Link to the cutting session document"
-    )
-    substrate_ref: Link[SubstrateDocument] = Field(..., description="Internal Link to the substrate document")
+    cutting_session_ref: PydanticObjectId = Field(..., description="ObjectId of the cutting session document")
+    substrate_ref: PydanticObjectId = Field(..., description="ObjectId of the substrate document")
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime | None = Field(None)
@@ -44,21 +40,21 @@ class SectionDocument(Document, SectionBase):
         indexes = [
             IndexModel([("section_id", ASCENDING)], unique=True, name="section_id_unique_index"),
             IndexModel(
-                [("cutting_session_ref.id", ASCENDING), ("section_number", ASCENDING)],
+                [("cutting_session_ref", ASCENDING), ("section_number", ASCENDING)],
                 name="session_ref_section_number_index",
                 unique=True,
             ),
             IndexModel(
-                [("substrate_ref.id", ASCENDING), ("section_number", ASCENDING)],
+                [("substrate_ref", ASCENDING), ("section_number", ASCENDING)],
                 name="substrate_ref_section_number_index",
             ),
             IndexModel(
-                [("substrate_ref.id", ASCENDING), ("aperture_index", ASCENDING)],
+                [("substrate_ref", ASCENDING), ("aperture_index", ASCENDING)],
                 sparse=True,
                 name="substrate_aperture_index_index",
             ),
             IndexModel(
-                [("substrate_ref.id", ASCENDING), ("aperture_uid", ASCENDING)],
+                [("substrate_ref", ASCENDING), ("aperture_uid", ASCENDING)],
                 sparse=True,
                 name="substrate_aperture_uid_index",
             ),

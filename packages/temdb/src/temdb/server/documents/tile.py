@@ -1,10 +1,9 @@
-from beanie import Document, Link
+from beanie import Document
+from beanie.odm.fields import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
 
 from temdb.models import TileBase
-
-from .acquisition import AcquisitionDocument
 
 
 class TileDocument(Document, TileBase):
@@ -12,7 +11,7 @@ class TileDocument(Document, TileBase):
 
     tile_id: str = Field(..., description="ID of the tile")
     acquisition_id: str = Field(..., description="ID of the acquisition")
-    acquisition_ref: Link[AcquisitionDocument] = Field(..., description="Internal link to the acquisition document")
+    acquisition_ref: PydanticObjectId = Field(..., description="ObjectId of the acquisition document")
     raster_index: int = Field(..., description="Index of the tile in the raster")
 
     # Override base fields that are required in document
@@ -30,9 +29,9 @@ class TileDocument(Document, TileBase):
         indexes = [
             IndexModel([("tile_id", ASCENDING)], unique=True, name="tile_id_index"),
             IndexModel([("acquisition_id", ASCENDING)], name="acquisition_id_index"),
-            IndexModel([("acquisition_ref.id", ASCENDING)], name="acquisition_ref_index"),
+            IndexModel([("acquisition_ref", ASCENDING)], name="acquisition_ref_index"),
             IndexModel(
-                [("acquisition_ref.id", ASCENDING), ("raster_index", ASCENDING)],
+                [("acquisition_ref", ASCENDING), ("raster_index", ASCENDING)],
                 name="acquisition_raster_index",
             ),
             IndexModel([("supertile_id", ASCENDING)], name="supertile_id_index"),

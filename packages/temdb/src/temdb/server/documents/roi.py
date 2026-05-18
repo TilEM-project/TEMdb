@@ -1,12 +1,11 @@
 from datetime import datetime
 
-from beanie import Document, Link
+from beanie import Document
+from beanie.odm.fields import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
 
 from temdb.models import ROIBase
-
-from .section import SectionDocument
 
 
 class ROIDocument(Document, ROIBase):
@@ -29,9 +28,9 @@ class ROIDocument(Document, ROIBase):
         description="Depth level in ROI hierarchy (1=top-level section ROI, 2=child ROI, etc.)",
     )
 
-    section_ref: Link[SectionDocument] = Field(..., description="Internal link to the section document")
-    parent_roi_ref: Link["ROIDocument"] | None = Field(
-        None, description="Internal link to the parent ROI document, if any"
+    section_ref: PydanticObjectId = Field(..., description="ObjectId of the section document")
+    parent_roi_ref: PydanticObjectId | None = Field(
+        None, description="ObjectId of the parent ROI document, if any"
     )
 
     section_number: int | None = Field(None)
@@ -77,9 +76,9 @@ class ROIDocument(Document, ROIBase):
             IndexModel([("substrate_media_id", ASCENDING)], name="substrate_media_id_index"),
             IndexModel([("hierarchy_level", ASCENDING)], name="hierarchy_level_index"),
             IndexModel([("updated_at", ASCENDING)], name="updated_at_index"),
-            IndexModel([("section_ref.id", ASCENDING)], name="section_ref_index"),
+            IndexModel([("section_ref", ASCENDING)], name="section_ref_index"),
             IndexModel(
-                [("parent_roi_ref.id", ASCENDING)],
+                [("parent_roi_ref", ASCENDING)],
                 name="parent_roi_ref_index",
                 sparse=True,
             ),

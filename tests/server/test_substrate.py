@@ -148,5 +148,5 @@ async def test_get_substrate_sections(async_client: AsyncClient, test_substrate,
     assert len(response_data) >= 1
     found_section = next((sec for sec in response_data if sec["section_id"] == test_section.section_id), None)
     assert found_section is not None
-    assert found_section["substrate_ref"]["id"] == str(test_substrate.id)
+    assert found_section["substrate_ref"] == str(test_substrate.id)
     assert found_section["media_id"] == test_substrate.media_id

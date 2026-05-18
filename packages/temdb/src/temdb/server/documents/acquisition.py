@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from beanie import Document, Link
+from beanie import Document
+from beanie.odm.fields import PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
@@ -12,10 +13,6 @@ from temdb.models import (
     StorageLocation,
 )
 
-from .roi import ROIDocument
-from .specimen import SpecimenDocument
-from .task import AcquisitionTaskDocument
-
 
 class AcquisitionDocument(Document, AcquisitionBase):
     """MongoDB document for acquisition data."""
@@ -26,11 +23,9 @@ class AcquisitionDocument(Document, AcquisitionBase):
     roi_id: str = Field(..., description="ID of region of interest")
     acquisition_task_id: str = Field(..., description="ID of acquisition task")
 
-    specimen_ref: Link[SpecimenDocument] = Field(..., description="Internal link to the specimen document")
-    roi_ref: Link[ROIDocument] = Field(..., description="Internal link to the region of interest document")
-    acquisition_task_ref: Link[AcquisitionTaskDocument] = Field(
-        ..., description="Internal link to the acquisition task document"
-    )
+    specimen_ref: PydanticObjectId = Field(..., description="ObjectId of the specimen document")
+    roi_ref: PydanticObjectId = Field(..., description="ObjectId of the region of interest document")
+    acquisition_task_ref: PydanticObjectId = Field(..., description="ObjectId of the acquisition task document")
 
     # Override base fields that are required in document
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
@@ -66,15 +61,15 @@ class AcquisitionDocument(Document, AcquisitionBase):
                 name="acquisition_task_id_index",
             ),
             IndexModel(
-                [("roi_ref.id", ASCENDING), ("start_time", DESCENDING)],
+                [("roi_ref", ASCENDING), ("start_time", DESCENDING)],
                 name="roi_ref_start_time_index",
             ),
             IndexModel(
-                [("acquisition_task_ref.id", ASCENDING), ("start_time", DESCENDING)],
+                [("acquisition_task_ref", ASCENDING), ("start_time", DESCENDING)],
                 name="task_ref_start_time_index",
             ),
             IndexModel(
-                [("specimen_ref.id", ASCENDING), ("start_time", DESCENDING)],
+                [("specimen_ref", ASCENDING), ("start_time", DESCENDING)],
                 name="specimen_ref_start_time_index",
             ),
             IndexModel([("status", ASCENDING)], name="status_index"),
@@ -112,9 +107,9 @@ class AcquisitionDocument(Document, AcquisitionBase):
     @classmethod
     async def create_acquisition(cls, **kwargs):
         """Create a new acquisition with versioning."""
-        roi = kwargs.get("roi_id")
-        latest_acquisition = await cls.find(AcquisitionDocument.roi_id == roi.id).sort(-cls.version).first()
-        if latest_acquisition:
-            kwargs["version"] = latest_acquisition.version + 1
-            kwargs["replaces_acquisition_id"] = latest_acquisition.id
+        roi_oid: PydanticObjectId = kwargs["roi_ref"]
+        latest = await cls.find(cls.roi_ref == roi_oid).sort(-cls.version).first()
+        if latest:
+            kwargs["version"] = latest.version + 1
+            kwargs["replaces_acquisition_id"] = latest.id
         return await cls(**kwargs).insert()

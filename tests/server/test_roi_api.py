@@ -69,7 +69,7 @@ async def test_create_child_roi(async_client: AsyncClient, test_roi, test_substr
     assert response_data["roi_id"].startswith(test_roi.roi_id)  # Should extend parent ID
     assert response_data["section_id"] == test_roi.section_id
     assert "parent_roi_ref" in response_data
-    assert response_data["parent_roi_ref"]["id"] == str(test_roi.id)
+    assert response_data["parent_roi_ref"] == str(test_roi.id)
 
 
 @pytest.mark.asyncio
@@ -297,7 +297,7 @@ async def test_get_child_rois(async_client: AsyncClient, test_roi, test_substrat
     assert isinstance(response_data["children"], list)
     assert len(response_data["children"]) == 1
     assert response_data["children"][0]["roi_id"] == child_roi_id
-    assert response_data["children"][0]["parent_roi_ref"]["id"] == str(test_roi.id)
+    assert response_data["children"][0]["parent_roi_ref"] == str(test_roi.id)
     assert response_data["metadata"]["total_children"] == 1
 
     await async_client.delete(f"/api/v2/rois/{child_roi_id}")
