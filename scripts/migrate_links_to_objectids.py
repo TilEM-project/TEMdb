@@ -1,14 +1,18 @@
-"""Normalise TEMdb ref fields to bare ObjectId.
+"""Normalise TEMdb ref fields to bare ObjectId, and drop pre-L1 indexes.
 
 Usage:
     uv run python -m scripts.migrate_links_to_objectids \
         --mongo-url "$MONGO_URL" --db temdb --dry-run
 
-Detects and rewrites three input shapes per ref field:
-  1. Beanie native: {"id": ObjectId, "collection": str}
-  2. Legacy DBRef:  DBRef("...", ObjectId(...))  or  {"$ref": str, "$id": ObjectId}
-  3. Bare ObjectId: no-op .
+Two steps:
+  1. Rewrite every ref field whose value is a Beanie Link wrapper or DBRef
+     into a bare ObjectId (idempotent for already-bare values).
+  2. Drop any index whose key path contains "_ref.id" (the pre-L1 shape).
+     Beanie will recreate the new `_ref`-keyed indexes on next startup.
+     Required before deploying L1 code against an existing cluster — Mongo
+     refuses to replace an index with the same name but different key spec.
 """
+
 import argparse
 import asyncio
 import logging
@@ -41,11 +45,17 @@ def _coerce(value: Any) -> ObjectId | None:
         if "id" in value and isinstance(value["id"], ObjectId):
             return value["id"]
         if "$id" in value:
-            return value["$id"] if isinstance(value["$id"], ObjectId) else ObjectId(value["$id"])
+            return (
+                value["$id"]
+                if isinstance(value["$id"], ObjectId)
+                else ObjectId(value["$id"])
+            )
     raise ValueError(f"Unrecognised ref shape: {value!r}")
 
 
-async def migrate_database(db, *, dry_run: bool) -> dict[str, dict[str, dict[str, int]]]:
+async def migrate_database(
+    db, *, dry_run: bool
+) -> dict[str, dict[str, dict[str, int]]]:
     summary: dict[str, dict[str, dict[str, int]]] = {}
 
     for coll_name, fields in COLLECTIONS_AND_REFS:
@@ -81,11 +91,37 @@ async def migrate_database(db, *, dry_run: bool) -> dict[str, dict[str, dict[str
     return summary
 
 
+async def drop_legacy_ref_indexes(db, *, dry_run: bool) -> dict[str, list[str]]:
+    """Drop any index whose key path contains `_ref.id` (pre-L1 shape)."""
+    dropped: dict[str, list[str]] = {}
+    for coll_name, _fields in COLLECTIONS_AND_REFS:
+        coll = db[coll_name]
+        dropped[coll_name] = []
+        cursor = await coll.list_indexes()
+        async for idx in cursor:
+            key_paths = list(idx.get("key", {}).keys())
+            if not any("_ref.id" in p for p in key_paths):
+                continue
+            name = idx["name"]
+            logger.info(
+                "%s: %s index %r (key=%s)",
+                coll_name,
+                "would drop" if dry_run else "dropping",
+                name,
+                key_paths,
+            )
+            if not dry_run:
+                await coll.drop_index(name)
+            dropped[coll_name].append(name)
+    return dropped
+
+
 async def _main_async(args) -> int:
     client = AsyncMongoClient(args.mongo_url)
     try:
         db = client[args.db]
         summary = await migrate_database(db, dry_run=args.dry_run)
+        dropped = await drop_legacy_ref_indexes(db, dry_run=args.dry_run)
     finally:
         await client.close()
 
@@ -93,6 +129,12 @@ async def _main_async(args) -> int:
         per_field["errors"]
         for per_coll in summary.values()
         for per_field in per_coll.values()
+    )
+    total_dropped = sum(len(v) for v in dropped.values())
+    logger.info(
+        "Index summary: %d legacy `_ref.id` indexes %s",
+        total_dropped,
+        "would be dropped" if args.dry_run else "dropped",
     )
     return 1 if total_errors else 0
 
@@ -104,7 +146,9 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
-    logging.basicConfig(level=args.log_level, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=args.log_level, format="%(levelname)s %(name)s: %(message)s"
+    )
     return asyncio.run(_main_async(args))
 
 
