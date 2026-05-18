@@ -44,3 +44,36 @@ async def resolve_links(
         results = await target_cls.find({"_id": {"$in": list(ids)}}).to_list()
         registry[field_name] = {r.id: r for r in results}
     return registry
+
+
+ResolverPlan = dict[str, tuple[type[Document], "ResolverPlan"]]
+
+
+async def resolve_links_recursive(
+    docs: Sequence[Document] | None,
+    plan: ResolverPlan,
+    _prefix: str = "",
+) -> Registry:
+    """Recursively resolve a plan against docs.
+
+    Plan: {field_name: (target_cls, sub_plan)}. Sub-registry keys are dot-joined
+    paths — plan {"a": (A, {"b": (B, {})})} produces keys "a" and "a.b".
+    One DB query per (target_cls, level).
+    """
+    if not docs:
+        return {}
+    flat = [(field, cls) for field, (cls, _) in plan.items()]
+    registry = await resolve_links(list(docs), flat)
+    out: Registry = {f"{_prefix}{field}": sub for field, sub in registry.items()}
+
+    for field, (_cls, sub_plan) in plan.items():
+        if not sub_plan:
+            continue
+        children = list(registry[field].values())
+        if not children:
+            continue
+        child_registry = await resolve_links_recursive(
+            children, sub_plan, _prefix=f"{_prefix}{field}."
+        )
+        out.update(child_registry)
+    return out

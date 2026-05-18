@@ -19,6 +19,9 @@ jobs:
 
       - name: Lint
         run: uv run ruff check .
+
+      - name: Lint - no beanie Link imports in server
+        run: uv run python -m tools.lint_no_beanie_links packages/temdb/src/temdb/server/
   test:
     runs-on: ubuntu-latest
     strategy:

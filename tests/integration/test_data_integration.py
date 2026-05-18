@@ -104,7 +104,7 @@ class TestDataIntegration:
 
         assert block.id is not None
         assert block.block_id is not None
-        assert block.specimen_ref.ref.id == specimen.id
+        assert block.specimen_ref == specimen.id
         assert block.specimen_id == specimen.specimen_id
 
     @pytest.mark.asyncio
@@ -116,8 +116,8 @@ class TestDataIntegration:
         assert cutting_session.id is not None
         assert cutting_session.cutting_session_id is not None
 
-        assert cutting_session.block_ref.ref.id == block.id
-        assert cutting_session.specimen_ref.ref.id == specimen.id
+        assert cutting_session.block_ref == block.id
+        assert cutting_session.specimen_ref == specimen.id
         assert cutting_session.block_id == block.block_id
         assert cutting_session.specimen_id == specimen.specimen_id
 
@@ -140,7 +140,7 @@ class TestDataIntegration:
 
         assert section.id is not None
         assert section.section_id is not None
-        assert section.cutting_session_ref.ref.id == cutting_session.id
+        assert section.cutting_session_ref == cutting_session.id
         assert section.cutting_session_id == cutting_session.cutting_session_id
         assert section.block_id == block.block_id
         assert section.specimen_id == specimen.specimen_id
@@ -157,7 +157,7 @@ class TestDataIntegration:
 
         assert roi.id is not None
         assert roi.roi_id is not None
-        assert roi.section_ref.ref.id == section.id
+        assert roi.section_ref == section.id
         assert roi.section_id == section.section_id
         assert roi.block_id == block.block_id
         assert roi.specimen_id == specimen.specimen_id
@@ -174,9 +174,9 @@ class TestDataIntegration:
 
         assert task.id is not None
         assert task.task_id is not None
-        assert task.specimen_ref.ref.id == specimen.id
-        assert task.block_ref.ref.id == block.id
-        assert task.roi_ref.ref.id == roi.id
+        assert task.specimen_ref == specimen.id
+        assert task.block_ref == block.id
+        assert task.roi_ref == roi.id
 
     @pytest.mark.asyncio
     async def test_acquisition_creation(self):
@@ -191,9 +191,9 @@ class TestDataIntegration:
 
         assert acquisition.id is not None
         assert acquisition.acquisition_id is not None
-        assert acquisition.specimen_ref.ref.id == specimen.id
-        assert acquisition.roi_ref.ref.id == roi.id
-        assert acquisition.acquisition_task_ref.ref.id == task.id
+        assert acquisition.specimen_ref == specimen.id
+        assert acquisition.roi_ref == roi.id
+        assert acquisition.acquisition_task_ref == task.id
 
         assert acquisition.specimen_id == specimen.specimen_id
         assert acquisition.roi_id == roi.roi_id
@@ -215,7 +215,7 @@ class TestDataIntegration:
         assert tile.id is not None
         assert tile.tile_id is not None
         assert tile.raster_index == 1
-        assert tile.acquisition_ref.ref.id == acquisition.id
+        assert tile.acquisition_ref == acquisition.id
         assert tile.acquisition_id == acquisition.acquisition_id
 
         fetched_tile = await TileDocument.find_one(
