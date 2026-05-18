@@ -27,7 +27,7 @@ class ROIRead(ROIBase):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_doc(cls, doc: ROIDocument) -> "ROIRead":
+    def from_doc(cls, doc: ROIDocument) -> ROIRead:
         base_fields = ROIBase.model_fields.keys()
         extras = {k: getattr(doc, k, None) for k in base_fields if hasattr(doc, k)}
         return cls(

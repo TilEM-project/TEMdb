@@ -29,7 +29,7 @@ class SectionRead(BaseModel):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_doc(cls, doc: SectionDocument) -> "SectionRead":
+    def from_doc(cls, doc: SectionDocument) -> SectionRead:
         return cls(
             _id=doc.id,
             section_id=doc.section_id,

@@ -27,7 +27,7 @@ class CuttingSessionRead(BaseModel):
     updated_at: datetime | None
 
     @classmethod
-    def from_doc(cls, doc: CuttingSessionDocument) -> "CuttingSessionRead":
+    def from_doc(cls, doc: CuttingSessionDocument) -> CuttingSessionRead:
         return cls(
             _id=doc.id,
             cutting_session_id=doc.cutting_session_id,

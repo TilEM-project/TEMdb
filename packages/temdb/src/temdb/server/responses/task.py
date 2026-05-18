@@ -33,7 +33,7 @@ class AcquisitionTaskRead(BaseModel):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_doc(cls, doc: AcquisitionTaskDocument) -> "AcquisitionTaskRead":
+    def from_doc(cls, doc: AcquisitionTaskDocument) -> AcquisitionTaskRead:
         return cls(
             _id=doc.id,
             task_id=doc.task_id,

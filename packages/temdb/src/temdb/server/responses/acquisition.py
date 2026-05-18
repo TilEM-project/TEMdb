@@ -42,7 +42,7 @@ class AcquisitionRead(BaseModel):
     acquisition_task_ref: PydanticObjectId | None
 
     @classmethod
-    def from_doc(cls, doc: AcquisitionDocument) -> "AcquisitionRead":
+    def from_doc(cls, doc: AcquisitionDocument) -> AcquisitionRead:
         return cls(
             _id=doc.id,
             acquisition_id=doc.acquisition_id,

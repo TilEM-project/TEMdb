@@ -21,7 +21,7 @@ class BlockRead(BaseModel):
     updated_at: datetime | None = None
 
     @classmethod
-    def from_doc(cls, doc: BlockDocument) -> "BlockRead":
+    def from_doc(cls, doc: BlockDocument) -> BlockRead:
         return cls(
             _id=doc.id,
             block_id=doc.block_id,
