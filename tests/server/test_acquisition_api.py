@@ -90,9 +90,9 @@ async def test_create_acquisition(async_client: AsyncClient, test_specimen, test
     assert response_data["roi_id"] == test_roi.roi_id
     assert response_data["acquisition_task_id"] == test_acquisition_task.task_id
     assert response_data["specimen_id"] == test_specimen.specimen_id
-    assert response_data["roi_ref"]["id"] == str(test_roi.id)
-    assert response_data["acquisition_task_ref"]["id"] == str(test_acquisition_task.id)
-    assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
+    assert response_data["roi_ref"] == str(test_roi.id)
+    assert response_data["acquisition_task_ref"] == str(test_acquisition_task.id)
+    assert response_data["specimen_ref"] == str(test_specimen.id)
 
     # await async_client.delete(f"/api/v2/acquisitions/{acq_id_hr}")
 
@@ -235,7 +235,7 @@ async def test_add_tile_to_acquisition(async_client: AsyncClient, test_acquisiti
     assert response_data["tile_id"] == tile_id_hr
     assert response_data["acquisition_id"] == test_acquisition.acquisition_id
     assert response_data["raster_index"] == 10
-    assert response_data["acquisition_ref"]["id"] == str(test_acquisition.id)
+    assert response_data["acquisition_ref"] == str(test_acquisition.id)
 
     # await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id_hr}")
 

@@ -34,7 +34,7 @@ async def test_list_acquisition_tasks_filtered(
         f"API call returned empty list, expected at least one task matching roi_id {test_roi.roi_id}"
     )
 
-    assert all(task["roi_ref"]["id"] == str(test_roi.id) for task in res_roi_data)
+    assert all(task["roi_ref"] == str(test_roi.id) for task in res_roi_data)
     assert any(task["task_id"] == test_acquisition_task.task_id for task in res_roi_data)
 
     response_block = await async_client.get(f"/api/v2/acquisition-tasks?block_id={test_block.block_id}")
@@ -42,14 +42,14 @@ async def test_list_acquisition_tasks_filtered(
     res_block_data = response_block.json()
     assert isinstance(res_block_data, list)
     assert len(res_block_data) >= 1
-    assert all(task["block_ref"]["id"] == str(test_block.id) for task in res_block_data)
+    assert all(task["block_ref"] == str(test_block.id) for task in res_block_data)
 
     response_spec = await async_client.get(f"/api/v2/acquisition-tasks?specimen_id={test_specimen.specimen_id}")
     assert response_spec.status_code == 200
     res_spec_data = response_spec.json()
     assert isinstance(res_spec_data, list)
     assert len(res_spec_data) >= 1
-    assert all(task["specimen_ref"]["id"] == str(test_specimen.id) for task in res_spec_data)
+    assert all(task["specimen_ref"] == str(test_specimen.id) for task in res_spec_data)
 
     response_status = await async_client.get(f"/api/v2/acquisition-tasks?status={AcquisitionTaskStatus.PLANNED.value}")
     assert response_status.status_code == 200
@@ -76,9 +76,9 @@ async def test_create_acquisition_task(async_client: AsyncClient, test_specimen,
     response_data = response.json()
     assert response_data["task_id"] == task_id_hr
     assert response_data["status"] == AcquisitionTaskStatus.PLANNED.value
-    assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
-    assert response_data["block_ref"]["id"] == str(test_block.id)
-    assert response_data["roi_ref"]["id"] == str(test_roi.id)
+    assert response_data["specimen_ref"] == str(test_specimen.id)
+    assert response_data["block_ref"] == str(test_block.id)
+    assert response_data["roi_ref"] == str(test_roi.id)
 
     # await async_client.delete(f"/api/v2/acquisition-tasks/{task_id_hr}")
 
@@ -110,9 +110,9 @@ async def test_get_acquisition_task(async_client: AsyncClient, test_acquisition_
     response_data = response.json()
     assert response_data["task_id"] == test_acquisition_task.task_id
     assert response_data["_id"] == str(test_acquisition_task.id)
-    assert response_data["specimen_ref"]["id"] == str(test_acquisition_task.specimen_ref.ref.id)
-    assert response_data["block_ref"]["id"] == str(test_acquisition_task.block_ref.ref.id)
-    assert response_data["roi_ref"]["id"] == str(test_acquisition_task.roi_ref.ref.id)
+    assert response_data["specimen_ref"] == str(test_acquisition_task.specimen_ref)
+    assert response_data["block_ref"] == str(test_acquisition_task.block_ref)
+    assert response_data["roi_ref"] == str(test_acquisition_task.roi_ref)
 
 
 @pytest.mark.asyncio
@@ -228,8 +228,8 @@ async def test_create_tasks_batch(async_client: AsyncClient, test_specimen, test
     assert response_data[1]["task_id"] == task_id_2
     assert response_data[0]["status"] == AcquisitionTaskStatus.PLANNED.value
     assert response_data[1]["task_type"] == "alignment_task"
-    assert response_data[0]["roi_ref"]["id"] == str(test_roi.id)
-    assert response_data[1]["roi_ref"]["id"] == str(test_roi.id)
+    assert response_data[0]["roi_ref"] == str(test_roi.id)
+    assert response_data[1]["roi_ref"] == str(test_roi.id)
 
     # await async_client.delete(f"/api/v2/acquisition-tasks/{task_id_1}")
     # await async_client.delete(f"/api/v2/acquisition-tasks/{task_id_2}")
