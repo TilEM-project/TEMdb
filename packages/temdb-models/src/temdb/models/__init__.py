@@ -43,6 +43,8 @@ from temdb.models.roi import (
     ROIUpdate,
 )
 from temdb.models.section import (
+    QCCriterion,
+    QCResult,
     SectionBase,
     SectionCreate,
     SectioningRunParameters,
@@ -125,6 +127,8 @@ __all__ = [
     "SectionResponse",
     "SectionMetrics",
     "SectioningRunParameters",
+    "QCCriterion",
+    "QCResult",
     # Substrate
     "SubstrateBase",
     "SubstrateCreate",

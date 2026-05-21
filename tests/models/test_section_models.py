@@ -4,6 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from temdb.models import (
+    QCCriterion,
+    QCResult,
     SectionCreate,
     SectionMetrics,
     SectionQuality,
@@ -81,3 +83,32 @@ class TestSectionResponse:
         )
         assert response.section_id == "MEDIA001_S00001"
         assert response.section_number == 1
+
+
+class TestQCResult:
+    def test_accepts_heterogeneous_criteria(self):
+        qc = QCResult(
+            criteria={
+                "coverage": QCCriterion(label="full_section", pass_status=True, conf=0.98),
+                "shape": QCCriterion(label="Hexagon", pass_status=True, metric=6, message="vertices=6"),
+            }
+        )
+        metrics = SectionMetrics(qc_result=qc)
+        roundtrip = SectionMetrics.model_validate(metrics.model_dump(mode="json"))
+
+        assert roundtrip.qc_result.criteria["coverage"].conf == 0.98
+        assert roundtrip.qc_result.criteria["coverage"].metric is None
+        assert roundtrip.qc_result.criteria["shape"].metric == 6
+        assert roundtrip.qc_result.criteria["shape"].conf is None
+
+    def test_criterion_allows_unknown_extra_fields(self):
+        """extra='allow' lets LASSO add new per-criterion fields without breaking the model."""
+        c = QCCriterion.model_validate(
+            {
+                "label": "x",
+                "pass_status": True,
+                "conf": 0.5,
+                "future_field": "from_a_newer_lasso_version",
+            }
+        )
+        assert c.model_dump()["future_field"] == "from_a_newer_lasso_version"

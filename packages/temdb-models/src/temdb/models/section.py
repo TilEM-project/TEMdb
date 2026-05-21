@@ -29,6 +29,32 @@ class SectioningRunParameters(BaseModel):
     )
 
 
+class QCCriterion(BaseModel):
+    """Single QC criterion result."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field(..., description="Classifier label or measured value as string")
+    pass_status: bool = Field(..., description="Whether this criterion passed")
+    conf: float | None = Field(None, description="Classifier confidence in [0,1]")
+    metric: float | int | None = Field(
+        None,
+        description="Measured numeric value (e.g. vertex count for shape detection)",
+    )
+    message: str | None = Field(None, description="Human-readable detail")
+
+
+class QCResult(BaseModel):
+    """QC evaluation of a section."""
+
+    model_config = ConfigDict(extra="allow")
+
+    criteria: dict[str, QCCriterion] = Field(
+        default_factory=dict,
+        description="Per-criterion QC results keyed by criterion name (e.g. coverage, knife_mark, shape)",
+    )
+
+
 class SectionMetrics(BaseModel):
     """Metrics and parameters of a section."""
 
@@ -43,6 +69,7 @@ class SectionMetrics(BaseModel):
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
     )
+    qc_result: QCResult | None = Field(None, description="QC evaluation results")
 
 
 class SectionBase(BaseModel):
