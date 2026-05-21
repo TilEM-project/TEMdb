@@ -207,6 +207,8 @@ async def create_section(section_data: SectionCreate):
         media_id=section_data.media_id,
         substrate_ref=substrate.id if substrate else None,
         barcode=section_data.barcode,
+        aperture_uid=section_data.aperture_uid,
+        aperture_index=section_data.aperture_index,
     )
     await new_section.insert()
     return SectionRead.from_doc(new_section)
