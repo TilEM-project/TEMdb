@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import json
 import logging
+import threading
 from typing import Any, cast
 
 import httpx
@@ -42,6 +43,7 @@ class AsyncTEMdbClient:
         api_key: str | None = None,
         timeout: float = 30.0,
         debug: bool = False,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         self.raw_base_url = base_url
         self.api_version = api_version
@@ -62,15 +64,22 @@ class AsyncTEMdbClient:
             base_url=self.api_url,
             headers=headers,
             timeout=timeout,
+            transport=transport,
         )
 
-        self.logger.info(f"Async TEMdb client initialized: {base_url} (API v{api_version})")
+        self.logger.info(
+            f"Async TEMdb client initialized: {base_url} (API v{api_version})"
+        )
 
         self._specimen = SpecimenResource(self._async_request, self.api_url)
         self._block = BlockResource(self._async_request, self.api_url)
-        self._cutting_session = CuttingSessionResource(self._async_request, self.api_url)
+        self._cutting_session = CuttingSessionResource(
+            self._async_request, self.api_url
+        )
         self._substrate = SubstrateResource(self._async_request, self.api_url)
-        self._acquisition_task = AcquisitionTaskResource(self._async_request, self.api_url)
+        self._acquisition_task = AcquisitionTaskResource(
+            self._async_request, self.api_url
+        )
         self._roi = ROIResource(self._async_request, self.api_url)
         self._acquisition = AcquisitionResource(self._async_request, self.api_url)
         self._section = SectionResource(self._async_request, self.api_url)
@@ -112,11 +121,15 @@ class AsyncTEMdbClient:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         retry=retry_if_exception_type(httpx.RequestError),
     )
-    async def _async_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | list[Any]:
+    async def _async_request(
+        self, method: str, endpoint: str, **kwargs
+    ) -> dict[str, Any] | list[Any]:
         self.logger.debug(f"Async Request: {method} {endpoint}")
         try:
             if "json" in kwargs and method.upper() in ("POST", "PATCH", "PUT"):
-                body = json.dumps(kwargs.pop("json"), default=to_jsonable_python).encode("utf-8")
+                body = json.dumps(
+                    kwargs.pop("json"), default=to_jsonable_python
+                ).encode("utf-8")
                 if len(body) > 1000:
                     self.logger.debug(f"Compressing request body: {len(body)} bytes")
                     kwargs["content"] = gzip.compress(body)
@@ -138,15 +151,21 @@ class AsyncTEMdbClient:
                 return {}
             return response.json()
         except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
+            self.logger.error(
+                f"HTTP error: {e.response.status_code} - {e.response.text}"
+            )
             if e.response.status_code == 404:
                 raise NotFoundError(f"Resource not found: {endpoint}") from e
-            raise TEMdbClientError(f"HTTP {e.response.status_code}: {e.response.text}") from e
+            raise TEMdbClientError(
+                f"HTTP {e.response.status_code}: {e.response.text}"
+            ) from e
         except httpx.RequestError as e:
             self.logger.error(f"Request failed: {str(e)}")
             raise TEMdbClientError(f"Request failed: {str(e)}") from e
         except Exception as e:
-            self.logger.exception(f"An unexpected error occurred during request to {endpoint}")
+            self.logger.exception(
+                f"An unexpected error occurred during request to {endpoint}"
+            )
             raise TEMdbClientError(f"Unexpected error: {str(e)}") from e
 
     async def health_check(self) -> dict[str, Any]:
@@ -183,21 +202,36 @@ class SyncTEMdbClient:
         api_key: str | None = None,
         timeout: float = 30.0,
         debug: bool = False,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
-        self._async_client = AsyncTEMdbClient(base_url, api_version, api_key, timeout, debug)
+        self._loop = asyncio.new_event_loop()
+        self._loop_thread = threading.Thread(
+            target=self._loop.run_forever, name="temdb-sync-loop", daemon=True
+        )
+        self._loop_thread.start()
+        self._closed = False
+
+        self._async_client = AsyncTEMdbClient(
+            base_url, api_version, api_key, timeout, debug, transport=transport
+        )
         self.logger = logging.getLogger("temdb_client.sync")
         level = logging.DEBUG if debug else logging.INFO
         self.logger.setLevel(level)
-        self.logger.info(f"Sync TEMdb client initialized (wrapping async): {base_url} (API v{api_version})")
+        self.logger.info(
+            f"Sync TEMdb client initialized (wrapping async): {base_url} (API v{api_version})"
+        )
 
-        self._acquisition = SyncAcquisitionResourceWrapper(self._async_client.acquisition)
-        self._specimen = SyncSpecimenResourceWrapper(self._async_client.specimen)
-        self._block = SyncBlockResourceWrapper(self._async_client.block)
-        self._cutting_session = SyncCuttingSessionResourceWrapper(self._async_client.cutting_session)
-        self._substrate = SyncSubstrateResourceWrapper(self._async_client.substrate)
-        self._acquisition_task = SyncAcquisitionTaskResourceWrapper(self._async_client.acquisition_task)
-        self._roi = SyncROIResourceWrapper(self._async_client.roi)
-        self._section = SyncSectionResourceWrapper(self._async_client.section)
+        self._acquisition = SyncAcquisitionResourceWrapper(self._async_client.acquisition, self._loop)
+        self._specimen = SyncSpecimenResourceWrapper(self._async_client.specimen, self._loop)
+        self._block = SyncBlockResourceWrapper(self._async_client.block, self._loop)
+        self._cutting_session = SyncCuttingSessionResourceWrapper(self._async_client.cutting_session, self._loop)
+        self._substrate = SyncSubstrateResourceWrapper(self._async_client.substrate, self._loop)
+        self._acquisition_task = SyncAcquisitionTaskResourceWrapper(self._async_client.acquisition_task, self._loop)
+        self._roi = SyncROIResourceWrapper(self._async_client.roi, self._loop)
+        self._section = SyncSectionResourceWrapper(self._async_client.section, self._loop)
+
+    def _run(self, coro: Any) -> Any:
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
 
     @property
     def acquisition(self) -> SyncAcquisitionResourceWrapper:
@@ -233,21 +267,27 @@ class SyncTEMdbClient:
 
     def health_check(self) -> dict[str, Any]:
         """Check if the API is available."""
-        self.logger.info("Running sync health check...")
         try:
-            return asyncio.run(self._async_client.health_check())
+            return self._run(self._async_client.health_check())
         except Exception as e:
             self.logger.error(f"Sync Health check failed: {str(e)}")
             raise
 
     def get_api_info(self) -> dict[str, Any]:
         """Get API information."""
-        self.logger.info("Getting sync API info...")
-        return asyncio.run(self._async_client.get_api_info())
+        return self._run(self._async_client.get_api_info())
 
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         self.logger.info("Closing sync TEMdb client (and underlying async client)")
-        asyncio.run(self._async_client.close())
+        try:
+            self._run(self._async_client.close())
+        finally:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._loop_thread.join(timeout=5)
+            self._loop.close()
 
     def __enter__(self) -> "SyncTEMdbClient":
         return self
@@ -263,6 +303,7 @@ def create_client(
     timeout: float = 30.0,
     debug: bool = False,
     async_mode: bool = True,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> AsyncTEMdbClient | SyncTEMdbClient:
     """
     Factory function to create either an async or sync TEMdb client.
@@ -279,6 +320,10 @@ def create_client(
         An instance of AsyncTEMdbClient or SyncTEMdbClient.
     """
     if async_mode:
-        return AsyncTEMdbClient(base_url, api_version, api_key, timeout, debug)
+        return AsyncTEMdbClient(
+            base_url, api_version, api_key, timeout, debug, transport=transport
+        )
     else:
-        return SyncTEMdbClient(base_url, api_version, api_key, timeout, debug)
+        return SyncTEMdbClient(
+            base_url, api_version, api_key, timeout, debug, transport=transport
+        )

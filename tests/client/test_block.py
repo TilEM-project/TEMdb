@@ -1,45 +1,64 @@
-import pytest
+import httpx
+
+from temdb.models import BlockCreate, BlockUpdate
 
 
-@pytest.mark.asyncio
-async def test_block_list(mock_client):
-    mock_client.block.list.return_value = [{"block_id": "BLOCK001"}]
-    result = await mock_client.block.list("SPEC001")
-    assert result == [{"block_id": "BLOCK001"}]
-    mock_client.block.list.assert_called_once_with("SPEC001")
+async def test_create_posts_required_fields(client, captured, response_queue):
+    response_queue.append(
+        httpx.Response(200, json={"specimen_id": "SPEC001", "block_id": "B1"})
+    )
+    await client.block.create(BlockCreate(specimen_id="SPEC001", block_id="B1"))
+    req = captured[-1]
+    assert req.method == "POST"
+    assert req.path == "/api/v2/blocks"
+    assert req.body == {"specimen_id": "SPEC001", "block_id": "B1"}
 
 
-@pytest.mark.asyncio
-async def test_block_create(mock_client):
-    block_data = {"block_id": "BLOCK002", "specimen_id": "SPEC001"}
-    mock_client.block.create.return_value = block_data
-    result = await mock_client.block.create(block_data)
-    assert result == block_data
-    mock_client.block.create.assert_called_once_with(block_data)
+async def test_list_by_specimen_nested_path(client, captured):
+    await client.block.list_by_specimen("SPEC001", skip=0, limit=10)
+    req = captured[-1]
+    assert req.method == "GET"
+    assert req.path == "/api/v2/blocks/specimens/SPEC001/blocks"
+    assert req.params == {"skip": "0", "limit": "10"}
 
 
-@pytest.mark.asyncio
-async def test_block_get(mock_client):
-    block_data = {"block_id": "BLOCK002", "specimen_id": "SPEC001"}
-
-    mock_client.block.get.return_value = block_data
-    result = await mock_client.block.get("SPEC001", "BLOCK002")
-    assert result == block_data
-    mock_client.block.get.assert_called_once_with("SPEC001", "BLOCK002")
+async def test_list_all_filters_specimen(client, captured):
+    await client.block.list_all(specimen_id="SPEC001", limit=5)
+    req = captured[-1]
+    assert req.path == "/api/v2/blocks"
+    assert req.params == {"skip": "0", "limit": "5", "specimen_id": "SPEC001"}
 
 
-@pytest.mark.asyncio
-async def test_block_update(mock_client):
-    block_data = {"block_id": "BLOCK002", "specimen_id": "SPEC001"}
-
-    update_data = {"microCT_info": {"resolution": 1.5}}
-    mock_client.block.update.return_value = {**block_data, **update_data}
-    result = await mock_client.block.update("SPEC001", "BLOCK002", update_data)
-    assert result == {**block_data, **update_data}
-    mock_client.block.update.assert_called_once_with("SPEC001", "BLOCK002", update_data)
+async def test_get_uses_compound_path(client, captured, response_queue):
+    response_queue.append(
+        httpx.Response(200, json={"specimen_id": "SPEC001", "block_id": "B1"})
+    )
+    await client.block.get("SPEC001", "B1")
+    assert captured[-1].path == "/api/v2/blocks/specimens/SPEC001/blocks/B1"
 
 
-@pytest.mark.asyncio
-async def test_block_delete(mock_client):
-    await mock_client.block.delete("SPEC001", "BLOCK002")
-    mock_client.block.delete.assert_called_once_with("SPEC001", "BLOCK002")
+async def test_update_patches_compound_path(client, captured, response_queue):
+    response_queue.append(
+        httpx.Response(200, json={"specimen_id": "SPEC001", "block_id": "B1"})
+    )
+    await client.block.update(
+        "SPEC001", "B1", BlockUpdate(microCT_info={"resolution": 1.0})
+    )
+    req = captured[-1]
+    assert req.method == "PATCH"
+    assert req.path == "/api/v2/blocks/specimens/SPEC001/blocks/B1"
+    assert req.body == {"microCT_info": {"resolution": 1.0}}
+
+
+async def test_delete_compound_path(client, captured):
+    await client.block.delete("SPEC001", "B1")
+    req = captured[-1]
+    assert req.method == "DELETE"
+    assert req.path == "/api/v2/blocks/specimens/SPEC001/blocks/B1"
+
+
+async def test_get_cut_sessions_path(client, captured):
+    await client.block.get_cut_sessions("SPEC001", "B1")
+    assert (
+        captured[-1].path == "/api/v2/blocks/specimens/SPEC001/blocks/B1/cut-sessions"
+    )

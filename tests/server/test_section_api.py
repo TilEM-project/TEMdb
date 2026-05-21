@@ -83,6 +83,12 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
     assert response_data["specimen_id"] == test_cutting_session.specimen_id
     assert response_data["section_number"] == 99
     assert response_data["barcode"] == "BC123456789"
+    assert response_data["optical_image"] == {"url": "http://example.com/image.png"}
+
+    session_id = test_cutting_session.cutting_session_id
+    get_response = await async_client.get(f"/api/v2/sections/sessions/{session_id}/sections/{section_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["optical_image"] == {"url": "http://example.com/image.png"}
 
 
 @pytest.mark.asyncio
@@ -143,11 +149,13 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
         assert section["section_number"] == section_number
         assert section["media_id"] == f"{media_base}_{substrate_idx}"
         assert section["barcode"] == f"BATCH{timestamp}_{i}"
+        assert section["optical_image"] == {"url": f"http://example.com/image_{i}.png"}
 
         session_id = test_cutting_session.cutting_session_id
         get_path = f"/api/v2/sections/sessions/{session_id}/sections/{expected_section_id}"
         get_response = await async_client.get(get_path)
         assert get_response.status_code == 200
+        assert get_response.json()["optical_image"] == {"url": f"http://example.com/image_{i}.png"}
 
     for i, section in enumerate(created_sections):
         session_id = test_cutting_session.cutting_session_id
@@ -377,3 +385,99 @@ async def test_list_sections_by_media(async_client: AsyncClient, test_section):
 #     assert len(response_data) >= 1
 #     assert any(s["section_id"] == test_section.section_id for s in response_data)
 #     assert all(s["barcode"] == test_section.barcode for s in response_data)
+
+
+@pytest.mark.asyncio
+async def test_update_section_preserves_optical_image(async_client: AsyncClient, test_cutting_session, test_section):
+    """Patching unrelated fields must not clobber optical_image."""
+    session_id = test_cutting_session.cutting_session_id
+    path = f"/api/v2/sections/sessions/{session_id}/sections/{test_section.section_id}"
+
+    initial = {"optical_image": {"url": "http://initial.example.com/img.png"}}
+    r = await async_client.patch(path, json=initial)
+    assert r.status_code == 200
+    assert r.json()["optical_image"] == initial["optical_image"]
+
+    r = await async_client.patch(path, json={"barcode": "NEWBARCODE"})
+    assert r.status_code == 200
+    assert r.json()["barcode"] == "NEWBARCODE"
+    assert r.json()["optical_image"] == initial["optical_image"]
+
+
+@pytest.mark.asyncio
+async def test_update_section_replaces_optical_image(async_client: AsyncClient, test_cutting_session, test_section):
+    """PATCH optical_image overwrites the stored value."""
+    session_id = test_cutting_session.cutting_session_id
+    path = f"/api/v2/sections/sessions/{session_id}/sections/{test_section.section_id}"
+
+    new = {"optical_image": {"url": "http://replaced.example.com/img2.png", "checksum": "abc"}}
+    r = await async_client.patch(path, json=new)
+    assert r.status_code == 200
+    assert r.json()["optical_image"] == new["optical_image"]
+
+
+@pytest.mark.asyncio
+async def test_create_section_round_trips_aperture(async_client: AsyncClient, test_cutting_session):
+    """create_section must forward aperture_uid/aperture_index to the document."""
+    media_id = f"TEST_APT_{int(datetime.now(timezone.utc).timestamp())}"
+    substrate_response = await async_client.post(
+        "/api/v2/substrates",
+        json={
+            "media_id": media_id,
+            "media_type": "wafer",
+            "status": "new",
+            "apertures": [{"uid": "APT_A", "index": 7, "status": "available"}],
+        },
+    )
+    assert substrate_response.status_code == 201
+
+    section_payload = {
+        "specimen_id": test_cutting_session.specimen_id,
+        "block_id": test_cutting_session.block_id,
+        "cutting_session_id": test_cutting_session.cutting_session_id,
+        "section_number": 42,
+        "media_id": media_id,
+        "aperture_uid": "APT_A",
+        "aperture_index": 7,
+    }
+    r = await async_client.post("/api/v2/sections", json=section_payload)
+    assert r.status_code == 201
+    assert r.json()["aperture_uid"] == "APT_A"
+    assert r.json()["aperture_index"] == 7
+
+    session_id = test_cutting_session.cutting_session_id
+    g = await async_client.get(f"/api/v2/sections/sessions/{session_id}/sections/{media_id}_S42")
+    assert g.status_code == 200
+    assert g.json()["aperture_uid"] == "APT_A"
+    assert g.json()["aperture_index"] == 7
+
+
+@pytest.mark.asyncio
+async def test_update_section_with_qc_result(async_client: AsyncClient, test_cutting_session, test_section):
+    """qc_result with criteria round-trips"""
+    session_id = test_cutting_session.cutting_session_id
+    path = f"/api/v2/sections/sessions/{session_id}/sections/{test_section.section_id}"
+
+    qc = {
+        "criteria": {
+            "coverage": {"label": "full_section", "pass_status": True, "conf": 0.9857},
+            "knife_mark": {"label": "knifemark_none", "pass_status": True, "conf": 0.9552},
+            "shape": {
+                "label": "Hexagon",
+                "pass_status": True,
+                "metric": 6,
+                "message": "Detected Hexagon (vertices=6)",
+            },
+            "thickness": {"label": "80", "pass_status": True, "conf": 0.3764},
+            "thickness_consistency": {"label": "Consistent", "pass_status": True, "conf": 0.9489},
+        }
+    }
+    r = await async_client.patch(path, json={"section_metrics": {"qc_result": qc}})
+    assert r.status_code == 200
+    saved_qc = r.json()["section_metrics"]["qc_result"]
+    assert saved_qc["criteria"]["coverage"]["conf"] == 0.9857
+    assert saved_qc["criteria"]["shape"]["metric"] == 6
+    assert saved_qc["criteria"]["shape"]["message"].startswith("Detected Hexagon")
+
+    g = await async_client.get(path)
+    assert g.json()["section_metrics"]["qc_result"]["criteria"]["thickness_consistency"]["label"] == "Consistent"

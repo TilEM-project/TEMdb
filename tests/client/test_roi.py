@@ -1,54 +1,82 @@
-import pytest
+import httpx
+
+from temdb.models import ROICreate, ROIUpdate
 
 
-@pytest.mark.asyncio
-async def test_roi_list(mock_client):
-    mock_response = [{"roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001", "section_id": "SECTION001"}]
-    mock_client.roi.list.return_value = mock_response
-
-    result = await mock_client.roi.list("SECTION001")
-    assert result == mock_response
-    mock_client.roi.list.assert_called_once_with("SECTION001")
-
-
-@pytest.mark.asyncio
-async def test_roi_create(mock_client):
-    roi_data = {"section_id": "SECTION001", "coordinates": [[0, 0], [100, 100]]}
-    mock_response = roi_data.copy()
-    mock_response["roi_id"] = "SPEC001.BLK001.SEC001.SUB001.ROI001"
-    mock_client.roi.create.return_value = mock_response
-
-    result = await mock_client.roi.create(roi_data)
-    assert result == mock_response
-    mock_client.roi.create.assert_called_once_with(roi_data)
-
-
-@pytest.mark.asyncio
-async def test_roi_get(mock_client):
-    mock_response = {"roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001", "section_id": "SECTION001"}
-    mock_client.roi.get.return_value = mock_response
-
-    result = await mock_client.roi.get("SPEC001.BLK001.SEC001.SUB001.ROI001")
-    assert result == mock_response
-    mock_client.roi.get.assert_called_once_with("SPEC001.BLK001.SEC001.SUB001.ROI001")
-
-
-@pytest.mark.asyncio
-async def test_roi_update(mock_client):
-    update_data = {"coordinates": [[0, 0], [200, 200]]}
-    mock_response = {
-        "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001",
-        "section_id": "SECTION001",
-        "coordinates": [[0, 0], [200, 200]],
+def _roi_resp(roi_id: str = "ROI001") -> dict:
+    return {
+        "roi_id": roi_id,
+        "roi_number": 1,
+        "section_id": "SEC001",
+        "specimen_id": "SPEC001",
+        "block_id": "B1",
+        "substrate_media_id": "M1",
+        "hierarchy_level": 1,
     }
-    mock_client.roi.update.return_value = mock_response
-
-    result = await mock_client.roi.update("SPEC001.BLK001.SEC001.SUB001.ROI001", update_data)
-    assert result == mock_response
-    mock_client.roi.update.assert_called_once_with("SPEC001.BLK001.SEC001.SUB001.ROI001", update_data)
 
 
-@pytest.mark.asyncio
-async def test_roi_delete(mock_client):
-    await mock_client.roi.delete("SPEC001.BLK001.SEC001.SUB001.ROI001")
-    mock_client.roi.delete.assert_called_once_with("SPEC001.BLK001.SEC001.SUB001.ROI001")
+async def test_create_posts_required_fields(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_roi_resp()))
+    await client.roi.create(
+        ROICreate(
+            section_id="SEC001",
+            specimen_id="SPEC001",
+            block_id="B1",
+            substrate_media_id="M1",
+            roi_number=1,
+        )
+    )
+    req = captured[-1]
+    assert req.method == "POST"
+    assert req.path == "/api/v2/rois"
+    assert req.body == {
+        "section_id": "SEC001",
+        "specimen_id": "SPEC001",
+        "block_id": "B1",
+        "substrate_media_id": "M1",
+        "roi_number": 1,
+    }
+
+
+async def test_list_by_section(client, captured):
+    await client.roi.list_by_section("SEC001", skip=0, limit=10)
+    req = captured[-1]
+    assert req.path == "/api/v2/sections/SEC001/rois"
+
+
+async def test_list_all_with_is_parent(client, captured):
+    await client.roi.list_all(specimen_id="SPEC001", is_parent_roi=True)
+    req = captured[-1]
+    assert req.path == "/api/v2/rois"
+    assert req.params["is_parent_roi"] in ("True", "true")
+    assert req.params["specimen_id"] == "SPEC001"
+
+
+async def test_get(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_roi_resp("42")))
+    await client.roi.get(42)
+    assert captured[-1].path == "/api/v2/rois/42"
+
+
+async def test_update_patches(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_roi_resp("42")))
+    await client.roi.update(42, ROIUpdate(roi_number=2))
+    req = captured[-1]
+    assert req.method == "PATCH"
+    assert req.path == "/api/v2/rois/42"
+    assert req.body == {"roi_number": 2}
+
+
+async def test_delete(client, captured):
+    await client.roi.delete(42)
+    req = captured[-1]
+    assert req.method == "DELETE"
+    assert req.path == "/api/v2/rois/42"
+
+
+async def test_get_children(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json={"children": [], "metadata": {}}))
+    await client.roi.get_children(42, skip=0, limit=10)
+    req = captured[-1]
+    assert req.path == "/api/v2/rois/42/children"
+    assert req.params == {"skip": "0", "limit": "10"}

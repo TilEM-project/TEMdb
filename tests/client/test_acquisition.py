@@ -1,140 +1,210 @@
-import pytest
+from datetime import datetime
+
+import httpx
+
+from temdb.models import (
+    AcquisitionCreate,
+    AcquisitionUpdate,
+    StorageLocationCreate,
+    TileCreate,
+)
+from temdb.models.acquisition import (
+    AcquisitionParams,
+    AcquisitionStatus,
+    HardwareParams,
+)
+
+_HW = {
+    "scope_id": "S1",
+    "camera_model": "cm",
+    "camera_serial": "cs",
+    "camera_bit_depth": 16,
+    "media_type": "tape",
+}
+_AP = {
+    "magnification": 1000,
+    "spot_size": 3,
+    "exposure_time": 100,
+    "tile_size": [4096, 4096],
+    "tile_overlap": 0.1,
+    "saved_bit_depth": 8,
+}
 
 
-@pytest.mark.asyncio
-async def test_acquisition_list(mock_client):
-    mock_client.acquisition.list.return_value = [{"acquisition_id": "ACQ001"}]
-    result = await mock_client.acquisition.list()
-    assert result == [{"acquisition_id": "ACQ001"}]
-    mock_client.acquisition.list.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_acquisition_create(mock_client):
-    acquisition_data = {"acquisition_id": "ACQ002", "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001"}
-    mock_client.acquisition.create.return_value = acquisition_data
-    result = await mock_client.acquisition.create(acquisition_data)
-    assert result == acquisition_data
-    mock_client.acquisition.create.assert_called_once_with(acquisition_data)
-
-
-@pytest.mark.asyncio
-async def test_acquisition_get(mock_client):
-    acquisition_data = {"acquisition_id": "ACQ002", "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001"}
-
-    mock_client.acquisition.get.return_value = acquisition_data
-    result = await mock_client.acquisition.get("ACQ002")
-    assert result == acquisition_data
-    mock_client.acquisition.get.assert_called_once_with("ACQ002")
-
-
-@pytest.mark.asyncio
-async def test_acquisition_update(mock_client):
-    acquisition_data = {"acquisition_id": "ACQ002", "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001"}
-
-    update_data = {"status": "COMPLETED"}
-    mock_client.acquisition.update.return_value = {**acquisition_data, **update_data}
-    result = await mock_client.acquisition.update("ACQ002", update_data)
-    assert result == {**acquisition_data, **update_data}
-    mock_client.acquisition.update.assert_called_once_with("ACQ002", update_data)
-
-
-@pytest.mark.asyncio
-async def test_acquisition_delete(mock_client):
-    await mock_client.acquisition.delete("ACQ002")
-    mock_client.acquisition.delete.assert_called_once_with("ACQ002")
-
-
-@pytest.mark.asyncio
-async def test_acquisition_get_with_full_metadata(mock_client):
-    metadata_response = {
-        "acquisition": {
-            "acquisition_id": "ACQ002",
-            "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001",
-        },
-        "task": {"task_id": "TASK001", "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001"},
-        "roi": {"roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001", "section_id": "SEC001"},
-        "section": {"section_id": "SEC001", "specimen_id": "SPEC001"},
-        "specimen": {"specimen_id": "SPEC001", "name": "Test Specimen"},
-        "tiles": [
-            {
-                "tile_id": "TILE003",
-                "acquisition_id": "ACQ002",
-                "raster_index": 0,
-                "stage_position": {"x": 0.0, "y": 0.0, "z": 0.0},
-                "raster_position": {"row": 0, "col": 0},
-                "focus_score": 0.85,
-                "min_value": 10.5,
-                "max_value": 255.0,
-                "mean_value": 128.7,
-                "std_value": 45.2,
-                "image_path": "/data/tiles/TILE003.tiff",
-                "created_at": "2025-05-30T10:00:00Z",
-                "updated_at": "2025-05-30T10:00:00Z",
-                "version": 1,
-            }
-        ],
+def _acq_resp(acq_id: str = "ACQ001") -> dict:
+    return {
+        "acquisition_id": acq_id,
+        "montage_id": "M001",
+        "specimen_id": "SPEC001",
+        "roi_id": "ROI001",
+        "acquisition_task_id": "TASK001",
+        "hardware_settings": _HW,
+        "acquisition_settings": _AP,
+        "status": AcquisitionStatus.IMAGING.value,
+        "start_time": "2026-01-01T00:00:00",
     }
-    mock_client.acquisition.get_with_full_metadata.return_value = metadata_response
-
-    result = await mock_client.acquisition.get_with_full_metadata("ACQ002")
-    assert result == metadata_response
-    mock_client.acquisition.get_with_full_metadata.assert_called_once_with("ACQ002")
 
 
-@pytest.mark.asyncio
-async def test_acquisition_list_with_full_metadata(mock_client):
-    metadata_response = {
-        "acquisitions": [
-            {
-                "acquisition": {
-                    "acquisition_id": "ACQ001",
-                    "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001",
-                },
-                "task": {"task_id": "TASK001", "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001"},
-                "roi": {"roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001", "section_id": "SEC001"},
-                "section": {"section_id": "SEC001", "specimen_id": "SPEC001"},
-                "specimen": {"specimen_id": "SPEC001", "name": "Test Specimen"},
-                "tiles": [
-                    {
-                        "tile_id": "TILE001",
-                        "acquisition_id": "ACQ001",
-                        "raster_index": 0,
-                        "stage_position": {"x": 0.0, "y": 0.0, "z": 0.0},
-                        "raster_position": {"row": 0, "col": 0},
-                        "focus_score": 0.92,
-                        "min_value": 8.2,
-                        "max_value": 250.0,
-                        "mean_value": 135.4,
-                        "std_value": 42.8,
-                        "image_path": "/data/tiles/TILE001.tiff",
-                        "created_at": "2025-05-30T09:30:00Z",
-                        "updated_at": "2025-05-30T09:30:00Z",
-                        "version": 1,
-                    },
-                    {
-                        "tile_id": "TILE002",
-                        "acquisition_id": "ACQ001",
-                        "raster_index": 1,
-                        "stage_position": {"x": 512.0, "y": 0.0, "z": 0.0},
-                        "raster_position": {"row": 0, "col": 1},
-                        "focus_score": 0.88,
-                        "min_value": 12.1,
-                        "max_value": 248.5,
-                        "mean_value": 142.3,
-                        "std_value": 38.9,
-                        "image_path": "/data/tiles/TILE002.tiff",
-                        "created_at": "2025-05-30T09:32:00Z",
-                        "updated_at": "2025-05-30T09:32:00Z",
-                        "version": 1,
-                    },
-                ],
-            }
-        ],
-        "metadata": {"total": 1, "limit": 50, "cursor": None},
+def _tile_resp(tile_id: str = "TILE001") -> dict:
+    return {
+        "tile_id": tile_id,
+        "acquisition_id": "ACQ001",
+        "raster_index": 0,
+        "stage_position": {"x": 0.0, "y": 0.0},
+        "raster_position": {"row": 0, "col": 0},
+        "focus_score": 0.9,
+        "min_value": 0.0,
+        "max_value": 255.0,
+        "mean_value": 128.0,
+        "std_value": 10.0,
+        "image_path": "/path/tile.tif",
     }
-    mock_client.acquisition.list_with_full_metadata.return_value = metadata_response
 
-    result = await mock_client.acquisition.list_with_full_metadata(limit=50)
-    assert result == metadata_response
-    mock_client.acquisition.list_with_full_metadata.assert_called_once_with(limit=50)
+
+def _new_acq(acq_id: str = "ACQ001") -> AcquisitionCreate:
+    return AcquisitionCreate(
+        acquisition_id=acq_id,
+        montage_id="M001",
+        roi_id="ROI001",
+        acquisition_task_id="TASK001",
+        hardware_settings=HardwareParams(**_HW),
+        acquisition_settings=AcquisitionParams(**_AP),
+        tilt_angle=0.0,
+        lens_correction=False,
+    )
+
+
+def _new_tile(tile_id: str = "TILE001") -> TileCreate:
+    return TileCreate(
+        tile_id=tile_id,
+        raster_index=0,
+        stage_position={"x": 0.0, "y": 0.0},
+        raster_position={"row": 0, "col": 0},
+        focus_score=0.9,
+        min_value=0.0,
+        max_value=255.0,
+        mean_value=128.0,
+        std_value=10.0,
+        image_path="/path/tile.tif",
+    )
+
+
+async def test_create_serializes_acquisition(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_acq_resp()))
+    await client.acquisition.create(_new_acq())
+    req = captured[-1]
+    assert req.method == "POST"
+    assert req.path == "/api/v2/acquisitions"
+    assert req.body["acquisition_id"] == "ACQ001"
+    assert req.body["hardware_settings"]["scope_id"] == "S1"
+    assert req.body["acquisition_settings"]["magnification"] == 1000
+
+
+async def test_list_with_date_filters(client, captured, response_queue):
+    response_queue.append(
+        httpx.Response(200, json={"acquisitions": [], "metadata": {}})
+    )
+    await client.acquisition.list(
+        start_date=datetime(2026, 1, 1),
+        status=AcquisitionStatus.IMAGING,
+        limit=10,
+    )
+    req = captured[-1]
+    assert req.path == "/api/v2/acquisitions"
+    assert req.params["start_date"] == "2026-01-01T00:00:00"
+    assert req.params["status"] == "imaging"
+    assert req.params["limit"] == "10"
+
+
+async def test_get(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_acq_resp()))
+    await client.acquisition.get("ACQ001")
+    assert captured[-1].path == "/api/v2/acquisitions/ACQ001"
+
+
+async def test_update_patches(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_acq_resp()))
+    await client.acquisition.update("ACQ001", AcquisitionUpdate(tilt_angle=1.5))
+    req = captured[-1]
+    assert req.method == "PATCH"
+    assert req.path == "/api/v2/acquisitions/ACQ001"
+    assert req.body == {"tilt_angle": 1.5}
+
+
+async def test_delete(client, captured):
+    await client.acquisition.delete("ACQ001")
+    req = captured[-1]
+    assert req.method == "DELETE"
+    assert req.path == "/api/v2/acquisitions/ACQ001"
+
+
+async def test_add_tile(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_tile_resp()))
+    await client.acquisition.add_tile("ACQ001", _new_tile())
+    req = captured[-1]
+    assert req.method == "POST"
+    assert req.path == "/api/v2/acquisitions/ACQ001/tiles"
+    assert req.body["tile_id"] == "TILE001"
+
+
+async def test_get_tiles_with_fields(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json={"tiles": [], "metadata": {}}))
+    await client.acquisition.get_tiles(
+        "ACQ001", cursor="c1", limit=50, fields=["tile_id"]
+    )
+    req = captured[-1]
+    assert req.path == "/api/v2/acquisitions/ACQ001/tiles"
+    assert req.params["limit"] == "50"
+    assert req.params["cursor"] == "c1"
+
+
+async def test_get_tile_count(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json={"count": 5}))
+    await client.acquisition.get_tile_count("ACQ001")
+    assert captured[-1].path == "/api/v2/acquisitions/ACQ001/tile-count"
+
+
+async def test_add_tiles_bulk_posts_list(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json={"inserted": 2}))
+    await client.acquisition.add_tiles_bulk(
+        "ACQ001", [_new_tile("T1"), _new_tile("T2")]
+    )
+    req = captured[-1]
+    assert req.method == "POST"
+    assert req.path == "/api/v2/acquisitions/ACQ001/tiles/bulk"
+    assert isinstance(req.body, list)
+    assert [t["tile_id"] for t in req.body] == ["T1", "T2"]
+
+
+async def test_delete_tile(client, captured):
+    await client.acquisition.delete_tile("ACQ001", "TILE001")
+    req = captured[-1]
+    assert req.method == "DELETE"
+    assert req.path == "/api/v2/acquisitions/ACQ001/tiles/TILE001"
+
+
+async def test_add_storage_location_posts(client, captured, response_queue):
+    response_queue.append(httpx.Response(200, json=_acq_resp()))
+    loc = StorageLocationCreate(location_type="s3", base_path="s3://b/p")
+    await client.acquisition.add_storage_location("ACQ001", loc)
+    req = captured[-1]
+    assert req.method == "POST"
+    assert req.path == "/api/v2/acquisitions/ACQ001/storage-locations"
+    assert req.body == {"location_type": "s3", "base_path": "s3://b/p"}
+
+
+async def test_get_current_storage_location(client, captured, response_queue):
+    response_queue.append(
+        httpx.Response(
+            200,
+            json={
+                "location_type": "s3",
+                "base_path": "s3://b/p",
+                "is_current": True,
+                "date_added": "2026-01-01T00:00:00",
+                "metadata": {},
+            },
+        )
+    )
+    await client.acquisition.get_current_storage_location("ACQ001")
+    assert captured[-1].path == "/api/v2/acquisitions/ACQ001/current-storage"
