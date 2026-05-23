@@ -42,4 +42,8 @@ def get_config():
     return DevConfig()
 
 
+def is_debug_traceback_enabled() -> bool:
+    return os.getenv("DEBUG", "").strip().lower() == "true"
+
+
 config = get_config()
