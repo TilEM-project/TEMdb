@@ -1,10 +1,12 @@
 import gzip
 import logging
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from temdb.server.api.v1.grids import grid_api
@@ -17,7 +19,7 @@ from temdb.server.api.v2.section import section_api
 from temdb.server.api.v2.specimen import specimen_api
 from temdb.server.api.v2.substrate import substrate_api
 from temdb.server.api.v2.tasks import acquisition_task_api
-from temdb.server.config import config
+from temdb.server.config import config, is_debug_traceback_enabled
 from temdb.server.database import DatabaseManager
 from temdb.server.exception_handlers import register_exception_handlers
 
@@ -65,6 +67,34 @@ class GzipRequestMiddleware:
             await self.app(scope, receive, send)
 
 
+class DebugTracebackMiddleware:
+    def __init__(self, app: ASGIApp, enabled: bool = False) -> None:
+        self.app = app
+        self.enabled = enabled
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            if not self.enabled:
+                raise
+
+            traceback_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            response = JSONResponse(
+                status_code=500,
+                content={
+                    "detail": str(exc) or "Unhandled server exception.",
+                    "error_code": "INTERNAL_SERVER_ERROR",
+                    "context": {"traceback": traceback_text},
+                },
+            )
+            await response(scope, receive, send)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     mongodb_uri = app.state.mongodb_uri
@@ -85,6 +115,7 @@ def create_app():
     )
     app.add_middleware(GzipRequestMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_middleware(DebugTracebackMiddleware, enabled=is_debug_traceback_enabled())
     app.config = config
     logging.info(f"Mongo URI: {app.config.mongodb_uri}")
     logging.info(f"Database name: {app.config.mongodb_name}")
