@@ -50,7 +50,8 @@ async def test_list_sections_filtered(
 async def test_create_section(async_client: AsyncClient, test_cutting_session):
     """Test creating a new section."""
 
-    substrate_id_hr = f"TEST_SUB_CREATE_{int(datetime.now(timezone.utc).timestamp())}"
+    timestamp = int(datetime.now(timezone.utc).timestamp())
+    substrate_id_hr = f"TEST_SUB_CREATE_{timestamp}"
     substrate_data = {
         "media_id": substrate_id_hr,
         "media_type": "wafer",
@@ -64,7 +65,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
     response_data = response.json()
     assert response_data["media_id"] == substrate_id_hr
 
-    section_id_hr = f"TEST_SUB_CREATE_{int(datetime.now(timezone.utc).timestamp())}_S99"
+    section_id_hr = f"TEST_SUB_CREATE_{timestamp}_S99"
     section_data = {
         "specimen_id": test_cutting_session.specimen_id,
         "block_id": test_cutting_session.block_id,
