@@ -342,17 +342,13 @@ async def update_section(
         section.section_metrics.quality = update_data["quality"]
         needs_save = True
 
-    if "tissue_confidence_score" in update_data:
-        if section.section_metrics is None:
-            section.section_metrics = SectionMetrics()
-        section.section_metrics.tissue_confidence_score = update_data["tissue_confidence_score"]
-        needs_save = True
-
     for field, value in update_data.items():
-        if field in ["quality", "tissue_confidence_score"]:
+        if field == "quality":
             continue
 
-        if field == "section_metrics" and value is not None:
+        if field == "section_metrics":
+            if section.section_metrics == value:
+                continue
             section.section_metrics = value
             needs_save = True
         elif hasattr(section, field) and getattr(section, field) != value:

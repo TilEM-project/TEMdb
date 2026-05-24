@@ -17,17 +17,20 @@ class TestSectionMetrics:
         metrics = SectionMetrics()
         assert metrics.quality is None
         assert metrics.thickness_um is None
-        assert metrics.tissue_confidence_score is None
+        assert metrics.thickness_consistency is None
 
     def test_with_all_fields(self):
         metrics = SectionMetrics(
             quality=SectionQuality.GOOD,
-            thickness_um=50.0,
-            tissue_confidence_score=0.95,
+            thickness_um={"label": 50.0, "confidence": 0.95},
         )
         assert metrics.quality == SectionQuality.GOOD
-        assert metrics.thickness_um == 50.0
-        assert metrics.tissue_confidence_score == 0.95
+        assert metrics.thickness_um.label == 50.0
+        assert metrics.thickness_um.confidence == 0.95
+
+    def test_thickness_label_allows_any_type(self):
+        metrics = SectionMetrics(thickness_um={"label": {"value": 50.0, "units": "um"}, "confidence": 0.9})
+        assert metrics.thickness_um.label == {"value": 50.0, "units": "um"}
 
 
 class TestSectionCreate:

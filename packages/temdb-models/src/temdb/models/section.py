@@ -35,7 +35,7 @@ class SectionMetric(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     confidence: float | None = Field(None, description="The confidence value of this metric.", ge=0, le=1)
-    label: str | None = Field(None, description="")
+    label: Any | None = Field(None, description="")
     pass_status: bool = Field(True, description="Should be True if the section is of good quality by this metric.")
     message: str | None = Field(None, description="Additional human readable infomation about this metric.")
 
