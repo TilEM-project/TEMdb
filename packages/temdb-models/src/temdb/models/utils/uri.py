@@ -1,8 +1,11 @@
 import logging
+import os
+import posixpath
 from typing import Annotated
 
 import boto3
 import yaml
+from pathlib_abc import JoinablePath, vfspath
 from platformdirs import user_config_path
 from pydantic import BaseModel, BeforeValidator, PlainSerializer, ValidationError, field_validator
 from smart_open import open, parse_uri
@@ -119,17 +122,50 @@ class _DataConfig(_DataLocationConfig):
 data_config = _DataConfig.load()
 
 
-class _URIMeta(type):
-    @property
+class _classproperty(property):
+    def __get__(self, _, owner):
+        return self.fget(owner)
+
+
+class URI(JoinablePath):
+    data_config = data_config
+    parser = posixpath
+
+    @_classproperty
     def Type(cls):
         return Annotated[cls, PlainSerializer(cls.serialize), BeforeValidator(cls.validate)]
 
+    def __init__(self, *pathsegments):
+        if not pathsegments:
+            self.uri = ""
+            return
 
-class URI(metaclass=_URIMeta):
-    data_config = data_config
+        normalized_segments = tuple(self._normalize_pathsegment(segment) for segment in pathsegments)
+        if len(normalized_segments) == 1:
+            self.uri = normalized_segments[0]
+        else:
+            self.uri = self.parser.join(*normalized_segments)
 
-    def __init__(self, uri):
-        self.uri = uri
+    @staticmethod
+    def _normalize_pathsegment(segment):
+        if isinstance(segment, URI):
+            return segment.uri
+        if isinstance(segment, JoinablePath):
+            return vfspath(segment)
+        if isinstance(segment, os.PathLike):
+            return os.fspath(segment)
+        if isinstance(segment, str):
+            return segment
+        raise TypeError(f"pathsegments should be strings or path-like objects, not {type(segment).__name__!r}")
+
+    def __vfspath__(self):
+        return self.uri
+
+    def __fspath__(self):
+        return self.uri
+
+    def with_segments(self, *pathsegments):
+        return type(self)(*pathsegments)
 
     def open(self, mode="r", transport_params=None, **kwargs):
         if transport_params is None:
@@ -144,6 +180,8 @@ class URI(metaclass=_URIMeta):
     def validate(cls, value):
         if isinstance(value, cls):
             return value
+        elif isinstance(value, (JoinablePath, os.PathLike)):
+            return cls(value)
         elif isinstance(value, str):
             return cls(value)
         else:
@@ -155,7 +193,7 @@ class URI(metaclass=_URIMeta):
         elif isinstance(other, str):
             return self.uri == other
         else:
-            raise NotImplementedError
+            return NotImplemented
 
     def __hash__(self):
         return hash(self.uri)

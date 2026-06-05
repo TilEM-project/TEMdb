@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -35,6 +36,23 @@ def test_uri_serialize():
     serialized = URI.serialize(obj)
     assert isinstance(serialized, str)
     assert serialized == obj_uri
+
+
+def test_uri_pathlike_operations():
+    base = URI("s3://bucket/folder/file.tif")
+
+    assert base.name == "file.tif"
+    assert base.stem == "file"
+    assert base.suffix == ".tif"
+    assert base.parent == URI("s3://bucket/folder")
+    assert base.with_suffix(".png") == URI("s3://bucket/folder/file.png")
+    assert base / "child" == URI("s3://bucket/folder/file.tif/child")
+
+
+def test_uri_validate_pathlike():
+    obj = URI.validate(Path("/tmp/data.txt"))
+    assert isinstance(obj, URI)
+    assert obj == "/tmp/data.txt"
 
 
 @mark.parametrize(
