@@ -30,6 +30,7 @@ class SectionDocument(Document, SectionBase):
     block_id: str = Field(..., description="Human-readable ID of the block")
     specimen_id: str = Field(..., description="Human-readable ID of the specimen")
     media_id: str = Field(..., description="Human-readable ID of the substrate")
+    destroyed: bool = Field(False, description="Denotes if the section has been destroyed.")
 
     cutting_session_ref: Link[CuttingSessionDocument] = Field(
         ..., description="Internal Link to the cutting session document"
@@ -68,9 +69,9 @@ class SectionDocument(Document, SectionBase):
                 name="quality_index",
             ),
             IndexModel(
-                [("section_metrics.thickness_um", ASCENDING)],
+                [("section_metrics.thickness_um.label", ASCENDING)],
                 sparse=True,
-                name="thickness_index",
+                name="thickness_um",
             ),
             IndexModel([("barcode", ASCENDING)], sparse=True, name="barcode_index"),
             IndexModel([("timestamp", DESCENDING)], name="timestamp_index"),

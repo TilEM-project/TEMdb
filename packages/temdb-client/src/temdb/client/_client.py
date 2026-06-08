@@ -4,6 +4,7 @@ import logging
 from typing import Any, cast
 
 import httpx
+from pydantic_core import to_jsonable_python
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -104,7 +105,7 @@ class TEMdbClient:
         self.logger.debug(f"Async Request: {method} {endpoint}")
         try:
             if "json" in kwargs and method.upper() in ("POST", "PATCH", "PUT"):
-                body = json.dumps(kwargs.pop("json")).encode("utf-8")
+                body = json.dumps(kwargs.pop("json"), default=to_jsonable_python).encode("utf-8")
                 if len(body) > 1000:
                     self.logger.debug(f"Compressing request body: {len(body)} bytes")
                     kwargs["content"] = gzip.compress(body)

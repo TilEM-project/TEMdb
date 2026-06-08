@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .utils.uri import URI
+
 
 class ReferencePoints(BaseModel):
     """Reference points for substrate calibration."""
@@ -59,7 +61,7 @@ class SubstrateMetadata(BaseModel):
 class SubstrateBase(BaseModel):
     """Base substrate fields."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     uid: str | None = Field(
         None,
@@ -73,7 +75,7 @@ class SubstrateBase(BaseModel):
     refpoint_world: ReferencePoints | None = Field(
         None, description="Reference points mapped to world/stage coordinates"
     )
-    source_path: str | None = Field(
+    source_path: URI.Type | None = Field(
         None,
         description="Path or identifier of the source file defining this substrate",
     )

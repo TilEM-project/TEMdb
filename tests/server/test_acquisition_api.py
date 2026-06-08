@@ -47,10 +47,9 @@ async def test_list_acquisitions_filtered(
     assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_task.json()["acquisitions"])
 
     # Filter by status
-    resp_status = await async_client.get(f"/api/v2/acquisitions?status={AcquisitionStatus.IMAGING.value}")
+    resp_status = await async_client.get(f"/api/v2/acquisitions?status={AcquisitionStatus.QC_PENDING.value}")
     assert resp_status.status_code == 200
-    # Assumes test_acquisition fixture has IMAGING status
-    assert all(a["status"] == AcquisitionStatus.IMAGING.value for a in resp_status.json()["acquisitions"])
+    assert all(a["status"] == AcquisitionStatus.QC_PENDING.value for a in resp_status.json()["acquisitions"])
 
 
 @pytest.mark.asyncio
@@ -80,7 +79,7 @@ async def test_create_acquisition(async_client: AsyncClient, test_specimen, test
         },
         "tilt_angle": 5.0,
         "lens_correction": False,
-        "status": AcquisitionStatus.IMAGING.value,
+        "status": AcquisitionStatus.QC_PENDING.value,
     }
     response = await async_client.post("/api/v2/acquisitions", json=acquisition_data)
     assert response.status_code == 201
@@ -156,11 +155,11 @@ async def test_get_acquisition_not_found(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_update_acquisition(async_client: AsyncClient, test_acquisition):
     """Test updating an acquisition's status."""
-    update_data = {"status": AcquisitionStatus.ACQUIRED.value}
+    update_data = {"status": AcquisitionStatus.QC_PASSED.value}
     response = await async_client.patch(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}", json=update_data)
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["status"] == AcquisitionStatus.ACQUIRED.value
+    assert response_data["status"] == AcquisitionStatus.QC_PASSED.value
     assert response_data["acquisition_id"] == test_acquisition.acquisition_id
     assert "end_time" not in update_data  # Ensure other fields weren't changed unless specified
 

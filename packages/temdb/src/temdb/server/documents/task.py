@@ -4,7 +4,7 @@ from beanie import Document, Link
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
-from temdb.models import AcquisitionTaskBase, AcquisitionTaskStatus
+from temdb.models import AcquisitionTaskBase
 
 from .block import BlockDocument
 from .roi import ROIDocument
@@ -22,7 +22,6 @@ class AcquisitionTaskDocument(Document, AcquisitionTaskBase):
     # Override base fields with defaults for document
     task_type: str = Field("standard_acquisition", description="Type of acquisition task")
     version: int = Field(1, description="Version number of this task")
-    status: AcquisitionTaskStatus = Field(default=AcquisitionTaskStatus.PLANNED)
 
     specimen_ref: Link[SpecimenDocument] = Field(..., description="Internal link to the specimen document")
     block_ref: Link[BlockDocument] = Field(..., description="Internal link to the block document")
@@ -43,7 +42,6 @@ class AcquisitionTaskDocument(Document, AcquisitionTaskBase):
                 [("task_id", ASCENDING), ("version", DESCENDING)],
                 name="task_id_version_index",
             ),
-            IndexModel([("status", ASCENDING)], name="status_index"),
             IndexModel(
                 [("specimen_ref.id", ASCENDING), ("block_ref.id", ASCENDING)],
                 name="specimen_block_ref_index",
