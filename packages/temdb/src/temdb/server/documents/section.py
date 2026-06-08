@@ -68,9 +68,9 @@ class SectionDocument(Document, SectionBase):
                 name="quality_index",
             ),
             IndexModel(
-                [("section_metrics.thickness_um", ASCENDING)],
+                [("section_metrics.thickness_um.label", ASCENDING)],
                 sparse=True,
-                name="thickness_index",
+                name="thickness_um",
             ),
             IndexModel([("barcode", ASCENDING)], sparse=True, name="barcode_index"),
             IndexModel([("timestamp", DESCENDING)], name="timestamp_index"),

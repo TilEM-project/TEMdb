@@ -46,6 +46,7 @@ from temdb.models.section import (
     SectionBase,
     SectionCreate,
     SectioningRunParameters,
+    SectionMetric,
     SectionMetrics,
     SectionResponse,
     SectionUpdate,
@@ -123,6 +124,7 @@ __all__ = [
     "SectionCreate",
     "SectionUpdate",
     "SectionResponse",
+    "SectionMetric",
     "SectionMetrics",
     "SectioningRunParameters",
     # Substrate

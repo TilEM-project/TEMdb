@@ -29,17 +29,30 @@ class SectioningRunParameters(BaseModel):
     )
 
 
+class SectionMetric(BaseModel):
+    """Section Metric with Confidence"""
+
+    model_config = ConfigDict(extra="allow")
+
+    confidence: float | None = Field(None, description="The confidence value of this metric.", ge=0, le=1)
+    label: Any | None = Field(None, description="")
+    pass_status: bool = Field(True, description="Should be True if the section is of good quality by this metric.")
+    message: str | None = Field(None, description="Additional human readable infomation about this metric.")
+
+
 class SectionMetrics(BaseModel):
     """Metrics and parameters of a section."""
 
     model_config = ConfigDict(extra="allow")
 
     quality: SectionQuality | None = Field(None, description="Qualitative state of the section (e.g., Good, Broken)")
-    thickness_um: float | None = Field(None, description="Measured section thickness in micrometers")
-    knife_quality: str | None = Field(None, description="Assessment of the knife condition at the time of cutting")
-    tissue_confidence_score: float | None = Field(
-        None, description="Confidence score for tissue detection on substrate"
+    thickness_um: SectionMetric | None = Field(None, description="Measured section thickness in micrometers")
+    thickness_consistency: SectionMetric | None = Field(None, description="Measured section thischness consistency")
+    knife_marks: SectionMetric | None = Field(
+        None, description="Assessment of the knife condition at the time of cutting"
     )
+    coverage: SectionMetric | None = Field(None, description="")
+    shape: SectionMetric | None = Field(None, description="")
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
     )

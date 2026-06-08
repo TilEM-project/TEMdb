@@ -108,7 +108,10 @@ def generate_section(
         "section_metrics": (
             {
                 "quality": fake.random_element(elements=SectionQuality).value,
-                "tissue_confidence_score": fake.pyfloat(min_value=0.0, max_value=1.0),
+                "thickness_um": {
+                    "label": fake.pyfloat(min_value=20.0, max_value=80.0, right_digits=2),
+                    "confidence": fake.pyfloat(min_value=0.0, max_value=1.0),
+                },
             }
             if fake.boolean()
             else None
