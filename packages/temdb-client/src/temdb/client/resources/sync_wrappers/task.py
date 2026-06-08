@@ -6,7 +6,6 @@ from temdb.models import (
     AcquisitionResponse,
     AcquisitionTaskCreate,
     AcquisitionTaskResponse,
-    AcquisitionTaskStatus,
     AcquisitionTaskUpdate,
 )
 
@@ -23,11 +22,12 @@ class SyncAcquisitionTaskResourceWrapper:
         self,
         skip: int = 0,
         limit: int = 100,
-        status: AcquisitionTaskStatus | None = None,
         specimen_id: str | None = None,
         block_id: str | None = None,
         roi_id: int | None = None,
         task_type: str | None = None,
+        skip_destroyed: bool = True,
+        skip_completed: bool = True,
         **kwargs: Any,
     ) -> list[AcquisitionTaskResponse]:
         """List acquisition tasks."""
@@ -35,11 +35,12 @@ class SyncAcquisitionTaskResourceWrapper:
             self._async_resource.list(
                 skip=skip,
                 limit=limit,
-                status=status,
                 specimen_id=specimen_id,
                 block_id=block_id,
                 roi_id=roi_id,
                 task_type=task_type,
+                skip_destroyed=skip_destroyed,
+                skip_completed=skip_completed,
                 **kwargs,
             )
         )
@@ -65,10 +66,6 @@ class SyncAcquisitionTaskResourceWrapper:
     ) -> builtins.list[AcquisitionResponse]:
         """List acquisitions related to a specific task."""
         return asyncio.run(self._async_resource.list_related_acquisitions(task_id, skip=skip, limit=limit))
-
-    def update_status(self, task_id: str, status: AcquisitionTaskStatus) -> AcquisitionTaskResponse:
-        """Update the status of an acquisition task."""
-        return asyncio.run(self._async_resource.update_status(task_id, status))
 
     def create_batch(self, tasks_data: builtins.list[AcquisitionTaskCreate]) -> builtins.list[AcquisitionTaskResponse]:
         """Create a batch of acquisition tasks."""

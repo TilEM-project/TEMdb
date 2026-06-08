@@ -87,6 +87,7 @@ class SectionBase(BaseModel):
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
+    destroyed: bool = Field(False, description="Denotes if the section has been destroyed.")
 
 
 class SectionCreate(SectionBase):
