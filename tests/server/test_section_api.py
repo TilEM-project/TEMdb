@@ -72,7 +72,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 99,
         "media_id": substrate_id_hr,
-        "optical_image": {"url": "http://example.com/image.png"},
+        "optical_image": {"image_path": "http://example.com/image.png"},
         "barcode": "BC123456789",
     }
     response = await async_client.post("/api/v2/sections", json=section_data)
@@ -121,7 +121,7 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
                 "cutting_session_id": test_cutting_session.cutting_session_id,
                 "section_number": section_number,
                 "media_id": f"{media_base}_{substrate_idx}",
-                "optical_image": {"url": f"http://example.com/image_{i}.png"},
+                "optical_image": {"image_path": f"http://example.com/image_{i}.png"},
                 "barcode": f"BATCH{timestamp}_{i}",
             }
         )
@@ -174,7 +174,7 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
             "cutting_session_id": "NON_EXISTENT_SESSION_ID",
             "section_number": 1,
             "media_id": test_substrate.media_id,
-            "optical_image": {"url": "http://foobar.com/image.png"},
+            "optical_image": {"image_path": "http://foobar.com/image.png"},
         }
     ]
 
@@ -194,7 +194,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": "NON_EXISTENT_MEDIA_ID",
-            "optical_image": {"url": "http://example.com/image.png"},
+            "optical_image": {"image_path": "http://example.com/image.png"},
         }
     ]
 
@@ -228,7 +228,7 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
-            "optical_image": {"url": "http://image.server.com/image1.png"},
+            "optical_image": {"image_path": "http://image.server.com/image1.png"},
         },
         {
             "specimen_id": test_cutting_session.specimen_id,
@@ -236,7 +236,7 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
-            "optical_image": {"url": "http://some.other.place.com/image2.png"},
+            "optical_image": {"image_path": "http://some.other.place.com/image2.png"},
         },
     ]
 

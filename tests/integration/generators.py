@@ -99,7 +99,7 @@ def generate_section(
         "cutting_session_ref": cutting_session.id,
         "optical_image": (
             {
-                "url": fake.image_url(),
+                "image_path": fake.image_url(),
                 "metadata": {"res_um": fake.pyfloat(min_value=0.5, max_value=5.0)},
             }
             if fake.boolean()

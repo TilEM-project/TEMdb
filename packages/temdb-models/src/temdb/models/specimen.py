@@ -3,12 +3,14 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .utils.uri import URI
+
 
 class SpecimenBase(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     description: str | None = Field(None, description="Description of specimen, used for additional notes.")
-    specimen_images: set[str] | None = Field(None, description="Images of specimen")
+    specimen_images: set[URI.Type] | None = Field(None, description="Images of specimen")
     functional_imaging_metadata: dict[str, Any] | None = Field(
         None,
         description="Functional imaging metadata of specimen, optional links to other datasets",

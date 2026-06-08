@@ -3,7 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from temdb.models.enums import SectionQuality
+from .enums import SectionQuality
+from .utils.uri import URI
 
 
 class SectioningRunParameters(BaseModel):
@@ -58,6 +59,13 @@ class SectionMetrics(BaseModel):
     )
 
 
+class OpticalImage(BaseModel):
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    image_path: URI.Type = Field(description="The URI of where the optical image is stored")
+    metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
+
+
 class SectionBase(BaseModel):
     """Base section fields."""
 
@@ -65,9 +73,9 @@ class SectionBase(BaseModel):
 
     section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
-    optical_image: dict[str, Any] | None = Field(
+    optical_image: OpticalImage | None = Field(
         None,
-        description="Metadata about optical image collected before imaging",
+        description="Optical image collected before imaging",
     )
     aperture_uid: str | None = Field(
         None,
