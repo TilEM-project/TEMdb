@@ -1,11 +1,11 @@
 import pytest
 
-from temdb.client import AsyncTEMdbClient
+from temdb.client import TEMdbClient
 
 
 @pytest.mark.asyncio
 async def test_client_initialization(client):
-    assert isinstance(client, AsyncTEMdbClient)
+    assert isinstance(client, TEMdbClient)
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,8 @@
-from ._client import AsyncTEMdbClient, SyncTEMdbClient, create_client
+from ._client import TEMdbClient
 from .exceptions import NotFoundError, TEMdbClientError
 
 __all__ = [
-    "create_client",
-    "SyncTEMdbClient",
-    "AsyncTEMdbClient",
+    "TEMdbClient",
     "TEMdbClientError",
     "NotFoundError",
 ]
