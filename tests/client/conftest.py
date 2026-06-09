@@ -3,12 +3,12 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
-from temdb.client import AsyncTEMdbClient, create_client
+from temdb.client import TEMdbClient
 
 
 @pytest_asyncio.fixture
 async def client():
-    client = create_client("https://api.temdb.example.com", async_mode=True)
+    client = TEMdbClient("https://api.temdb.example.com")
     try:
         yield client
     finally:
@@ -17,7 +17,7 @@ async def client():
 
 @pytest.fixture
 def mock_client():
-    mock_client = AsyncMock(spec=AsyncTEMdbClient)
+    mock_client = AsyncMock(spec=TEMdbClient)
     mock_client.specimen = AsyncMock()
     mock_client.block = AsyncMock()
     mock_client.cutting_session = AsyncMock()
