@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from temdb.models import APIErrorResponse
+from temdb.server.config import is_debug_traceback_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ async def business_logic_exception_handler(request: Request, exc: BaseError):
 async def generic_exception_handler(request: Request, exc: Exception):
     """Handles any other unexpected exceptions (returns 500 Internal Server Error)."""
     logger.exception(f"Unhandled exception during request to {request.url}", exc_info=exc)
+    if is_debug_traceback_enabled():
+        raise exc
 
     error_content = APIErrorResponse(
         detail="An unexpected internal server error occurred. Please contact the administrator.",

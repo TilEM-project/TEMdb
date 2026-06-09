@@ -27,6 +27,7 @@ class SectionSQLModel(ModelDumpMixin, Base):
     aperture_uid: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     aperture_index: Mapped[int | None] = mapped_column(nullable=True, index=True)
     barcode: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    destroyed: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     section_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

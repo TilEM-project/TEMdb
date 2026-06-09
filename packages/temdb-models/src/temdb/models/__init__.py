@@ -46,6 +46,7 @@ from temdb.models.section import (
     SectionBase,
     SectionCreate,
     SectioningRunParameters,
+    SectionMetric,
     SectionMetrics,
     SectionResponse,
     SectionUpdate,
@@ -78,6 +79,7 @@ from temdb.models.tile import (
     TileResponse,
     TileUpdate,
 )
+from temdb.models.utils.uri import URI
 
 __all__ = [
     # Enums
@@ -123,6 +125,7 @@ __all__ = [
     "SectionCreate",
     "SectionUpdate",
     "SectionResponse",
+    "SectionMetric",
     "SectionMetrics",
     "SectioningRunParameters",
     # Substrate
@@ -150,4 +153,6 @@ __all__ = [
     "AcquisitionFocusScoresResponse",
     "BadFocusTileInfo",
     "BadFocusTilesResponse",
+    # Utils
+    "URI",
 ]

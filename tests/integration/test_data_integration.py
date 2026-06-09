@@ -177,7 +177,7 @@ class TestDataIntegration:
                     "tile_overlap": 0.1,
                     "saved_bit_depth": 8,
                 },
-                status=AcquisitionStatus.IMAGING.value,
+                status=AcquisitionStatus.QC_PENDING.value,
                 tilt_angle=0.0,
                 lens_correction=False,
                 start_time=datetime.now(timezone.utc),

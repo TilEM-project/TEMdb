@@ -5,6 +5,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
+    AcquisitionStatus,
     AcquisitionTaskCreate,
     AcquisitionTaskStatus,
     AcquisitionTaskUpdate,
@@ -15,6 +16,7 @@ from temdb.server.sqlmodels import (
     AcquisitionTaskSQLModel,
     BlockSQLModel,
     ROISQLModel,
+    SectionSQLModel,
     SpecimenSQLModel,
 )
 
@@ -56,11 +58,13 @@ def _task_payload(
 async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    status: AcquisitionTaskStatus | None = None,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
     task_type: str | None = None,
+    media_id: str | None = Query(None, description="Filter by media ID (substrate)"),
+    skip_destroyed: bool = Query(True, description="Filter out tasks whose ROI section is destroyed"),
+    skip_completed: bool = Query(True, description="Filter out tasks with QC_PENDING or QC_PASSED acquisitions"),
     session: AsyncSession = Depends(get_async_session),
 ):
     """List acquisition tasks."""
@@ -89,8 +93,6 @@ async def list_tasks(
         )
     )
     filters = []
-    if status:
-        filters.append(AcquisitionTaskSQLModel.status == status.value)
     if task_type:
         filters.append(AcquisitionTaskSQLModel.task_type == task_type)
     if specimen_id:
@@ -99,6 +101,23 @@ async def list_tasks(
         filters.append(AcquisitionTaskSQLModel.block_id == block_id)
     if roi_id:
         filters.append(AcquisitionTaskSQLModel.roi_id == roi_id)
+    if media_id:
+        filters.append(ROISQLModel.substrate_media_id == media_id)
+    if skip_destroyed:
+        statement = statement.outerjoin(
+            SectionSQLModel,
+            SectionSQLModel.section_id == ROISQLModel.section_id,
+        )
+        filters.append(SectionSQLModel.destroyed.is_not(True))
+    if skip_completed:
+        completed_subq = (
+            select(AcquisitionSQLModel.acquisition_task_id)
+            .where(
+                AcquisitionSQLModel.status.in_([AcquisitionStatus.QC_PENDING.value, AcquisitionStatus.QC_PASSED.value])
+            )
+            .scalar_subquery()
+        )
+        filters.append(AcquisitionTaskSQLModel.task_id.not_in(completed_subq))
     if filters:
         statement = statement.where(and_(*filters))
 
@@ -351,6 +370,7 @@ async def update_task_status(
     ).first()
     if row is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
+
     task_obj, specimen_ref, block_ref, roi_ref = row
     if task_obj.status != status.value:
         task_obj.status = status.value
@@ -358,6 +378,7 @@ async def update_task_status(
         session.add(task_obj)
         await session.commit()
         await session.refresh(task_obj)
+
     return _task_payload(task_obj, specimen_ref, block_ref, roi_ref)
 
 

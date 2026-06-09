@@ -3,7 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from temdb.models.enums import SectionQuality
+from .enums import SectionQuality
+from .utils.uri import URI
 
 
 class SectioningRunParameters(BaseModel):
@@ -29,20 +30,40 @@ class SectioningRunParameters(BaseModel):
     )
 
 
+class SectionMetric(BaseModel):
+    """Section Metric with Confidence"""
+
+    model_config = ConfigDict(extra="allow")
+
+    confidence: float | None = Field(None, description="The confidence value of this metric.", ge=0, le=1)
+    label: Any | None = Field(None, description="")
+    pass_status: bool = Field(True, description="Should be True if the section is of good quality by this metric.")
+    message: str | None = Field(None, description="Additional human readable infomation about this metric.")
+
+
 class SectionMetrics(BaseModel):
     """Metrics and parameters of a section."""
 
     model_config = ConfigDict(extra="allow")
 
     quality: SectionQuality | None = Field(None, description="Qualitative state of the section (e.g., Good, Broken)")
-    thickness_um: float | None = Field(None, description="Measured section thickness in micrometers")
-    knife_quality: str | None = Field(None, description="Assessment of the knife condition at the time of cutting")
-    tissue_confidence_score: float | None = Field(
-        None, description="Confidence score for tissue detection on substrate"
+    thickness_um: SectionMetric | None = Field(None, description="Measured section thickness in micrometers")
+    thickness_consistency: SectionMetric | None = Field(None, description="Measured section thischness consistency")
+    knife_marks: SectionMetric | None = Field(
+        None, description="Assessment of the knife condition at the time of cutting"
     )
+    coverage: SectionMetric | None = Field(None, description="")
+    shape: SectionMetric | None = Field(None, description="")
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
     )
+
+
+class OpticalImage(BaseModel):
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    image_path: URI.Type = Field(description="The URI of where the optical image is stored")
+    metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
 
 
 class SectionBase(BaseModel):
@@ -54,7 +75,7 @@ class SectionBase(BaseModel):
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
     optical_image: dict[str, Any] | None = Field(
         None,
-        description="Metadata about optical image collected before imaging",
+        description="Optical image collected before imaging",
     )
     aperture_uid: str | None = Field(
         None,
@@ -66,6 +87,7 @@ class SectionBase(BaseModel):
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
+    destroyed: bool = Field(False, description="Denotes if the section has been destroyed.")
 
 
 class SectionCreate(SectionBase):

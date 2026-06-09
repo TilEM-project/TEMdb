@@ -50,7 +50,6 @@ class AcquisitionTaskResponse(AcquisitionTaskBase):
     roi_id: str = Field(..., description="ID of region of interest")
     task_type: str = Field(..., description="Type of acquisition task")
     version: int = Field(..., description="Version number of this task")
-    status: AcquisitionTaskStatus = Field(..., description="Status of acquisition task")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None

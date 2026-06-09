@@ -192,6 +192,56 @@ async def test_roi(init_db, test_db_manager: DatabaseManager, test_section: Sect
 
 
 @pytest.fixture(scope="function")
+async def test_roi2(init_db, test_db_manager: DatabaseManager, test_section: SectionSQLModel):
+    async with test_db_manager.async_session_factory() as session:
+        roi = ROISQLModel(
+            roi_id="SPEC001.BLK001.CS001.SEC001.SUB002.ROI002",
+            roi_number=2,
+            section_id=test_section.section_id,
+            block_id=test_section.block_id,
+            specimen_id=test_section.specimen_id,
+            substrate_media_id="SUB002",
+            hierarchy_level=1,
+            parent_roi_id=None,
+            updated_at=datetime.now(timezone.utc),
+            section_number=test_section.section_number,
+            roi_payload={},
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(roi)
+        await session.commit()
+        await session.refresh(roi)
+        yield roi
+
+
+@pytest.fixture(scope="function")
+async def test_acquisition_task2(
+    init_db,
+    test_db_manager: DatabaseManager,
+    test_specimen: SpecimenSQLModel,
+    test_block: BlockSQLModel,
+    test_roi2: ROISQLModel,
+):
+    async with test_db_manager.async_session_factory() as session:
+        acquisition_task = AcquisitionTaskSQLModel(
+            task_id="TEST_TASK_002",
+            specimen_id=test_specimen.specimen_id,
+            block_id=test_block.block_id,
+            roi_id=test_roi2.roi_id,
+            task_type="standard_acquisition",
+            version=1,
+            status=AcquisitionTaskStatus.PLANNED.value,
+            tags=[],
+            metadata_json={},
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(acquisition_task)
+        await session.commit()
+        await session.refresh(acquisition_task)
+        yield acquisition_task
+
+
+@pytest.fixture(scope="function")
 async def test_acquisition_task(
     init_db,
     test_db_manager: DatabaseManager,
@@ -248,7 +298,7 @@ async def test_acquisition(
                 "tile_overlap": 0.1,
                 "saved_bit_depth": 8,
             },
-            status=AcquisitionStatus.IMAGING.value,
+            status=AcquisitionStatus.QC_PENDING.value,
             start_time=datetime.now(timezone.utc),
         )
         session.add(acquisition)

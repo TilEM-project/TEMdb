@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
-from temdb.models import AcquisitionTaskStatus
+from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
+from temdb.server.sqlmodels import AcquisitionSQLModel, AcquisitionTaskSQLModel, ROISQLModel, SectionSQLModel
 
 
 @pytest.mark.asyncio
@@ -58,6 +59,159 @@ async def test_list_acquisition_tasks_filtered(
     res_status_data = response_status.json()
     assert isinstance(res_status_data, list)
     assert all(task["status"] == AcquisitionTaskStatus.PLANNED.value for task in res_status_data)
+
+
+@pytest.mark.asyncio
+async def test_list_acquisition_tasks_skip_destroyed(
+    async_client: AsyncClient,
+    test_specimen,
+    test_block,
+    test_cutting_session,
+    test_substrate,
+    test_db_manager,
+    test_acquisition_task,
+):
+    async with test_db_manager.async_session_factory() as session:
+        destroyed_section = SectionSQLModel(
+            section_id="TEST_SECTION_DESTROYED_001",
+            section_number=2,
+            timestamp=datetime.now(timezone.utc),
+            cutting_session_id=test_cutting_session.cutting_session_id,
+            block_id=test_block.block_id,
+            specimen_id=test_specimen.specimen_id,
+            media_id=test_substrate.media_id,
+            destroyed=True,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(destroyed_section)
+        await session.commit()
+        await session.refresh(destroyed_section)
+
+        destroyed_roi = ROISQLModel(
+            roi_id="SPEC001.BLK001.CS001.SEC002.SUB001.ROI001",
+            roi_number=1,
+            section_id=destroyed_section.section_id,
+            block_id=test_block.block_id,
+            specimen_id=test_specimen.specimen_id,
+            substrate_media_id="SUB001",
+            hierarchy_level=1,
+            parent_roi_id=None,
+            updated_at=datetime.now(timezone.utc),
+            section_number=destroyed_section.section_number,
+            roi_payload={},
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(destroyed_roi)
+        await session.commit()
+        await session.refresh(destroyed_roi)
+
+        destroyed_task = AcquisitionTaskSQLModel(
+            task_id="TEST_TASK_DESTROYED_001",
+            specimen_id=test_specimen.specimen_id,
+            block_id=test_block.block_id,
+            roi_id=destroyed_roi.roi_id,
+            task_type="standard_acquisition",
+            version=1,
+            status="Planned",
+            tags=[],
+            metadata_json={},
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(destroyed_task)
+        await session.commit()
+
+    default_response = await async_client.get("/api/v2/acquisition-tasks")
+    assert default_response.status_code == 200
+    default_ids = {task["task_id"] for task in default_response.json()}
+    assert test_acquisition_task.task_id in default_ids
+    assert destroyed_task.task_id not in default_ids
+
+    include_response = await async_client.get("/api/v2/acquisition-tasks?skip_destroyed=false")
+    assert include_response.status_code == 200
+    include_ids = {task["task_id"] for task in include_response.json()}
+    assert destroyed_task.task_id in include_ids
+
+
+@pytest.mark.asyncio
+async def test_list_acquisition_tasks_skip_completed(
+    async_client: AsyncClient,
+    test_specimen,
+    test_block,
+    test_roi,
+    test_acquisition_task,
+    test_roi2,
+    test_acquisition_task2,
+    test_db_manager,
+):
+    async with test_db_manager.async_session_factory() as session:
+        failed_acquisition = AcquisitionSQLModel(
+            acquisition_id="TEST_ACQ_QC_FAILED_001",
+            montage_id="TEST_MONTAGE_QC_FAILED_001",
+            specimen_id=test_specimen.specimen_id,
+            roi_id=test_roi.roi_id,
+            acquisition_task_id=test_acquisition_task.task_id,
+            hardware_settings={
+                "scope_id": "TEST_SCOPE_001",
+                "camera_model": "Test Camera",
+                "camera_serial": "12345",
+                "camera_bit_depth": 16,
+                "media_type": "tape",
+            },
+            acquisition_settings={
+                "magnification": 1000,
+                "spot_size": 2,
+                "exposure_time": 100,
+                "tile_size": [4096, 4096],
+                "tile_overlap": 0.1,
+                "saved_bit_depth": 8,
+            },
+            status=AcquisitionStatus.QC_FAILED.value,
+            start_time=datetime.now(timezone.utc),
+        )
+        passed_acquisition = AcquisitionSQLModel(
+            acquisition_id="TEST_ACQ_QC_PASSED_001",
+            montage_id="TEST_MONTAGE_QC_PASSED_001",
+            specimen_id=test_specimen.specimen_id,
+            roi_id=test_roi.roi_id,
+            acquisition_task_id=test_acquisition_task.task_id,
+            hardware_settings={
+                "scope_id": "TEST_SCOPE_001",
+                "camera_model": "Test Camera",
+                "camera_serial": "12345",
+                "camera_bit_depth": 16,
+                "media_type": "tape",
+            },
+            acquisition_settings={
+                "magnification": 1000,
+                "spot_size": 2,
+                "exposure_time": 100,
+                "tile_size": [4096, 4096],
+                "tile_overlap": 0.1,
+                "saved_bit_depth": 8,
+            },
+            status=AcquisitionStatus.QC_PASSED.value,
+            start_time=datetime.now(timezone.utc),
+        )
+        session.add(failed_acquisition)
+        session.add(passed_acquisition)
+        await session.commit()
+
+    default_response = await async_client.get("/api/v2/acquisition-tasks")
+    assert default_response.status_code == 200
+    default_ids = {task["task_id"] for task in default_response.json()}
+    assert test_acquisition_task.task_id not in default_ids
+
+    include_response = await async_client.get("/api/v2/acquisition-tasks?skip_completed=false")
+    assert include_response.status_code == 200
+    include_ids = {task["task_id"] for task in include_response.json()}
+    assert test_acquisition_task.task_id in include_ids
+
+    response_media = await async_client.get(f"/api/v2/acquisition-tasks?media_id={test_roi2.substrate_media_id}")
+    assert response_media.status_code == 200
+    res_media_data = response_media.json()
+    assert isinstance(res_media_data, list)
+    assert len(res_media_data) >= 1
+    assert all(task["roi_id"] == test_roi2.roi_id for task in res_media_data)
 
 
 @pytest.mark.asyncio
