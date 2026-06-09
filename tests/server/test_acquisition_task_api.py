@@ -132,6 +132,7 @@ async def test_list_acquisition_tasks_skip_completed(
     test_roi,
     test_acquisition_task,
     test_roi2,
+    test_acquisition_task2,
 ):
     failed_acquisition = AcquisitionDocument(
         acquisition_id="TEST_ACQ_QC_PENDING_001",
