@@ -22,6 +22,7 @@ class AcquisitionTaskResource(BaseResource):
         block_id: str | None = None,
         roi_id: int | None = None,
         task_type: str | None = None,
+        media_id: str | None = None,
         skip_destroyed: bool = True,
         skip_completed: bool = True,
         **kwargs: Any,
@@ -34,6 +35,7 @@ class AcquisitionTaskResource(BaseResource):
             "block_id": block_id,
             "roi_id": roi_id,
             "task_type": task_type,
+            "media_id": media_id,
             "skip_destroyed": skip_destroyed,
             "skip_completed": skip_completed,
         }

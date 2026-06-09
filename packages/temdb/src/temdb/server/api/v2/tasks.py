@@ -32,6 +32,7 @@ async def list_tasks(
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
     task_type: str | None = None,
+    media_id: str | None = Query(None, description="Filter by media ID (substrate)"),
     skip_destroyed: bool = Query(True, description="Filter out tasks whose ROI section is destroyed"),
     skip_completed: bool = Query(True, description="Filter out tasks with QC_PENDING or QC_PASSED acquisitions"),
 ):
@@ -48,6 +49,7 @@ async def list_tasks(
         specimen_internal_id = specimen.id
         match_filters["specimen_ref.$id"] = specimen_internal_id
 
+    block_internal_id = None
     if block_id:
         block_query_dict = {"block_id": block_id}
         if specimen_internal_id:
@@ -57,7 +59,8 @@ async def list_tasks(
         block = await block_query.first_or_none()
         if not block:
             return []
-        match_filters["block_ref.$id"] = block.id
+        block_internal_id = block.id
+        match_filters["block_ref.$id"] = block_internal_id
 
     if roi_id:
         roi = await ROI.find_one(ROI.roi_id == roi_id)
@@ -68,6 +71,18 @@ async def list_tasks(
         if specimen_id and hasattr(roi, "specimen_id") and roi.specimen_id != specimen_id:
             return []
         match_filters["roi_ref.$id"] = roi.id
+
+    if media_id:
+        roi_query_filters = [ROI.substrate_media_id == media_id]
+        if specimen_internal_id:
+            roi_query_filters.append(ROI.specimen_ref.id == specimen_internal_id)
+        if block_internal_id:
+            roi_query_filters.append(ROI.block_ref.id == block_internal_id)
+        rois = await ROI.find(*roi_query_filters).to_list(length=None)
+        if not rois:
+            return []
+        roi_ids = [roi.id for roi in rois]
+        match_filters["roi_ref.$id"] = {"$in": roi_ids}
 
     pipeline = []
 

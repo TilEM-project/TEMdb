@@ -26,7 +26,9 @@ async def test_list_acquisition_tasks_filtered(
     test_specimen,
     test_block,
     test_roi,
+    test_roi2,
     test_acquisition_task,
+    test_acquisition_task2,
 ):
     """Test filtering acquisition tasks."""
 
@@ -129,6 +131,8 @@ async def test_list_acquisition_tasks_skip_completed(
     test_block,
     test_roi,
     test_acquisition_task,
+    test_roi2,
+    test_acquisition_task2,
 ):
     failed_acquisition = AcquisitionDocument(
         acquisition_id="TEST_ACQ_QC_PENDING_001",
@@ -196,6 +200,13 @@ async def test_list_acquisition_tasks_skip_completed(
     assert include_response.status_code == 200
     include_ids = {task["task_id"] for task in include_response.json()}
     assert test_acquisition_task.task_id in include_ids
+
+    response_media = await async_client.get(f"/api/v2/acquisition-tasks?media_id={test_roi2.substrate_media_id}")
+    assert response_media.status_code == 200
+    res_media_data = response_media.json()
+    assert isinstance(res_media_data, list)
+    assert len(res_media_data) >= 1
+    assert all(task["roi_ref"]["substrate_media_id"] == test_roi2.substrate_media_id for task in res_media_data)
 
 
 @pytest.mark.asyncio

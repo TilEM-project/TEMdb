@@ -192,6 +192,25 @@ async def test_roi(init_db, test_section: SectionDocument):
 
 
 @pytest.fixture(scope="function")
+async def test_roi2(init_db, test_section: SectionDocument):
+    roi = ROIDocument(
+        roi_id="SPEC001.BLK001.CS001.SEC001.SUB002.ROI002",
+        roi_number=2,
+        section_id=test_section.section_id,
+        block_id=test_section.block_id,
+        specimen_id=test_section.specimen_id,
+        substrate_media_id="SUB002",
+        hierarchy_level=1,
+        section_ref=test_section.id,
+        parent_roi_ref=None,
+        updated_at=datetime.now(timezone.utc),
+        section_number=test_section.section_number,
+    )
+    await roi.insert()
+    yield roi
+
+
+@pytest.fixture(scope="function")
 async def test_acquisition_task(
     init_db, test_specimen: SpecimenDocument, test_block: BlockDocument, test_roi: ROIDocument
 ):
@@ -203,6 +222,26 @@ async def test_acquisition_task(
         specimen_ref=test_specimen.id,
         block_ref=test_block.id,
         roi_ref=test_roi.id,
+        task_type="standard_acquisition",
+        version=1,
+        created_at=datetime.now(timezone.utc),
+    )
+    await acquisition_task.insert()
+    yield acquisition_task
+
+
+@pytest.fixture(scope="function")
+async def test_acquisition_task2(
+    init_db, test_specimen: SpecimenDocument, test_block: BlockDocument, test_roi2: ROIDocument
+):
+    acquisition_task = AcquisitionTaskDocument(
+        task_id="TEST_TASK_002",
+        specimen_id=test_specimen.specimen_id,
+        block_id=test_block.block_id,
+        roi_id=test_roi2.roi_id,
+        specimen_ref=test_specimen.id,
+        block_ref=test_block.id,
+        roi_ref=test_roi2.id,
         task_type="standard_acquisition",
         version=1,
         created_at=datetime.now(timezone.utc),
