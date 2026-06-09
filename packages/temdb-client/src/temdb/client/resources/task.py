@@ -5,7 +5,6 @@ from temdb.models import (
     AcquisitionResponse,
     AcquisitionTaskCreate,
     AcquisitionTaskResponse,
-    AcquisitionTaskStatus,
     AcquisitionTaskUpdate,
 )
 
@@ -19,24 +18,26 @@ class AcquisitionTaskResource(BaseResource):
         self,
         skip: int = 0,
         limit: int = 100,
-        status: AcquisitionTaskStatus | None = None,
         specimen_id: str | None = None,
         block_id: str | None = None,
         roi_id: int | None = None,
         task_type: str | None = None,
         media_id: str | None = None,
+        skip_destroyed: bool = True,
+        skip_completed: bool = True,
         **kwargs: Any,
     ) -> list[AcquisitionTaskResponse]:
         """List acquisition tasks with optional filtering and pagination."""
         params = {
             "skip": skip,
             "limit": limit,
-            "status": status.value if status else None,
             "specimen_id": specimen_id,
             "block_id": block_id,
             "roi_id": roi_id,
             "task_type": task_type,
             "media_id": media_id,
+            "skip_destroyed": skip_destroyed,
+            "skip_completed": skip_completed,
         }
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
@@ -85,13 +86,6 @@ class AcquisitionTaskResource(BaseResource):
             if isinstance(response_data, list)
             else []
         )
-
-    async def update_status(self, task_id: str, status: AcquisitionTaskStatus) -> AcquisitionTaskResponse:
-        """Update the status of an acquisition task."""
-        endpoint = f"acquisition-tasks/{task_id}/status"
-        status_payload = {"status": status.value}
-        response_data = await self._post(endpoint, data=status_payload)
-        return AcquisitionTaskResponse.model_validate(response_data)
 
     async def create_batch(
         self, tasks_data: builtins.list[AcquisitionTaskCreate]

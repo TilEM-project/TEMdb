@@ -128,7 +128,7 @@ class TestAcquisitionCreate:
             lens_correction=False,
         )
         assert acq.acquisition_id == "ACQ001"
-        assert acq.status == AcquisitionStatus.IMAGING
+        assert acq.status == AcquisitionStatus.QC_PENDING
 
     def test_required_fields(self):
         with pytest.raises(ValidationError):
@@ -158,7 +158,7 @@ class TestAcquisitionCreate:
             tilt_angle=0.0,
             lens_correction=False,
         )
-        assert acq.status == AcquisitionStatus.IMAGING
+        assert acq.status == AcquisitionStatus.QC_PENDING
 
 
 class TestAcquisitionUpdate:
@@ -169,10 +169,10 @@ class TestAcquisitionUpdate:
 
     def test_partial_update(self):
         update = AcquisitionUpdate(
-            status=AcquisitionStatus.ACQUIRED,
+            status=AcquisitionStatus.QC_PASSED,
             end_time=datetime.now(),
         )
-        assert update.status == AcquisitionStatus.ACQUIRED
+        assert update.status == AcquisitionStatus.QC_PASSED
 
 
 class TestAcquisitionResponse:
@@ -198,7 +198,7 @@ class TestAcquisitionResponse:
                 tile_overlap=0.1,
                 saved_bit_depth=8,
             ),
-            status=AcquisitionStatus.ACQUIRED,
+            status=AcquisitionStatus.QC_PASSED,
             start_time=datetime.now(),
         )
         assert response.acquisition_id == "ACQ001"

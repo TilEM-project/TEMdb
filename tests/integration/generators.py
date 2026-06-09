@@ -5,7 +5,6 @@ from faker import Faker
 from temdb.models import (
     AcquisitionParams,
     AcquisitionStatus,
-    AcquisitionTaskStatus,
     HardwareParams,
     SectionQuality,
 )
@@ -99,7 +98,7 @@ def generate_section(
         "cutting_session_ref": cutting_session.id,
         "optical_image": (
             {
-                "url": fake.image_url(),
+                "image_path": fake.image_url(),
                 "metadata": {"res_um": fake.pyfloat(min_value=0.5, max_value=5.0)},
             }
             if fake.boolean()
@@ -108,7 +107,10 @@ def generate_section(
         "section_metrics": (
             {
                 "quality": fake.random_element(elements=SectionQuality).value,
-                "tissue_confidence_score": fake.pyfloat(min_value=0.0, max_value=1.0),
+                "thickness_um": {
+                    "label": fake.pyfloat(min_value=20.0, max_value=80.0, right_digits=2),
+                    "confidence": fake.pyfloat(min_value=0.0, max_value=1.0),
+                },
             }
             if fake.boolean()
             else None
@@ -174,7 +176,6 @@ def generate_acquisition_task(
         "metadata": ({"priority": fake.random_int(min=1, max=10)} if fake.boolean() else {}),
         "task_type": "standard_acquisition",
         "version": 1,
-        "status": fake.random_element(elements=AcquisitionTaskStatus).value,
         "created_at": fake.past_datetime(start_date="-30d", tzinfo=timezone.utc),
         "updated_at": None,
         "started_at": None,

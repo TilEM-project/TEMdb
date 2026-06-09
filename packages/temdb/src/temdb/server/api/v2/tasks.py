@@ -3,27 +3,18 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 from temdb.models import (
+    AcquisitionStatus,
     AcquisitionTaskCreate,
-    AcquisitionTaskStatus,
     AcquisitionTaskUpdate,
 )
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
-from temdb.server.documents import (
-    AcquisitionDocument as Acquisition,
-)
-from temdb.server.documents import (
-    AcquisitionTaskDocument as AcquisitionTask,
-)
-from temdb.server.documents import (
-    BlockDocument as Block,
-)
-from temdb.server.documents import (
-    ROIDocument as ROI,
-)
-from temdb.server.documents import (
-    SpecimenDocument as Specimen,
-)
+from temdb.server.documents import AcquisitionDocument as Acquisition
+from temdb.server.documents import AcquisitionTaskDocument as AcquisitionTask
+from temdb.server.documents import BlockDocument as Block
+from temdb.server.documents import ROIDocument as ROI
+from temdb.server.documents import SectionDocument as Section
+from temdb.server.documents import SpecimenDocument as Specimen
 
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
@@ -37,17 +28,16 @@ acquisition_task_api = APIRouter(
 async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    status: AcquisitionTaskStatus | None = None,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
     task_type: str | None = None,
     media_id: str | None = Query(None, description="Filter by media ID (substrate)"),
+    skip_destroyed: bool = Query(True, description="Filter out tasks whose ROI section is destroyed"),
+    skip_completed: bool = Query(True, description="Filter out tasks with QC_PENDING or QC_PASSED acquisitions"),
 ):
     """List acquisition tasks using aggregation to fetch linked data."""
     match_filters = {}
-    if status:
-        match_filters["status"] = status
     if task_type:
         match_filters["task_type"] = task_type
 
@@ -134,6 +124,60 @@ async def list_tasks(
         }
     )
     pipeline.append({"$unwind": {"path": "$roi_data", "preserveNullAndEmptyArrays": True}})
+
+    if skip_destroyed:
+        pipeline.append(
+            {
+                "$lookup": {
+                    "from": Section.Settings.name,
+                    "localField": "roi_data.section_ref.$id",
+                    "foreignField": "_id",
+                    "as": "section_data",
+                }
+            }
+        )
+        pipeline.append({"$unwind": {"path": "$section_data", "preserveNullAndEmptyArrays": True}})
+        pipeline.append({"$match": {"section_data.destroyed": {"$ne": True}}})
+
+    if skip_completed:
+        pipeline.append(
+            {
+                "$lookup": {
+                    "from": Acquisition.Settings.name,
+                    "localField": "_id",
+                    "foreignField": "acquisition_task_ref.$id",
+                    "as": "acquisition_data",
+                }
+            }
+        )
+        pipeline.append(
+            {
+                "$match": {
+                    "$expr": {
+                        "$eq": [
+                            0,
+                            {
+                                "$size": {
+                                    "$filter": {
+                                        "input": "$acquisition_data",
+                                        "as": "acquisition",
+                                        "cond": {
+                                            "$in": [
+                                                "$$acquisition.status",
+                                                [
+                                                    AcquisitionStatus.QC_PENDING.value,
+                                                    AcquisitionStatus.QC_PASSED.value,
+                                                ],
+                                            ]
+                                        },
+                                    }
+                                }
+                            },
+                        ]
+                    }
+                }
+            }
+        )
 
     if skip > 0:
         pipeline.append({"$skip": skip})
@@ -290,19 +334,6 @@ async def get_task_acquisitions(task_id: str, skip: int = Query(0, ge=0), limit:
         .to_list()
     )
     return acquisitions
-
-
-@acquisition_task_api.post("/acquisition-tasks/{task_id}/status", response_model=AcquisitionTask)
-async def update_task_status(task_id: str, status: AcquisitionTaskStatus = Body(..., embed=True)):
-    existing_task = await AcquisitionTask.find_one({"task_id": task_id}, sort=[("version", -1)])
-    if not existing_task:
-        raise HTTPException(404, f"Task ID '{task_id}' not found")
-    if existing_task.status == status:
-        return await AcquisitionTask.get(existing_task.id, fetch_links=True)
-    existing_task.status = status
-    existing_task.updated_at = datetime.now(timezone.utc)
-    await existing_task.save()
-    return await AcquisitionTask.get(existing_task.id, fetch_links=True)
 
 
 @acquisition_task_api.post(

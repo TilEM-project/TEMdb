@@ -35,7 +35,7 @@ class AcquisitionDocument(Document, AcquisitionBase):
     # Override base fields that are required in document
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
-    status: AcquisitionStatus = Field(default=AcquisitionStatus.IMAGING, description="Status of acquisition")
+    status: AcquisitionStatus = Field(default=AcquisitionStatus.QC_PENDING, description="Status of acquisition")
     start_time: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Start time of acquisition",
