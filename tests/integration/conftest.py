@@ -22,7 +22,7 @@ def _async_database_url(container: PostgresContainer) -> str:
 
 @pytest.fixture(scope="session")
 def postgres_container():
-    with PostgresContainer("postgres:16") as container:
+    with PostgresContainer("postgres:18") as container:
         yield container
 
 
