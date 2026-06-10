@@ -31,3 +31,10 @@ class MatchPosition(str, Enum):
     TOP = "top"
     RIGHT = "right"
     BOTTOM = "bottom"
+
+
+RUN_STATUSES = ("complete", "aborted", "failed")
+QC_STATES = ("pending", "qc_pass", "qc_fail", "needs_review")
+TRANSFER_STATES = ("not_started", "in_progress", "complete", "error")
+SECTION_CONDITIONS = ("ok", "damaged", "destroyed", "contaminated", "lost")
+TASK_KINDS = ("montage", "lens_correction")

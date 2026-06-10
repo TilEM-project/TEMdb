@@ -9,6 +9,9 @@ from temdb.server.sqlmodels import (
     Base,
     BlockSQLModel,
     CuttingSessionSQLModel,
+    DatasetSQLModel,
+    LensCorrectionSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
@@ -45,6 +48,7 @@ class DatabaseManager:
         # Ensure metadata for ORM entities is registered.
         self._sql_models = (
             SpecimenSQLModel,
+            DatasetSQLModel,
             BlockSQLModel,
             CuttingSessionSQLModel,
             SubstrateSQLModel,
@@ -53,6 +57,8 @@ class DatabaseManager:
             AcquisitionTaskSQLModel,
             AcquisitionSQLModel,
             TileSQLModel,
+            MicroscopeSQLModel,
+            LensCorrectionSQLModel,
         )
 
     async def initialize(self):
