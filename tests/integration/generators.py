@@ -28,7 +28,6 @@ def generate_specimen(**kwargs) -> SpecimenSQLModel:
         "description": fake.text(max_nb_chars=150),
         "specimen_images": [fake.image_url() for _ in range(fake.random_int(min=0, max=2))],
         "created_at": datetime.now(timezone.utc),
-        "updated_at": None,
         "functional_imaging_metadata": ({"source": fake.word()} if fake.boolean() else None),
     }
     defaults.update(kwargs)
@@ -171,7 +170,6 @@ def generate_acquisition_task(
         "version": 1,
         "status": fake.random_element(elements=AcquisitionTaskStatus).value,
         "created_at": fake.past_datetime(start_date="-30d", tzinfo=timezone.utc),
-        "updated_at": None,
         "started_at": None,
         "completed_at": None,
         "error_message": None,

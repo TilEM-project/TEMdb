@@ -121,7 +121,6 @@ async def create_specimen(
         specimen_images=sorted(specimen_data.specimen_images or []),
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=datetime.now(timezone.utc),
-        updated_at=None,
     )
     session.add(specimen)
     await session.commit()

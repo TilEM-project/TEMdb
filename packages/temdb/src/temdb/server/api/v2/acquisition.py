@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,6 +36,7 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
     TileSQLModel,
 )
+from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
@@ -62,10 +64,51 @@ def _acquisition_payload(
 
 
 def _tile_payload(tile: TileSQLModel, acquisition_internal_id: int | None = None) -> dict[str, Any]:
-    payload = tile.model_dump()
-    payload["_id"] = str(tile.id)
-    payload["acquisition_ref"] = _ref_payload(acquisition_internal_id)
+    payload = {
+        "_id": str(tile.tile_id),
+        "tile_id": str(tile.tile_id),
+        "dataset_id": str(tile.dataset_id),
+        "acquisition_id": tile.acquisition_id,
+        "raster_index": tile.raster_index,
+        "stage_position": {"x": tile.stage_x_nm, "y": tile.stage_y_nm},
+        "raster_position": {"row": tile.montage_row, "col": tile.montage_col},
+        "focus_score": tile.focus_score,
+        "min_value": tile.min_value,
+        "max_value": tile.max_value,
+        "mean_value": tile.mean_value,
+        "std_value": tile.std_value,
+        "image_path": tile.image_path,
+        "matcher": tile.matcher,
+        "supertile_id": tile.supertile_id,
+        "supertile_raster_position": tile.supertile_raster_position,
+        "created_at": tile.created_at,
+    }
+    if acquisition_internal_id is not None:
+        payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
     return payload
+
+
+def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, acquisition_id: str) -> dict[str, Any]:
+    """Translate the dict-shaped wire model into flattened tile columns."""
+    return {
+        "dataset_id": dataset_id,
+        "acquisition_id": acquisition_id,
+        "raster_index": tile_data.raster_index,
+        "tile_id": uuid.UUID(tile_data.tile_id) if not isinstance(tile_data.tile_id, uuid.UUID) else tile_data.tile_id,
+        "stage_x_nm": tile_data.stage_position["x"],
+        "stage_y_nm": tile_data.stage_position["y"],
+        "montage_row": tile_data.raster_position["row"],
+        "montage_col": tile_data.raster_position["col"],
+        "focus_score": tile_data.focus_score,
+        "min_value": tile_data.min_value,
+        "max_value": tile_data.max_value,
+        "mean_value": tile_data.mean_value,
+        "std_value": tile_data.std_value,
+        "image_path": str(tile_data.image_path),
+        "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
+        "supertile_id": tile_data.supertile_id,
+        "supertile_raster_position": tile_data.supertile_raster_position,
+    }
 
 
 @acquisition_api.get("/acquisitions", response_model=dict[str, Any])
@@ -267,12 +310,19 @@ async def create_acquisition(
                 f"Acquisition to replace ID '{acq_data.replaces_acquisition_id}' not found.",
             )
         replacement_id = replacement_obj.acquisition_id
+    dataset_uuid = None
+    if acq_data.dataset_id is not None:
+        try:
+            dataset_uuid = uuid.UUID(acq_data.dataset_id)
+        except ValueError:
+            raise HTTPException(400, f"Invalid dataset_id '{acq_data.dataset_id}'")
     acquisition = AcquisitionSQLModel(
         acquisition_id=acq_data.acquisition_id,
         montage_id=acq_data.montage_id,
         specimen_id=task_obj.specimen_id,
         roi_id=roi_obj.roi_id,
         acquisition_task_id=task_obj.task_id,
+        dataset_id=dataset_uuid,
         hardware_settings=acq_data.hardware_settings.model_dump(),
         acquisition_settings=acq_data.acquisition_settings.model_dump(),
         calibration_info=acq_data.calibration_info.model_dump() if acq_data.calibration_info else None,
@@ -424,13 +474,10 @@ async def add_tile_to_acquisition(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    existing = await session.exec(select(TileSQLModel).where(TileSQLModel.tile_id == tile_data.tile_id))
-    if existing.first() is not None:
-        raise HTTPException(400, f"Tile ID '{tile_data.tile_id}' already exists.")
-    tile = TileSQLModel(
-        **tile_data.model_dump(),
-        acquisition_id=acq_obj.acquisition_id,
-    )
+    if acq_obj.dataset_id is None:
+        raise HTTPException(status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
+    await ensure_tile_partition(session, acq_obj.dataset_id)
+    tile = TileSQLModel(**_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.acquisition_id))
     session.add(tile)
     await session.commit()
     await session.refresh(tile)
@@ -471,19 +518,13 @@ async def add_tiles_to_acquisition(
     if row is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     acq_obj, specimen_ref, roi_ref, task_ref = row
+    if acq_obj.dataset_id is None:
+        raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
+    await ensure_tile_partition(session, acq_obj.dataset_id)
     total_tiles = len(tiles)
-    incoming_tile_ids = [t.tile_id for t in tiles]
-    existing_ids = (
-        await session.exec(select(TileSQLModel.tile_id).where(TileSQLModel.tile_id.in_(incoming_tile_ids)))
-    ).all()
-    existing_set = set(existing_ids)
     docs_to_insert = [
-        TileSQLModel(
-            **tile.model_dump(),
-            acquisition_id=acq_obj.acquisition_id,
-        )
+        TileSQLModel(**_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.acquisition_id))
         for tile in tiles
-        if tile.tile_id not in existing_set
     ]
     if docs_to_insert:
         session.add_all(docs_to_insert)
@@ -492,7 +533,7 @@ async def add_tiles_to_acquisition(
         "acquisition_id": acquisition_id,
         "total_received": total_tiles,
         "inserted": len(docs_to_insert),
-        "skipped_existing": len(existing_set),
+        "skipped_existing": 0,
     }
 
 
@@ -541,22 +582,31 @@ async def get_tiles_from_acquisition(
     }
 
 
+def _tile_uuid_or_404(tile_id: str) -> uuid.UUID:
+    """Parse a tile_id path parameter to a UUID; a malformed id cannot exist."""
+    try:
+        return uuid.UUID(tile_id)
+    except ValueError:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found")
+
+
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=dict[str, Any])
 async def get_tile_from_acquisition(
     acquisition_id: str,
     tile_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve a specific tile by its human-readable ID, verifying acquisition parent."""
+    """Retrieve a specific tile by its tile_id (UUID), verifying acquisition parent."""
     acquisition = await session.exec(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_key = _tile_uuid_or_404(tile_id)
     tile = await session.exec(
         select(TileSQLModel).where(
-            TileSQLModel.tile_id == tile_id,
+            TileSQLModel.tile_id == tile_key,
             TileSQLModel.acquisition_id == acquisition_id,
         )
     )
@@ -699,9 +749,10 @@ async def delete_tile_from_acquisition(
     )
     if acquisition.first() is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_key = _tile_uuid_or_404(tile_id)
     tile = await session.exec(
         select(TileSQLModel).where(
-            TileSQLModel.tile_id == tile_id,
+            TileSQLModel.tile_id == tile_key,
             TileSQLModel.acquisition_id == acquisition_id,
         )
     )

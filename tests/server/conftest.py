@@ -237,12 +237,12 @@ async def test_roi(
 async def test_roi2(init_db, test_db_manager: DatabaseManager, test_section: SectionSQLModel):
     async with test_db_manager.async_session_factory() as session:
         roi = ROISQLModel(
-            roi_id="SPEC001.BLK001.CS001.SEC001.SUB002.ROI002",
+            roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI002",
             roi_number=2,
             section_id=test_section.section_id,
             block_id=test_section.block_id,
             specimen_id=test_section.specimen_id,
-            substrate_media_id="SUB002",
+            substrate_media_id=test_section.media_id,
             hierarchy_level=1,
             parent_roi_id=None,
             updated_at=datetime.now(timezone.utc),
