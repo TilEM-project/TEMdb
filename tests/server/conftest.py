@@ -377,7 +377,7 @@ async def test_tile(
         tile = TileSQLModel(
             tile_id=uuid7(),
             dataset_id=test_dataset.dataset_id,
-            acquisition_id=test_acquisition.acquisition_id,
+            run_id=test_acquisition.run_id,
             raster_index=1,
             stage_x_nm=100.0,
             stage_y_nm=200.0,

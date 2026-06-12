@@ -223,7 +223,7 @@ def generate_acquisition(
 def generate_tile(acquisition: AcquisitionSQLModel, raster_index: int, **kwargs) -> TileSQLModel:
     defaults = {
         "tile_id": f"TILE_{acquisition.acquisition_id}_{raster_index:04d}",
-        "acquisition_id": acquisition.acquisition_id,
+        "run_id": acquisition.run_id,
         "raster_index": raster_index,
         "stage_position": {"x": fake.pyfloat(), "y": fake.pyfloat()},
         "raster_position": {"row": raster_index // 10, "col": raster_index % 10},

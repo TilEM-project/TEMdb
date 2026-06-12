@@ -74,12 +74,14 @@ def _acquisition_payload(
     return payload
 
 
-def _tile_payload(tile: TileSQLModel, acquisition_internal_id: int | None = None) -> dict[str, Any]:
+def _tile_payload(
+    tile: TileSQLModel, acquisition_id: str, acquisition_internal_id: int | None = None
+) -> dict[str, Any]:
     payload = {
         "_id": str(tile.tile_id),
         "tile_id": str(tile.tile_id),
         "dataset_id": str(tile.dataset_id),
-        "acquisition_id": tile.acquisition_id,
+        "acquisition_id": acquisition_id,
         "raster_index": tile.raster_index,
         "stage_position": {"x": tile.stage_x_nm, "y": tile.stage_y_nm},
         "raster_position": {"row": tile.montage_row, "col": tile.montage_col},
@@ -99,11 +101,11 @@ def _tile_payload(tile: TileSQLModel, acquisition_internal_id: int | None = None
     return payload
 
 
-def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, acquisition_id: str) -> dict[str, Any]:
+def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, Any]:
     """Translate the dict-shaped wire model into flattened tile columns."""
     return {
         "dataset_id": dataset_id,
-        "acquisition_id": acquisition_id,
+        "run_id": run_id,
         "raster_index": tile_data.raster_index,
         "tile_id": uuid.UUID(tile_data.tile_id) if not isinstance(tile_data.tile_id, uuid.UUID) else tile_data.tile_id,
         "stage_x_nm": tile_data.stage_position["x"],
@@ -494,11 +496,18 @@ async def delete_acquisition(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    tile_count = (
-        await session.exec(
-            select(func.count()).select_from(TileSQLModel).where(TileSQLModel.acquisition_id == acquisition_id)
-        )
-    ).one()
+    tile_count = 0
+    if acq_obj.dataset_id is not None:
+        tile_count = (
+            await session.exec(
+                select(func.count())
+                .select_from(TileSQLModel)
+                .where(
+                    TileSQLModel.dataset_id == acq_obj.dataset_id,
+                    TileSQLModel.run_id == acq_obj.run_id,
+                )
+            )
+        ).one()
     if tile_count > 0:
         raise HTTPException(
             400,
@@ -529,11 +538,11 @@ async def add_tile_to_acquisition(
     if acq_obj.dataset_id is None:
         raise HTTPException(status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
     await ensure_tile_partition(session, acq_obj.dataset_id)
-    tile = TileSQLModel(**_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.acquisition_id))
+    tile = TileSQLModel(**_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
     session.add(tile)
     await session.commit()
     await session.refresh(tile)
-    return _tile_payload(tile, acq_obj.id)
+    return _tile_payload(tile, acq_obj.acquisition_id, acq_obj.id)
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles/bulk", response_model=dict)
@@ -575,7 +584,7 @@ async def add_tiles_to_acquisition(
     await ensure_tile_partition(session, acq_obj.dataset_id)
     total_tiles = len(tiles)
     docs_to_insert = [
-        TileSQLModel(**_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.acquisition_id))
+        TileSQLModel(**_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.run_id))
         for tile in tiles
     ]
     if docs_to_insert:
@@ -605,14 +614,20 @@ async def get_tiles_from_acquisition(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    query = select(TileSQLModel).where(TileSQLModel.acquisition_id == acquisition_id)
-    if cursor is not None:
-        query = query.where(TileSQLModel.raster_index > cursor)
-    query = query.order_by(TileSQLModel.raster_index).limit(limit + 1)
-    rows = (await session.exec(query)).all()
+    if acq_obj.dataset_id is None:
+        rows = []
+    else:
+        query = select(TileSQLModel).where(
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+        if cursor is not None:
+            query = query.where(TileSQLModel.raster_index > cursor)
+        query = query.order_by(TileSQLModel.raster_index).limit(limit + 1)
+        rows = (await session.exec(query)).all()
     has_more = len(rows) > limit
     tiles = rows[:limit]
-    payloads = [_tile_payload(tile, acq_obj.id) for tile in tiles]
+    payloads = [_tile_payload(tile, acq_obj.acquisition_id, acq_obj.id) for tile in tiles]
     if fields:
         trimmed = []
         for payload in payloads:
@@ -659,13 +674,14 @@ async def get_tile_from_acquisition(
     tile = await session.exec(
         select(TileSQLModel).where(
             TileSQLModel.tile_id == tile_key,
-            TileSQLModel.acquisition_id == acquisition_id,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
         )
     )
     tile_obj = tile.first()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
-    return _tile_payload(tile_obj, acq_obj.id)
+    return _tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id)
 
 
 def _current_storage_location(storage_locations: list[dict[str, Any]] | None) -> dict[str, Any] | None:
@@ -776,11 +792,19 @@ async def get_tile_count(
     acquisition = await session.exec(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
-    if acquisition.first() is None:
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    if acq_obj.dataset_id is None:
+        return {"tile_count": 0}
     tile_count = (
         await session.exec(
-            select(func.count()).select_from(TileSQLModel).where(TileSQLModel.acquisition_id == acquisition_id)
+            select(func.count())
+            .select_from(TileSQLModel)
+            .where(
+                TileSQLModel.dataset_id == acq_obj.dataset_id,
+                TileSQLModel.run_id == acq_obj.run_id,
+            )
         )
     ).one()
     return {"tile_count": tile_count}
@@ -799,13 +823,15 @@ async def delete_tile_from_acquisition(
     acquisition = await session.exec(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
-    if acquisition.first() is None:
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     tile_key = _tile_uuid_or_404(tile_id)
     tile = await session.exec(
         select(TileSQLModel).where(
             TileSQLModel.tile_id == tile_key,
-            TileSQLModel.acquisition_id == acquisition_id,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
         )
     )
     tile_obj = tile.first()

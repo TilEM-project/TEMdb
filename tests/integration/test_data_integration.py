@@ -210,7 +210,7 @@ class TestDataIntegration:
             tile = TileSQLModel(
                 tile_id=uuid7(),
                 dataset_id=acquisition.dataset_id,
-                acquisition_id=acquisition.acquisition_id,
+                run_id=acquisition.run_id,
                 raster_index=raster_index,
                 stage_x_nm=float(raster_index),
                 stage_y_nm=float(raster_index),
@@ -330,13 +330,14 @@ class TestDataIntegration:
         tile = await self.create_tile(acquisition, 1)
         assert tile.tile_id is not None
         assert tile.raster_index == 1
-        assert tile.acquisition_id == acquisition.acquisition_id
+        assert tile.run_id == acquisition.run_id
 
         async with self.db_manager.async_session_factory() as session:
             fetched_tile = (
                 await session.exec(
                     select(TileSQLModel).where(
-                        TileSQLModel.acquisition_id == acquisition.acquisition_id,
+                        TileSQLModel.dataset_id == acquisition.dataset_id,
+                        TileSQLModel.run_id == acquisition.run_id,
                         TileSQLModel.raster_index == 1,
                     )
                 )
@@ -365,7 +366,10 @@ class TestDataIntegration:
             fetched_tiles = (
                 await session.exec(
                     select(TileSQLModel)
-                    .where(TileSQLModel.acquisition_id == acquisition.acquisition_id)
+                    .where(
+                        TileSQLModel.dataset_id == acquisition.dataset_id,
+                        TileSQLModel.run_id == acquisition.run_id,
+                    )
                     .order_by(TileSQLModel.raster_index)
                 )
             ).all()
@@ -373,4 +377,4 @@ class TestDataIntegration:
         for i in range(num_tiles):
             assert fetched_tiles[i].tile_id == created_tiles[i].tile_id
             assert fetched_tiles[i].raster_index == i
-            assert fetched_tiles[i].acquisition_id == acquisition.acquisition_id
+            assert fetched_tiles[i].run_id == acquisition.run_id

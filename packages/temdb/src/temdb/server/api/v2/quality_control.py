@@ -105,19 +105,26 @@ async def get_acquisition_focus_scores(
     acquisition = await session.exec(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
-    if acquisition.first() is None:
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         logger.warning(f"Acquisition not found: {acquisition_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Acquisition with id '{acquisition_id}' not found.",
         )
-    tiles = (
-        await session.exec(
-            select(TileSQLModel)
-            .where(TileSQLModel.acquisition_id == acquisition_id)
-            .order_by(TileSQLModel.raster_index)
-        )
-    ).all()
+    if acq_obj.dataset_id is None:
+        tiles = []
+    else:
+        tiles = (
+            await session.exec(
+                select(TileSQLModel)
+                .where(
+                    TileSQLModel.dataset_id == acq_obj.dataset_id,
+                    TileSQLModel.run_id == acq_obj.run_id,
+                )
+                .order_by(TileSQLModel.raster_index)
+            )
+        ).all()
     tiles_data = [
         TileFocusScore(
             tile_id=tile.tile_id,

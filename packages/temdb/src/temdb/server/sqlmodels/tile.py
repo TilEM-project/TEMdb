@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import REAL, DateTime, ForeignKey, Index, Integer, String, Uuid, func, text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, ModelDumpMixin
@@ -23,12 +24,12 @@ class TileSQLModel(ModelDumpMixin, Base):
     )
 
     # Composite PK: includes every partition-key column (dataset_id at the LIST
-    # level, acquisition_id at the HASH level). raster_index makes the row
+    # level, run_id at the HASH level). raster_index makes the row
     # unique within an acquisition's montage (row/col are not cross-ROI unique).
     dataset_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("datasets.dataset_id"), primary_key=True
     )
-    acquisition_id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     raster_index: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     tile_id: Mapped[uuid.UUID] = mapped_column(
