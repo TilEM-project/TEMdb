@@ -1,4 +1,4 @@
-# Block Model
+# Microscope Model
 
 Base class used for declarative class definitions.
 
@@ -113,8 +113,11 @@ would always install :paramref:`_orm.registry.constructor` for
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `block_id` | string |  |
-| `specimen_id` | string |  |
-| `microCT_info` | object |  |
+| `microscope_id` | UUID |  |
+| `label` | string |  |
+| `microscope_type` | string |  |
+| `model` | string |  |
+| `location` | string |  |
+| `notes` | string |  |
 | `created_at` | datetime |  |
 | `updated_at` | datetime |  |

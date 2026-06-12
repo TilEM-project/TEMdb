@@ -24,7 +24,7 @@ registry; such as to indicate a specific :class:`_schema.MetaData`
 collection as well as a specific value for
 :paramref:`_orm.registry.type_annotation_map`::
 
-    from typing_extensions import Annotated
+    from typing import Annotated
 
     from sqlalchemy import BigInteger
     from sqlalchemy import MetaData
@@ -113,11 +113,14 @@ would always install :paramref:`_orm.registry.constructor` for
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `tile_id` | string |  |
-| `acquisition_id` | string |  |
+| `dataset_id` | UUID |  |
+| `run_id` | UUID |  |
 | `raster_index` | int |  |
-| `stage_position` | object |  |
-| `raster_position` | object |  |
+| `tile_id` | UUID |  |
+| `stage_x_nm` | float |  |
+| `stage_y_nm` | float |  |
+| `montage_row` | int |  |
+| `montage_col` | int |  |
 | `focus_score` | float |  |
 | `min_value` | float |  |
 | `max_value` | float |  |
@@ -128,4 +131,3 @@ would always install :paramref:`_orm.registry.constructor` for
 | `supertile_id` | string |  |
 | `supertile_raster_position` | object |  |
 | `created_at` | datetime |  |
-| `updated_at` | datetime |  |

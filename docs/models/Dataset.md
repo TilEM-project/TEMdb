@@ -1,4 +1,4 @@
-# Block Model
+# Dataset Model
 
 Base class used for declarative class definitions.
 
@@ -113,8 +113,17 @@ would always install :paramref:`_orm.registry.constructor` for
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `block_id` | string |  |
+| `dataset_id` | UUID |  |
+| `name` | string |  |
+| `description` | string |  |
 | `specimen_id` | string |  |
-| `microCT_info` | object |  |
+| `parent_dataset_id` | UUID |  |
+| `status` | string |  |
+| `collected_at` | datetime |  |
+| `archived_at` | datetime |  |
+| `size_class` | string |  |
+| `tile_hash_modulus` | int |  |
+| `estimated_tile_count` | int |  |
+| `metadata_json` | object |  |
 | `created_at` | datetime |  |
 | `updated_at` | datetime |  |

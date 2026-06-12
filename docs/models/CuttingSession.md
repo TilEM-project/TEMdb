@@ -24,7 +24,7 @@ registry; such as to indicate a specific :class:`_schema.MetaData`
 collection as well as a specific value for
 :paramref:`_orm.registry.type_annotation_map`::
 
-    from typing_extensions import Annotated
+    from typing import Annotated
 
     from sqlalchemy import BigInteger
     from sqlalchemy import MetaData

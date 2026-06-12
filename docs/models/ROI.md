@@ -24,7 +24,7 @@ registry; such as to indicate a specific :class:`_schema.MetaData`
 collection as well as a specific value for
 :paramref:`_orm.registry.type_annotation_map`::
 
-    from typing_extensions import Annotated
+    from typing import Annotated
 
     from sqlalchemy import BigInteger
     from sqlalchemy import MetaData
@@ -121,7 +121,8 @@ would always install :paramref:`_orm.registry.constructor` for
 | `substrate_media_id` | string |  |
 | `hierarchy_level` | int |  |
 | `parent_roi_id` | string |  |
+| `dataset_id` | UUID |  |
 | `section_number` | int |  |
 | `roi_payload` | object |  |
-| `updated_at` | datetime |  |
 | `created_at` | datetime |  |
+| `updated_at` | datetime |  |

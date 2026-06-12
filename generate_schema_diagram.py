@@ -1,6 +1,5 @@
 import inspect
 import re
-import sys
 from enum import Enum as PyEnum
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
@@ -8,12 +7,12 @@ from typing import Any, Union, get_args, get_origin
 from pydantic import BaseModel
 from sqlalchemy.orm import DeclarativeBase
 
+import temdb.server.sqlmodels as sqlmodels_module
+from temdb.server.sqlmodels import Base
+
 PROJECT_ROOT = Path(__file__).parent
 DOCS_DIR = PROJECT_ROOT / "docs"
 MODELS_DOCS_DIR = DOCS_DIR / "models"
-
-
-sys.path.insert(0, str(PROJECT_ROOT / "packages/temdb/src"))
 
 WORKFLOW_GROUPS = {
     "Preparation": {
@@ -25,8 +24,11 @@ WORKFLOW_GROUPS = {
     "Imaging": {
         "SectionSQLModel",
         "ROISQLModel",
+        "DatasetSQLModel",
         "AcquisitionTaskSQLModel",
         "AcquisitionSQLModel",
+        "MicroscopeSQLModel",
+        "LensCorrectionSQLModel",
         "TileSQLModel",
     },
 }
@@ -80,9 +82,6 @@ def _parse_type(field_type: type) -> str:
 
 
 def find_sqlmodel_models() -> list[type[DeclarativeBase]]:
-    import temdb.server.sqlmodels as sqlmodels_module
-    from temdb.server.sqlmodels import Base
-
     discovered_models: list[type[DeclarativeBase]] = []
     for _, obj in inspect.getmembers(sqlmodels_module):
         if inspect.isclass(obj) and issubclass(obj, Base) and obj is not Base and getattr(obj, "__tablename__", None):
@@ -147,6 +146,10 @@ def main():
         return
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    full_erd_content = generate_erd_markdown(all_models, {m.__name__ for m in all_models})
+    with open(DOCS_DIR / "schema_erd.md", "w") as f:
+        f.write(f"# Database Schema ERD\n\n{full_erd_content}")
+
     for group_name, core_models_set in WORKFLOW_GROUPS.items():
         group_erd_content = generate_erd_markdown(all_models, core_models_set)
         group_erd_filename = DOCS_DIR / f"schema_{group_name}_erd.md"

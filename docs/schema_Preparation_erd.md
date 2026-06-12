@@ -31,6 +31,8 @@ erDiagram
         string aperture_uid
         int aperture_index
         string barcode
+        string condition
+        string condition_reason
         object section_metrics
     }
     SpecimenSQLModel {
