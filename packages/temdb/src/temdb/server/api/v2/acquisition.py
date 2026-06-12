@@ -13,7 +13,8 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
@@ -25,6 +26,7 @@ from temdb.models import (
     TileCreate,
 )
 from temdb.server.dependencies import get_async_session
+from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -102,13 +104,19 @@ def _tile_payload(
     return payload
 
 
+def _column_value(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    return value.value if hasattr(value, "value") else value
+
+
 def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, Any]:
     """Translate the dict-shaped wire model into flattened tile columns."""
     return {
         "dataset_id": dataset_id,
         "run_id": run_id,
         "raster_index": tile_data.raster_index,
-        "tile_id": uuid.UUID(tile_data.tile_id) if not isinstance(tile_data.tile_id, uuid.UUID) else tile_data.tile_id,
+        "tile_id": tile_data.tile_id if tile_data.tile_id is not None else uuid7(),
         "stage_x_nm": tile_data.stage_position["x"],
         "stage_y_nm": tile_data.stage_position["y"],
         "montage_row": tile_data.raster_position["row"],
@@ -459,26 +467,47 @@ async def update_acquisition(
     now = datetime.now(timezone.utc)
     if "end_time" in update_data and "status" not in update_data:
         raise HTTPException(422, "end_time can only be set together with a terminal status")
+    if "qc_state" in update_data:
+        update_data["qc_state_updated_at"] = now
+        update_data["qc_state_updated_by"] = updated_by
+    if "transfer_state" in update_data:
+        update_data["transfer_state_updated_at"] = now
+        update_data["transfer_state_updated_by"] = updated_by
     if "status" in update_data:
-        if acq_obj.status is not None:
-            raise HTTPException(
-                409,
-                f"Acquisition '{acquisition_id}' already has terminal status '{acq_obj.status}'.",
-            )
+        # Terminal status is write-once: compare-and-swap on status IS NULL so a
+        # concurrent terminal PATCH cannot rewrite the first writer's result.
         if update_data.get("end_time") is None:
             update_data["end_time"] = now
-    if "qc_state" in update_data:
-        acq_obj.qc_state_updated_at = now
-        acq_obj.qc_state_updated_by = updated_by
-    if "transfer_state" in update_data:
-        acq_obj.transfer_state_updated_at = now
-        acq_obj.transfer_state_updated_by = updated_by
+        values = {
+            field: _column_value(value) for field, value in update_data.items() if hasattr(AcquisitionSQLModel, field)
+        }
+        result = await session.execute(
+            update(AcquisitionSQLModel)
+            .where(
+                AcquisitionSQLModel.acquisition_id == acquisition_id,
+                AcquisitionSQLModel.status.is_(None),
+            )
+            .values(**values)
+        )
+        if result.rowcount == 0:
+            await session.rollback()
+            current = (
+                await session.execute(
+                    select(AcquisitionSQLModel.status).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+                )
+            ).first()
+            if current is None:
+                raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+            raise HTTPException(
+                409,
+                f"Acquisition '{acquisition_id}' already has terminal status '{current[0]}'.",
+            )
+        await session.commit()
+        await session.refresh(acq_obj)
+        return _acquisition_payload(acq_obj, specimen_ref, roi_ref, task_ref)
     for field, value in update_data.items():
         if hasattr(acq_obj, field):
-            if hasattr(value, "model_dump"):
-                setattr(acq_obj, field, value.model_dump(mode="json"))
-            else:
-                setattr(acq_obj, field, value.value if hasattr(value, "value") else value)
+            setattr(acq_obj, field, _column_value(value))
     session.add(acq_obj)
     await session.commit()
     await session.refresh(acq_obj)
@@ -550,11 +579,21 @@ async def add_tile_to_acquisition(
         raise HTTPException(status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
     await _ensure_leaf_dataset(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
-    tile = TileSQLModel(**_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
-    session.add(tile)
+    stmt = (
+        pg_insert(TileSQLModel)
+        .values(_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
+        .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
+        .returning(TileSQLModel)
+    )
+    tile = (await session.execute(stmt)).scalars().first()
+    if tile is None:
+        raise HTTPException(
+            409,
+            f"Tile with raster_index {tile_data.raster_index} already exists for acquisition '{acquisition_id}'",
+        )
+    payload = _tile_payload(tile, acq_obj.acquisition_id, acq_obj.id)
     await session.commit()
-    await session.refresh(tile)
-    return _tile_payload(tile, acq_obj.acquisition_id, acq_obj.id)
+    return payload
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles/bulk", response_model=dict)
@@ -596,18 +635,23 @@ async def add_tiles_to_acquisition(
     await _ensure_leaf_dataset(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
     total_tiles = len(tiles)
-    docs_to_insert = [
-        TileSQLModel(**_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.run_id))
-        for tile in tiles
-    ]
-    if docs_to_insert:
-        session.add_all(docs_to_insert)
+    inserted = 0
+    if tiles:
+        # Retried batches are expected (at-least-once ingest): ON CONFLICT DO
+        # NOTHING keeps the write-once rows and reports duplicates as skipped.
+        rows = [_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.run_id) for tile in tiles]
+        result = await session.execute(
+            pg_insert(TileSQLModel)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
+        )
         await session.commit()
+        inserted = result.rowcount
     return {
         "acquisition_id": acquisition_id,
         "total_received": total_tiles,
-        "inserted": len(docs_to_insert),
-        "skipped_existing": 0,
+        "inserted": inserted,
+        "skipped_existing": total_tiles - inserted,
     }
 
 

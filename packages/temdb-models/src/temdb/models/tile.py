@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,7 +47,7 @@ class TileBase(BaseModel):
 
 
 class TileCreate(TileBase):
-    tile_id: str = Field(..., description="Unique tile identifier")
+    tile_id: uuid.UUID | None = Field(None, description="Unique tile identifier (minted server-side if omitted)")
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: dict[str, float] = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: dict[str, int] = Field(..., description="Row, column raster position of the tile")

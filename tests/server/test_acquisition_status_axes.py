@@ -158,6 +158,32 @@ async def test_status_write_once_at_termination(
 
 
 @pytest.mark.asyncio
+async def test_terminal_status_loser_does_not_clobber_winner(
+    async_client: AsyncClient, test_acquisition
+):
+    acq_id = test_acquisition.acquisition_id
+    assert test_acquisition.status is None
+    r1 = await async_client.patch(
+        f"/api/v2/acquisitions/{acq_id}", json={"status": "complete"}
+    )
+    assert r1.status_code == 200
+    first = r1.json()
+    assert first["status"] == "complete"
+    assert first["end_time"] is not None
+    r2 = await async_client.patch(
+        f"/api/v2/acquisitions/{acq_id}",
+        json={"status": "failed", "error_message": "late writer"},
+    )
+    assert r2.status_code == 409
+    r3 = await async_client.get(f"/api/v2/acquisitions/{acq_id}")
+    assert r3.status_code == 200
+    stored = r3.json()
+    assert stored["status"] == "complete"
+    assert stored["end_time"] == first["end_time"]
+    assert stored["error_message"] is None
+
+
+@pytest.mark.asyncio
 async def test_running_is_not_a_status(async_client: AsyncClient, test_acquisition):
     assert test_acquisition.status is None
     r = await async_client.patch(
