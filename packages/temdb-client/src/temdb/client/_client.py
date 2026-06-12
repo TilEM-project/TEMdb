@@ -16,6 +16,9 @@ from .exceptions import NotFoundError, TEMdbClientError
 from .resources.acquisition import AcquisitionResource
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
+from .resources.dataset import DatasetResource
+from .resources.lens_correction import LensCorrectionResource
+from .resources.microscope import MicroscopeResource
 from .resources.roi import ROIResource
 from .resources.section import SectionResource
 from .resources.specimen import SpecimenResource
@@ -62,7 +65,10 @@ class TEMdbClient:
         self._acquisition_task = AcquisitionTaskResource(self._async_request, self.api_url)
         self._roi = ROIResource(self._async_request, self.api_url)
         self._acquisition = AcquisitionResource(self._async_request, self.api_url)
+        self._dataset = DatasetResource(self._async_request, self.api_url)
         self._section = SectionResource(self._async_request, self.api_url)
+        self._microscope = MicroscopeResource(self._async_request, self.api_url)
+        self._lens_correction = LensCorrectionResource(self._async_request, self.api_url)
 
     @property
     def specimen(self) -> SpecimenResource:
@@ -93,8 +99,20 @@ class TEMdbClient:
         return self._acquisition
 
     @property
+    def dataset(self) -> DatasetResource:
+        return self._dataset
+
+    @property
     def section(self) -> SectionResource:
         return self._section
+
+    @property
+    def microscope(self) -> MicroscopeResource:
+        return self._microscope
+
+    @property
+    def lens_correction(self) -> LensCorrectionResource:
+        return self._lens_correction
 
     @retry(
         stop=stop_after_attempt(3),
