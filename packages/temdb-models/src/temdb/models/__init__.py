@@ -35,8 +35,7 @@ from temdb.models.enums import (
     SECTION_CONDITIONS,
     TASK_KINDS,
     TRANSFER_STATES,
-    AcquisitionStatus,
-    AcquisitionTaskStatus,
+    AcquisitionStatusFilter,
     SectionQuality,
 )
 from temdb.models.error import APIErrorResponse
@@ -106,8 +105,7 @@ from temdb.models.utils.uri import URI
 
 __all__ = [
     # Enums
-    "AcquisitionStatus",
-    "AcquisitionTaskStatus",
+    "AcquisitionStatusFilter",
     "SectionQuality",
     # Vocab constants
     "RUN_STATUSES",

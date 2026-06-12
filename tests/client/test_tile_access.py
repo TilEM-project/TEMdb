@@ -71,3 +71,37 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
     assert request.await_args.kwargs["params"]["status"] == "complete"
     assert out[0].acquisition_id == "ACQ1"
     assert out[0].qc_state == "qc_pass"
+
+
+@pytest.mark.asyncio
+async def test_roi_list_acquisitions_passes_qc_state():
+    request = AsyncMock()
+    res = ROIResource(request, API)
+    request.return_value = {"acquisitions": [], "metadata": {}}
+    out = await res.list_acquisitions("R", status="in_flight", qc_state="needs_review")
+    params = request.await_args.kwargs["params"]
+    assert params["status"] == "in_flight"
+    assert params["qc_state"] == "needs_review"
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_acquisition_list_passes_status_and_qc_state():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {"acquisitions": [], "metadata": {}}
+    await res.list(status="in_flight", qc_state="pending")
+    assert request.await_args.args[1] == "acquisitions"
+    params = request.await_args.kwargs["params"]
+    assert params["status"] == "in_flight"
+    assert params["qc_state"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_acquisition_list_with_full_metadata_passes_status():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {"acquisitions": [], "metadata": {}}
+    await res.list_with_full_metadata(status="failed")
+    params = request.await_args.kwargs["params"]
+    assert params["status"] == "failed"

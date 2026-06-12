@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from faker import Faker
 
 from temdb.models import (
-    AcquisitionStatus,
+    RUN_STATUSES,
     SectionQuality,
 )
 from temdb.server.sqlmodels import (
@@ -15,7 +15,6 @@ from temdb.server.sqlmodels import (
     SectionSQLModel,
     SpecimenSQLModel,
     SubstrateSQLModel,
-    TileSQLModel,
 )
 
 fake = Faker()
@@ -200,7 +199,7 @@ def generate_acquisition(
             "saved_bit_depth": 8,
         },
         "calibration_info": None,
-        "status": fake.random_element(elements=AcquisitionStatus).value,
+        "status": fake.random_element(elements=RUN_STATUSES),
         "tilt_angle": fake.pyfloat(min_value=-5, max_value=5, right_digits=1),
         "lens_correction": fake.boolean(),
         "start_time": fake.past_datetime(start_date="-7d", tzinfo=timezone.utc),
@@ -212,25 +211,3 @@ def generate_acquisition(
     }
     defaults.update(kwargs)
     return AcquisitionSQLModel(**defaults)
-
-
-def generate_tile(acquisition: AcquisitionSQLModel, raster_index: int, **kwargs) -> TileSQLModel:
-    defaults = {
-        "tile_id": f"TILE_{acquisition.acquisition_id}_{raster_index:04d}",
-        "run_id": acquisition.run_id,
-        "raster_index": raster_index,
-        "stage_position": {"x": fake.pyfloat(), "y": fake.pyfloat()},
-        "raster_position": {"row": raster_index // 10, "col": raster_index % 10},
-        "focus_score": fake.pyfloat(min_value=0.1, max_value=1.0),
-        "min_value": fake.pyfloat(min_value=0, max_value=5000),
-        "max_value": fake.pyfloat(min_value=20000, max_value=65535),
-        "mean_value": fake.pyfloat(min_value=5000, max_value=40000),
-        "std_value": fake.pyfloat(min_value=1000, max_value=10000),
-        "image_path": f"/path/to/acq/{acquisition.acquisition_id}/tile_{raster_index:04d}.tif",
-        "matcher": None,
-        "supertile_id": None,
-        "supertile_raster_position": None,
-        "created_at": datetime.now(timezone.utc),
-    }
-    defaults.update(kwargs)
-    return TileSQLModel(**defaults)

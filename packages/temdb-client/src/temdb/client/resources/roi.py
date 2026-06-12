@@ -1,6 +1,8 @@
 from typing import Any
 
 from temdb.models import (
+    AcquisitionResponse,
+    AcquisitionStatusFilter,
     ROIChildrenResponse,
     ROICreate,
     ROIResponse,
@@ -21,7 +23,11 @@ class ROIResource(BaseResource):
         params = {"skip": skip, "limit": limit}
         params.update(kwargs)
         response_data = await self._get(endpoint, params=params)
-        return [ROIResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        return (
+            [ROIResponse.model_validate(item) for item in response_data]
+            if isinstance(response_data, list)
+            else []
+        )
 
     async def list_all(
         self,
@@ -48,11 +54,17 @@ class ROIResource(BaseResource):
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
         response_data = await self._get(endpoint, params=params)
-        return [ROIResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        return (
+            [ROIResponse.model_validate(item) for item in response_data]
+            if isinstance(response_data, list)
+            else []
+        )
 
     async def create(self, roi_data: ROICreate) -> ROIResponse:
         """Create a new ROI."""
-        response_data = await self._post("rois", data=roi_data.model_dump(exclude_unset=True))
+        response_data = await self._post(
+            "rois", data=roi_data.model_dump(exclude_unset=True)
+        )
         return ROIResponse.model_validate(response_data)
 
     async def get(self, roi_id: int) -> ROIResponse:
@@ -70,9 +82,33 @@ class ROIResource(BaseResource):
         """Delete an ROI."""
         await self._delete(f"rois/{roi_id}")
 
-    async def get_children(self, roi_id: int, skip: int = 0, limit: int = 10) -> ROIChildrenResponse:
+    async def get_children(
+        self, roi_id: int, skip: int = 0, limit: int = 10
+    ) -> ROIChildrenResponse:
         """Get child ROIs for a specific parent ROI."""
         endpoint = f"rois/{roi_id}/children"
         params = {"skip": skip, "limit": limit}
         response_data = await self._get(endpoint, params=params)
         return ROIChildrenResponse.model_validate(response_data)
+
+    async def list_acquisitions(
+        self,
+        roi_id: str,
+        *,
+        status: AcquisitionStatusFilter | None = None,
+        qc_state: str | None = None,
+        limit: int = 50,
+    ) -> list[AcquisitionResponse]:
+        """List acquisitions for an ROI (optionally filtered by status / qc_state)."""
+        params: dict[str, Any] = {"roi_id": roi_id, "limit": limit}
+        if status is not None:
+            params["status"] = status
+        if qc_state is not None:
+            params["qc_state"] = qc_state
+        response_data = await self._get("acquisitions", params=params)
+        items = (
+            response_data.get("acquisitions", [])
+            if isinstance(response_data, dict)
+            else []
+        )
+        return [AcquisitionResponse.model_validate(item) for item in items]
