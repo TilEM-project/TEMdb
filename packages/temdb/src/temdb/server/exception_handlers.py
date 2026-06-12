@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -49,7 +50,7 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
     error_content = APIErrorResponse(
         detail="Request validation failed. Please check the input data.",
         error_code="VALIDATION_ERROR",
-        context={"errors": exc.errors()},
+        context={"errors": jsonable_encoder(exc.errors())},
     )
     logger.warning(f"ValidationError on {request.url}: {exc.errors()}")
     return JSONResponse(
@@ -89,7 +90,7 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
     error_content = APIErrorResponse(
         detail="Request validation failed. Please check the input data.",
         error_code="VALIDATION_ERROR",
-        context={"errors": exc.errors()},
+        context={"errors": jsonable_encoder(exc.errors())},
     )
     logger.warning(f"RequestValidationError on {request.url}: {exc.errors()}")
     return JSONResponse(

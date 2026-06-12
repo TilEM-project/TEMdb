@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -24,6 +25,10 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
         ForeignKeyConstraint(["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"]),
         Index("ix_sections_specimen_block", "specimen_id", "block_id"),
         Index("ix_sections_barcode_nn", "barcode", postgresql_where=text("barcode IS NOT NULL")),
+        CheckConstraint(
+            "condition IN ('ok', 'damaged', 'destroyed', 'contaminated', 'lost')",
+            name="condition_vocab",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
@@ -42,5 +47,6 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     aperture_uid: Mapped[str | None] = mapped_column(String, nullable=True)
     aperture_index: Mapped[int | None] = mapped_column(nullable=True)
     barcode: Mapped[str | None] = mapped_column(String, nullable=True)
-    destroyed: Mapped[bool] = mapped_column(default=False, nullable=False)
+    condition: Mapped[str] = mapped_column(String, server_default=text("'ok'"))
+    condition_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     section_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

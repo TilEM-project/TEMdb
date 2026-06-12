@@ -222,7 +222,7 @@ async def list_tasks(
             SectionSQLModel,
             SectionSQLModel.section_id == ROISQLModel.section_id,
         )
-        filters.append(SectionSQLModel.destroyed.is_not(True))
+        filters.append(SectionSQLModel.condition.is_distinct_from("destroyed"))
     if skip_completed:
         completed_subq = (
             select(AcquisitionSQLModel.acquisition_task_id)

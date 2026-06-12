@@ -80,7 +80,7 @@ async def test_list_acquisition_tasks_skip_destroyed(
             block_id=test_block.block_id,
             specimen_id=test_specimen.specimen_id,
             media_id=test_substrate.media_id,
-            destroyed=True,
+            condition="destroyed",
             created_at=datetime.now(timezone.utc),
         )
         session.add(destroyed_section)

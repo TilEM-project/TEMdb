@@ -41,6 +41,9 @@ def _to_section_payload(
         "aperture_uid": section.aperture_uid,
         "aperture_index": section.aperture_index,
         "barcode": section.barcode,
+        "condition": section.condition,
+        "condition_reason": section.condition_reason,
+        "destroyed": section.condition == "destroyed",
         "section_metrics": section.section_metrics,
         "created_at": section.created_at,
         "updated_at": section.updated_at,
@@ -401,7 +404,16 @@ async def update_section(
         if section_obj.section_metrics != metrics:
             section_obj.section_metrics = metrics
             needs_save = True
-    for field in ["optical_image", "aperture_uid", "aperture_index", "barcode", "timestamp"]:
+    simple_fields = [
+        "optical_image",
+        "aperture_uid",
+        "aperture_index",
+        "barcode",
+        "timestamp",
+        "condition",
+        "condition_reason",
+    ]
+    for field in simple_fields:
         if field in update_data and getattr(section_obj, field) != update_data[field]:
             setattr(section_obj, field, update_data[field])
             needs_save = True
