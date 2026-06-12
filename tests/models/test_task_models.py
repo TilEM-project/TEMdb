@@ -85,6 +85,14 @@ class TestAcquisitionTaskUpdate:
         update = AcquisitionTaskUpdate(metadata={"notes": "updated"})
         assert update.metadata == {"notes": "updated"}
 
+    def test_update_valid_kind(self):
+        update = AcquisitionTaskUpdate(kind="lens_correction")
+        assert update.kind == "lens_correction"
+
+    def test_update_invalid_kind_rejected(self):
+        with pytest.raises(ValidationError):
+            AcquisitionTaskUpdate(kind="bogus")
+
 
 class TestAcquisitionTaskResponse:
     def test_valid_response(self):

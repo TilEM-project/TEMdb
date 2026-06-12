@@ -301,6 +301,17 @@ async def test_update_acquisition_task(async_client: AsyncClient, test_acquisiti
 
 
 @pytest.mark.asyncio
+async def test_update_acquisition_task_invalid_kind_rejected(
+    async_client: AsyncClient, test_acquisition_task
+):
+    response = await async_client.patch(
+        f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}",
+        json={"kind": "bogus"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_delete_task(async_client: AsyncClient, test_specimen, test_block, test_roi):
     """Test deleting a task successfully (when it has no dependencies)."""
     task_id_hr = f"TASK_DELETE_{int(datetime.now(timezone.utc).timestamp())}"

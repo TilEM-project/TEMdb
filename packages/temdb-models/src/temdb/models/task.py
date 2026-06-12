@@ -47,7 +47,11 @@ class AcquisitionTaskCreate(AcquisitionTaskBase):
 class AcquisitionTaskUpdate(AcquisitionTaskBase):
     """Schema for updating an acquisition task."""
 
-    pass
+    @model_validator(mode="after")
+    def _validate_kind(self) -> "AcquisitionTaskUpdate":
+        if self.kind is not None and self.kind not in TASK_KINDS:
+            raise PydanticCustomError("value_error", f"kind must be one of {TASK_KINDS}")
+        return self
 
 
 class AcquisitionTaskResponse(AcquisitionTaskBase):
