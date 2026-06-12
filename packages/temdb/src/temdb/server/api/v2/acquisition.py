@@ -30,6 +30,7 @@ from temdb.server.sqlmodels import (
     AcquisitionTaskSQLModel,
     BlockSQLModel,
     CuttingSessionSQLModel,
+    DatasetSQLModel,
     LensCorrectionSQLModel,
     MicroscopeSQLModel,
     ROISQLModel,
@@ -518,6 +519,16 @@ async def delete_acquisition(
     return None
 
 
+async def _ensure_leaf_dataset(session: AsyncSession, dataset_id: uuid.UUID) -> None:
+    has_children = (
+        await session.exec(
+            select(DatasetSQLModel.dataset_id).where(DatasetSQLModel.parent_dataset_id == dataset_id).limit(1)
+        )
+    ).first()
+    if has_children is not None:
+        raise HTTPException(status_code=400, detail="parent datasets hold no tiles")
+
+
 @acquisition_api.post(
     "/acquisitions/{acquisition_id}/tiles",
     response_model=dict[str, Any],
@@ -537,6 +548,7 @@ async def add_tile_to_acquisition(
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
     if acq_obj.dataset_id is None:
         raise HTTPException(status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
+    await _ensure_leaf_dataset(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
     tile = TileSQLModel(**_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
     session.add(tile)
@@ -581,6 +593,7 @@ async def add_tiles_to_acquisition(
     acq_obj, specimen_ref, roi_ref, task_ref = row
     if acq_obj.dataset_id is None:
         raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
+    await _ensure_leaf_dataset(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
     total_tiles = len(tiles)
     docs_to_insert = [
