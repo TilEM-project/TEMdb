@@ -54,7 +54,7 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
     )
     logger.warning(f"ValidationError on {request.url}: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=error_content.model_dump(exclude_none=True),
     )
 
@@ -94,7 +94,7 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
     )
     logger.warning(f"RequestValidationError on {request.url}: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=error_content.model_dump(exclude_none=True),
     )
 
