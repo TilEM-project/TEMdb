@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
-from temdb.models import AcquisitionTaskStatus
 from temdb.server.sqlmodels import AcquisitionSQLModel, AcquisitionTaskSQLModel, ROISQLModel, SectionSQLModel
 
 
@@ -54,11 +53,12 @@ async def test_list_acquisition_tasks_filtered(
     assert len(res_spec_data) >= 1
     assert all(task["specimen_ref"]["id"] == str(test_specimen.id) for task in res_spec_data)
 
-    response_status = await async_client.get(f"/api/v2/acquisition-tasks?status={AcquisitionTaskStatus.PLANNED.value}")
-    assert response_status.status_code == 200
-    res_status_data = response_status.json()
-    assert isinstance(res_status_data, list)
-    assert all(task["status"] == AcquisitionTaskStatus.PLANNED.value for task in res_status_data)
+    response_kind = await async_client.get("/api/v2/acquisition-tasks?kind=montage")
+    assert response_kind.status_code == 200
+    res_kind_data = response_kind.json()
+    assert isinstance(res_kind_data, list)
+    assert all(task["kind"] == "montage" for task in res_kind_data)
+    assert all(task["status"] == "pending" for task in res_kind_data)
 
 
 @pytest.mark.asyncio
@@ -110,9 +110,7 @@ async def test_list_acquisition_tasks_skip_destroyed(
             specimen_id=test_specimen.specimen_id,
             block_id=test_block.block_id,
             roi_id=destroyed_roi.roi_id,
-            task_type="standard_acquisition",
-            version=1,
-            status="Planned",
+            kind="montage",
             tags=[],
             metadata_json={},
             created_at=datetime.now(timezone.utc),
@@ -231,13 +229,13 @@ async def test_create_acquisition_task(async_client: AsyncClient, test_specimen,
         "roi_id": test_roi.roi_id,
         "tags": ["test", "create"],
         "metadata": {"test_key": "test_value"},
-        "task_type": "standard_acquisition",
     }
     response = await async_client.post("/api/v2/acquisition-tasks", json=task_data)
     assert response.status_code == 201
     response_data = response.json()
     assert response_data["task_id"] == task_id_hr
-    assert response_data["status"] == AcquisitionTaskStatus.PLANNED.value
+    assert response_data["status"] == "pending"
+    assert response_data["kind"] == "montage"
     assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
     assert response_data["block_ref"]["id"] == str(test_block.id)
     assert response_data["roi_ref"]["id"] == str(test_roi.id)
@@ -286,16 +284,17 @@ async def test_get_acquisition_task_not_found(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_update_acquisition_task(async_client: AsyncClient, test_acquisition_task):
-    """Test updating a task's status and metadata."""
+    """Test updating a task's metadata; status stays derived from runs."""
     update_data = {
-        "status": AcquisitionTaskStatus.IN_PROGRESS.value,
         "metadata": {"updated_key": "updated_value"},
+        "tilt_angle_deg": 12.5,
     }
     response = await async_client.patch(f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}", json=update_data)
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["status"] == AcquisitionTaskStatus.IN_PROGRESS.value
+    assert response_data["status"] == "pending"
     assert response_data["metadata"]["updated_key"] == "updated_value"
+    assert response_data["tilt_angle_deg"] == 12.5
     assert response_data["task_id"] == test_acquisition_task.task_id
     assert "updated_at" in response_data
     assert response_data["updated_at"] is not None
@@ -345,21 +344,6 @@ async def test_delete_task(async_client: AsyncClient, test_specimen, test_block,
 
 
 @pytest.mark.asyncio
-async def test_update_task_status(async_client: AsyncClient, test_acquisition_task):
-    """Test updating task status via the dedicated endpoint."""
-    status_update = {"status": AcquisitionTaskStatus.COMPLETED.value}
-    response = await async_client.post(
-        f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}/status",
-        json=status_update,
-    )
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data["status"] == AcquisitionTaskStatus.COMPLETED.value
-    assert response_data["task_id"] == test_acquisition_task.task_id
-    assert response_data["updated_at"] is not None
-
-
-@pytest.mark.asyncio
 async def test_create_tasks_batch(async_client: AsyncClient, test_specimen, test_block, test_roi):
     """Test creating multiple tasks in a batch."""
     task_id_1 = f"TASK_BATCH_1_{int(datetime.now(timezone.utc).timestamp())}"
@@ -378,18 +362,17 @@ async def test_create_tasks_batch(async_client: AsyncClient, test_specimen, test
             "block_id": test_block.block_id,
             "roi_id": test_roi.roi_id,
             "tags": ["batch2"],
-            "task_type": "alignment_task",
         },
     ]
-    response = await async_client.post("/api/v2/acquisition-tasks/batch", json=tasks_data)
+    response = await async_client.post("/api/v2/acquisition-tasks/batch", json={"tasks": tasks_data})
     assert response.status_code == 201
     response_data = response.json()
     assert isinstance(response_data, list)
     assert len(response_data) == 2
     assert response_data[0]["task_id"] == task_id_1
     assert response_data[1]["task_id"] == task_id_2
-    assert response_data[0]["status"] == AcquisitionTaskStatus.PLANNED.value
-    assert response_data[1]["task_type"] == "alignment_task"
+    assert response_data[0]["status"] == "pending"
+    assert response_data[1]["kind"] == "montage"
     assert response_data[0]["roi_ref"]["id"] == str(test_roi.id)
     assert response_data[1]["roi_ref"]["id"] == str(test_roi.id)
 
@@ -398,8 +381,8 @@ async def test_create_tasks_batch(async_client: AsyncClient, test_specimen, test
 
 
 @pytest.mark.asyncio
-async def test_create_tasks_batch_partial_success(async_client: AsyncClient, test_specimen, test_block, test_roi):
-    """Test that batch creation fails at the invalid task but keeps valid ones."""
+async def test_create_tasks_batch_atomic(async_client: AsyncClient, test_specimen, test_block, test_roi):
+    """Test that batch creation is a single transaction: one invalid task rolls back all."""
     task_id_1 = f"TASK_BATCH_PART_1_{int(datetime.now(timezone.utc).timestamp())}"
     task_id_2 = f"TASK_BATCH_PART_2_{int(datetime.now(timezone.utc).timestamp())}"
     invalid_roi_id = "SPEC999.BLK999.CS999.SEC999.SUB999.ROI9999998"
@@ -417,16 +400,12 @@ async def test_create_tasks_batch_partial_success(async_client: AsyncClient, tes
             "roi_id": invalid_roi_id,
         },
     ]
-    response = await async_client.post("/api/v2/acquisition-tasks/batch", json=tasks_data)
+    response = await async_client.post("/api/v2/acquisition-tasks/batch", json={"tasks": tasks_data})
     assert response.status_code == 404
     assert f"ROI '{invalid_roi_id}' not found" in response.json()["detail"]
 
     get_resp_1 = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_1}")
-    assert get_resp_1.status_code == 200
-    assert get_resp_1.json()["task_id"] == task_id_1
+    assert get_resp_1.status_code == 404
 
     get_resp_2 = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_2}")
     assert get_resp_2.status_code == 404
-
-    delete_resp = await async_client.delete(f"/api/v2/acquisition-tasks/{task_id_1}")
-    assert delete_resp.status_code == 204

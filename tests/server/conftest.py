@@ -9,7 +9,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from testcontainers.postgres import PostgresContainer
 
-from temdb.models import AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.main import create_app
@@ -271,9 +270,7 @@ async def test_acquisition_task2(
             specimen_id=test_specimen.specimen_id,
             block_id=test_block.block_id,
             roi_id=test_roi2.roi_id,
-            task_type="standard_acquisition",
-            version=1,
-            status=AcquisitionTaskStatus.PLANNED.value,
+            kind="montage",
             tags=[],
             metadata_json={},
             created_at=datetime.now(timezone.utc),
@@ -299,9 +296,7 @@ async def test_acquisition_task(
             specimen_id=test_specimen.specimen_id,
             block_id=test_block.block_id,
             roi_id=test_roi.roi_id,
-            task_type="standard_acquisition",
-            version=1,
-            status=AcquisitionTaskStatus.PLANNED.value,
+            kind="montage",
             tags=[],
             metadata_json={},
             dataset_id=test_dataset.dataset_id,

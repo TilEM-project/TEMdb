@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from temdb.models import AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
@@ -141,9 +140,7 @@ class TestDataIntegration:
                 specimen_id=specimen.specimen_id,
                 block_id=block.block_id,
                 roi_id=roi.roi_id,
-                task_type="standard_acquisition",
-                version=1,
-                status=AcquisitionTaskStatus.PLANNED.value,
+                kind="montage",
                 tags=[],
                 metadata_json={},
                 created_at=datetime.now(timezone.utc),

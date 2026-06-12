@@ -4,7 +4,6 @@ from faker import Faker
 
 from temdb.models import (
     AcquisitionStatus,
-    AcquisitionTaskStatus,
     SectionQuality,
 )
 from temdb.server.sqlmodels import (
@@ -166,13 +165,8 @@ def generate_acquisition_task(
         "roi_id": roi.roi_id,
         "tags": [fake.word() for _ in range(fake.random_int(min=0, max=3))],
         "metadata_json": ({"priority": fake.random_int(min=1, max=10)} if fake.boolean() else {}),
-        "task_type": "standard_acquisition",
-        "version": 1,
-        "status": fake.random_element(elements=AcquisitionTaskStatus).value,
+        "kind": "montage",
         "created_at": fake.past_datetime(start_date="-30d", tzinfo=timezone.utc),
-        "started_at": None,
-        "completed_at": None,
-        "error_message": None,
     }
     defaults.update(kwargs)
     return AcquisitionTaskSQLModel(**defaults)
