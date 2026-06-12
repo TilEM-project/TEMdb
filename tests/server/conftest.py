@@ -11,8 +11,8 @@ from testcontainers.postgres import PostgresContainer
 
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
-from temdb.server.main import create_app
 from temdb.server.ids import uuid7
+from temdb.server.main import create_app
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,

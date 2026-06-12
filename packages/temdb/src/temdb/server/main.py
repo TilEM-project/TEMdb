@@ -11,8 +11,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
-from temdb.server.api.v2.dataset import dataset_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
+from temdb.server.api.v2.dataset import dataset_api
 from temdb.server.api.v2.lens_correction import lens_correction_api
 from temdb.server.api.v2.microscope import microscope_api
 from temdb.server.api.v2.quality_control import qc_api
@@ -61,7 +61,11 @@ class GzipRequestMiddleware:
                 nonlocal body_sent
                 if not body_sent:
                     body_sent = True
-                    return {"type": "http.request", "body": decompressed_body, "more_body": False}
+                    return {
+                        "type": "http.request",
+                        "body": decompressed_body,
+                        "more_body": False,
+                    }
                 return {"type": "http.request", "body": b"", "more_body": False}
 
             await self.app(scope, new_receive, send)
@@ -85,7 +89,9 @@ class DebugTracebackMiddleware:
             if not self.enabled:
                 raise
 
-            traceback_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            traceback_text = "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )
             response = JSONResponse(
                 status_code=500,
                 content={
@@ -101,7 +107,9 @@ class DebugTracebackMiddleware:
 async def lifespan(app: FastAPI):
     database_url = app.state.database_url
 
-    logger.info(f"Connecting to SQL database: {database_url if database_url else 'disabled'}")
+    logger.info(
+        f"Connecting to SQL database: {database_url if database_url else 'disabled'}"
+    )
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     await db_manager.initialize()

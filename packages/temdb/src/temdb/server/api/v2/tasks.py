@@ -82,11 +82,8 @@ async def _runs_by_task(session: AsyncSession, task_ids: list[str]) -> dict[str,
     grouped: dict[str, list[AcquisitionSQLModel]] = defaultdict(list)
     if not task_ids:
         return grouped
-    runs = (
-        (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id.in_(task_ids))))
-        .scalars()
-        .all()
-    )
+    runs_query = select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id.in_(task_ids))
+    runs = (await session.execute(runs_query)).scalars().all()
     for run in runs:
         grouped[run.acquisition_task_id].append(run)
     return grouped
@@ -139,7 +136,9 @@ async def _validate_lineage(session: AsyncSession, task_data: AcquisitionTaskCre
     return specimen_obj.id, block_obj.id, roi_obj.id
 
 
-def _task_from_create(task_data: AcquisitionTaskCreate, task_group_id: uuid.UUID | None = None) -> AcquisitionTaskSQLModel:
+def _task_from_create(
+    task_data: AcquisitionTaskCreate, task_group_id: uuid.UUID | None = None
+) -> AcquisitionTaskSQLModel:
     """Build an AcquisitionTaskSQLModel from a validated create payload."""
     return AcquisitionTaskSQLModel(
         task_id=task_data.task_id,

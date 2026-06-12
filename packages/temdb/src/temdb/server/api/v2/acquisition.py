@@ -576,7 +576,9 @@ async def add_tile_to_acquisition(
     if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
     if acq_obj.dataset_id is None:
-        raise HTTPException(status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
+        raise HTTPException(
+            status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles"
+        )
     await _ensure_leaf_dataset(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
     stmt = (

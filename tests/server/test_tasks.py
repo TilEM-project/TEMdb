@@ -108,7 +108,8 @@ async def test_supersede_lifecycle(
         json={**new_payload, "task_id": f"{old_id}_V3"},
     )
     assert again.status_code == 409
-    assert (await async_client.get(f"/api/v2/acquisition-tasks/{old_id}")).json()["superseded_by"] == new_task["task_id"]
+    old_task = (await async_client.get(f"/api/v2/acquisition-tasks/{old_id}")).json()
+    assert old_task["superseded_by"] == new_task["task_id"]
 
 
 @pytest.mark.asyncio

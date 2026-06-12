@@ -62,7 +62,9 @@ class AcquisitionTaskResource(BaseResource):
 
     async def create(self, task_data: AcquisitionTaskCreate) -> AcquisitionTaskResponse:
         """Create a new acquisition task."""
-        response_data = await self._post("acquisition-tasks", data=task_data.model_dump(mode="json", exclude_unset=True))
+        response_data = await self._post(
+            "acquisition-tasks", data=task_data.model_dump(mode="json", exclude_unset=True)
+        )
         return AcquisitionTaskResponse.model_validate(response_data)
 
     async def get(self, task_id: str) -> AcquisitionTaskResponse:

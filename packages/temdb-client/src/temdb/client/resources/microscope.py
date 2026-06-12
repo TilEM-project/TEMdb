@@ -22,5 +22,7 @@ class MicroscopeResource(BaseResource):
 
     async def update(self, microscope_id: str, data: MicroscopeUpdate) -> MicroscopeResponse:
         """Update microscope metadata."""
-        payload = await self._patch(f"microscopes/{microscope_id}", data=data.model_dump(exclude_unset=True, mode="json"))
+        payload = await self._patch(
+            f"microscopes/{microscope_id}", data=data.model_dump(exclude_unset=True, mode="json")
+        )
         return MicroscopeResponse.model_validate(payload)
