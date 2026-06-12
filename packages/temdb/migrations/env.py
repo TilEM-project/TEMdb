@@ -14,8 +14,6 @@ MIGRATION_LOCK_KEY = 7_323_488_513_002_001
 
 
 def include_object(obj, name, type_, reflected, compare_to):
-    # Dynamic per-dataset tile partitions are managed by ensure_tile_partition(),
-    # not by migrations - hide them from autogenerate.
     if type_ == "table" and name.startswith("tile_d_"):
         return False
     return True
@@ -39,6 +37,7 @@ def _configure(connection):
     )
     with context.begin_transaction():
         context.run_migrations()
+    connection.commit()
 
 
 def run_migrations_offline():

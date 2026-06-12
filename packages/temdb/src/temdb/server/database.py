@@ -61,7 +61,8 @@ class DatabaseManager:
             LensCorrectionSQLModel,
         )
 
-    async def initialize(self):
-        if self.sql_engine is not None:
+    async def initialize(self, create_schema: bool = False):
+        """Schema is owned by Alembic in deployments; create_schema=True is for tests."""
+        if create_schema and self.sql_engine is not None:
             async with self.sql_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)

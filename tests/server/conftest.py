@@ -66,7 +66,7 @@ async def fresh_database_url(postgres_container):
 @pytest.fixture(scope="function")
 async def test_db_manager(postgres_container):
     db_manager = DatabaseManager(database_url=_async_database_url(postgres_container))
-    await db_manager.initialize()
+    await db_manager.initialize(create_schema=True)
     yield db_manager
     if db_manager.sql_engine is not None:
         await db_manager.sql_engine.dispose()
