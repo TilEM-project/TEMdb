@@ -5,7 +5,10 @@ description = "Shared Pydantic models for TEMdb"
 requires-python = ">=3.10"
 dependencies = [
     "pathlib-abc>=0.5.0",
+    "platformdirs>=4.5.0",
     "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "smart-open[s3]>=7.5.0",
 ]
 
 [build-system]
