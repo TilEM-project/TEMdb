@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 # size_class -> hash subpartition modulus. Target ~25-50M rows per leaf
 # partition across the plausible dataset-size range. See the design spec.
@@ -114,6 +114,32 @@ async def ensure_tile_partition(session: AsyncSession, dataset_id: uuid.UUID) ->
         ))
 
 
-async def drop_tile_partition(session: AsyncSession, dataset_id: uuid.UUID) -> None:
-    """Drop a dataset's tile partition subtree (used by archival). O(1)."""
-    await session.execute(text(f"DROP TABLE IF EXISTS {partition_name(dataset_id)}"))
+async def drop_tile_partition(engine: AsyncEngine, dataset_id: uuid.UUID) -> None:
+    """Drop a dataset's tile partition subtree (archival). Idempotent.
+
+    DETACH CONCURRENTLY (ShareUpdateExclusive on the parent) instead of a direct
+    DROP (AccessExclusive on the parent), so concurrent ingest into other
+    datasets' partitions is never blocked or deadlocked.
+
+    DETACH CONCURRENTLY runs in two transactions; a crash between them leaves
+    pg_inherits.inhdetachpending=true and the partition needs DETACH ... FINALIZE
+    before it can be dropped. Three states handled: attached (detach + drop),
+    detach-pending (finalize + drop), detached-but-not-dropped (drop).
+    CONCURRENTLY cannot run in a transaction block, hence AUTOCOMMIT on a
+    dedicated connection. Invariant: `tiles` never has a DEFAULT partition
+    (CONCURRENTLY is unsupported with one).
+    """
+    name = partition_name(dataset_id)
+    async with engine.connect() as conn:
+        ac = await conn.execution_options(isolation_level="AUTOCOMMIT")
+        exists = (await ac.execute(text("SELECT to_regclass(:n)"), {"n": name})).scalar()
+        if exists is None:
+            return
+        pending = (await ac.execute(text(
+            "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = to_regclass(:n)"
+        ), {"n": name})).scalar()  # None = no longer attached to the parent
+        if pending is True:
+            await ac.execute(text(f"ALTER TABLE tiles DETACH PARTITION {name} FINALIZE"))
+        elif pending is False:
+            await ac.execute(text(f"ALTER TABLE tiles DETACH PARTITION {name} CONCURRENTLY"))
+        await ac.execute(text(f"DROP TABLE IF EXISTS {name}"))

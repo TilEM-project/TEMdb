@@ -77,20 +77,47 @@ async def test_ensure_is_idempotent(init_db, test_db_manager):
         assert await _child_count(session, partition_name(ds_id)) == 32
 
 
-@pytest.mark.asyncio
-async def test_drop_removes_partition_subtree(init_db, test_db_manager):
+async def _seed_partitioned_dataset(test_db_manager, size_class="small"):
     async with test_db_manager.async_session_factory() as session:
-        ds_id = await _make_dataset(session, size_class="small")
+        ds_id = await _make_dataset(session, size_class=size_class)
         await ensure_tile_partition(session, ds_id)
         await session.commit()
-        await drop_tile_partition(session, ds_id)
-        await session.commit()
-        exists = (
-            await session.execute(
-                text("SELECT to_regclass(:n)"), {"n": partition_name(ds_id)}
-            )
-        ).scalar()
-        assert exists is None
+    return ds_id
+
+
+async def _partition_oid(engine, name):
+    async with engine.connect() as conn:
+        return (await conn.execute(text("SELECT to_regclass(:n)"), {"n": name})).scalar()
+
+
+@pytest.mark.asyncio
+async def test_drop_tile_partition_detaches_and_drops(init_db, test_db_manager):
+    ds_id = await _seed_partitioned_dataset(test_db_manager)
+    engine = test_db_manager.sql_engine
+    await drop_tile_partition(engine, ds_id)
+    assert await _partition_oid(engine, partition_name(ds_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_drop_tile_partition_idempotent(init_db, test_db_manager):
+    ds_id = await _seed_partitioned_dataset(test_db_manager)
+    engine = test_db_manager.sql_engine
+    await drop_tile_partition(engine, ds_id)
+    await drop_tile_partition(engine, ds_id)  # second call: no-op, no error
+    assert await _partition_oid(engine, partition_name(ds_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_drop_recovers_detached_but_not_dropped(init_db, test_db_manager):
+    # simulate a crash after detach, before drop
+    ds_id = await _seed_partitioned_dataset(test_db_manager)
+    engine = test_db_manager.sql_engine
+    name = partition_name(ds_id)
+    async with engine.connect() as conn:
+        ac = await conn.execution_options(isolation_level="AUTOCOMMIT")
+        await ac.execute(text(f"ALTER TABLE tiles DETACH PARTITION {name} CONCURRENTLY"))
+    await drop_tile_partition(engine, ds_id)  # must finish the job
+    assert await _partition_oid(engine, name) is None
 
 
 @pytest.mark.asyncio
@@ -141,10 +168,5 @@ async def test_archival_drops_partition_and_sets_status(async_client, test_db_ma
     patched = await async_client.patch(f"/api/v2/datasets/{created['dataset_id']}", json={"status": "archived"})
     assert patched.json()["archived_at"] is not None
 
-    async with test_db_manager.async_session_factory() as session:
-        await drop_tile_partition(session, ds_id)
-        await session.commit()
-        exists = (
-            await session.execute(text("SELECT to_regclass(:n)"), {"n": partition_name(ds_id)})
-        ).scalar()
-        assert exists is None
+    await drop_tile_partition(test_db_manager.sql_engine, ds_id)
+    assert await _partition_oid(test_db_manager.sql_engine, partition_name(ds_id)) is None
