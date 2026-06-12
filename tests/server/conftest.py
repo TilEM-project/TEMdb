@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from testcontainers.postgres import PostgresContainer
 
-from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
+from temdb.models import AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.main import create_app
@@ -21,6 +21,7 @@ from temdb.server.sqlmodels import (
     BlockSQLModel,
     CuttingSessionSQLModel,
     DatasetSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
@@ -313,6 +314,16 @@ async def test_acquisition_task(
 
 
 @pytest.fixture(scope="function")
+async def test_microscope(init_db, test_db_manager: DatabaseManager):
+    async with test_db_manager.async_session_factory() as session:
+        microscope = MicroscopeSQLModel(label="TEST_SCOPE_001")
+        session.add(microscope)
+        await session.commit()
+        await session.refresh(microscope)
+        yield microscope
+
+
+@pytest.fixture(scope="function")
 async def test_acquisition(
     init_db,
     test_db_manager: DatabaseManager,
@@ -320,6 +331,7 @@ async def test_acquisition(
     test_roi: ROISQLModel,
     test_acquisition_task: AcquisitionTaskSQLModel,
     test_dataset: DatasetSQLModel,
+    test_microscope: MicroscopeSQLModel,
 ):
     async with test_db_manager.async_session_factory() as session:
         acquisition = AcquisitionSQLModel(
@@ -344,7 +356,7 @@ async def test_acquisition(
                 "tile_overlap": 0.1,
                 "saved_bit_depth": 8,
             },
-            status=AcquisitionStatus.QC_PENDING.value,
+            microscope_id=test_microscope.microscope_id,
             start_time=datetime.now(timezone.utc),
         )
         session.add(acquisition)

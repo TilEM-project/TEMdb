@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
+from temdb.models import AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
@@ -12,6 +12,7 @@ from temdb.server.sqlmodels import (
     BlockSQLModel,
     CuttingSessionSQLModel,
     DatasetSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
@@ -167,8 +168,11 @@ class TestDataIntegration:
                 created_at=datetime.now(timezone.utc),
             )
             session.add(dataset)
+            microscope = MicroscopeSQLModel(label=f"SCOPE_{task.task_id}")
+            session.add(microscope)
             await session.commit()
             await session.refresh(dataset)
+            await session.refresh(microscope)
             acq = AcquisitionSQLModel(
                 acquisition_id=f"ACQ_{task.task_id}",
                 montage_id=f"MONT_{task.task_id}",
@@ -191,9 +195,8 @@ class TestDataIntegration:
                     "tile_overlap": 0.1,
                     "saved_bit_depth": 8,
                 },
-                status=AcquisitionStatus.QC_PENDING.value,
-                tilt_angle=0.0,
-                lens_correction=False,
+                microscope_id=microscope.microscope_id,
+                tilt_angle_deg=0.0,
                 start_time=datetime.now(timezone.utc),
             )
             session.add(acq)

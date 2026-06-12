@@ -79,7 +79,7 @@ async def test_patch_status_sets_collected_at(async_client):
 
 @pytest.mark.asyncio
 async def test_acquisition_carries_dataset_id(
-    init_db, test_db_manager, test_specimen, test_roi, test_acquisition_task, test_dataset
+    init_db, test_db_manager, test_specimen, test_roi, test_acquisition_task, test_dataset, test_microscope
 ):
     ds_id = test_dataset.dataset_id
     async with test_db_manager.async_session_factory() as session:
@@ -89,10 +89,10 @@ async def test_acquisition_carries_dataset_id(
             specimen_id=test_specimen.specimen_id,
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
+            microscope_id=test_microscope.microscope_id,
             dataset_id=ds_id,
             hardware_settings={},
             acquisition_settings={},
-            status="imaging",
             start_time=datetime.now(timezone.utc),
         )
         session.add(acq)

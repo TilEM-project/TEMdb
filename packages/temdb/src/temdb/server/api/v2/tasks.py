@@ -5,7 +5,6 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
-    AcquisitionStatus,
     AcquisitionTaskCreate,
     AcquisitionTaskStatus,
     AcquisitionTaskUpdate,
@@ -113,7 +112,8 @@ async def list_tasks(
         completed_subq = (
             select(AcquisitionSQLModel.acquisition_task_id)
             .where(
-                AcquisitionSQLModel.status.in_([AcquisitionStatus.QC_PENDING.value, AcquisitionStatus.QC_PASSED.value])
+                AcquisitionSQLModel.status == "complete",
+                AcquisitionSQLModel.qc_state.in_(["pending", "qc_pass"]),
             )
             .scalar_subquery()
         )

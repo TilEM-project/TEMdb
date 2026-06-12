@@ -17,8 +17,8 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
+    RUN_STATUSES,
     AcquisitionCreate,
-    AcquisitionStatus,
     AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
@@ -30,6 +30,8 @@ from temdb.server.sqlmodels import (
     AcquisitionTaskSQLModel,
     BlockSQLModel,
     CuttingSessionSQLModel,
+    LensCorrectionSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
@@ -47,6 +49,15 @@ logger = logging.getLogger(__name__)
 
 def _ref_payload(value: int | None) -> dict[str, str] | None:
     return {"id": str(value)} if value is not None else None
+
+
+def _status_condition(acq_status: str):
+    """Axis-1 filter; the literal 'in_flight' selects runs without a terminal status."""
+    if acq_status == "in_flight":
+        return AcquisitionSQLModel.status.is_(None)
+    if acq_status in RUN_STATUSES:
+        return AcquisitionSQLModel.status == acq_status
+    raise HTTPException(422, f"status filter must be 'in_flight' or one of {RUN_STATUSES}")
 
 
 def _acquisition_payload(
@@ -126,12 +137,18 @@ async def list_acquisitions(
     acquisition_task_id: str | None = Query(None, description="Filter by human-readable Acquisition Task ID"),
     montage_set_name: str | None = Query(None),
     magnification: int | None = Query(None, ge=1),
-    acq_status: AcquisitionStatus | None = Query(None, alias="status"),
+    acq_status: str | None = Query(
+        None,
+        alias="status",
+        description="Terminal status (complete, aborted, failed) or the literal 'in_flight'",
+    ),
+    qc_state: str | None = Query(None, description="Filter by QC axis state"),
+    kind: str | None = Query(None, description="Filter by run kind (montage, lens_correction)"),
     start_date: datetime | None = Query(None),
     end_date: datetime | None = Query(None),
     param_tile_focus_lt: float | None = Query(
         None,
-        description="Filter acquisitions where tile focus score is less than this value",
+        description="Filter acquisitions where the avg_focus_score rollup is less than this value",
     ),
     param_tile_match_quality_lt: float | None = Query(
         None,
@@ -146,7 +163,10 @@ async def list_acquisitions(
     fields: list[str] | None = Query(None, description="Fields to return (e.g., ['acquisition_id', 'status'])"),
     session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
-    """Retrieve a list of acquisitions with filtering, sorting, and pagination."""
+    """Retrieve a list of acquisitions with filtering, sorting, and pagination.
+
+    Rollup filters (avg_focus_score) read columns written by ingest/QC services — out of repo.
+    """
     conditions = []
     if specimen_id:
         conditions.append(AcquisitionSQLModel.specimen_id == specimen_id)
@@ -157,28 +177,17 @@ async def list_acquisitions(
     if montage_set_name:
         conditions.append(AcquisitionSQLModel.montage_set_name == montage_set_name)
     if acq_status:
-        conditions.append(AcquisitionSQLModel.status == acq_status.value)
+        conditions.append(_status_condition(acq_status))
+    if qc_state:
+        conditions.append(AcquisitionSQLModel.qc_state == qc_state)
+    if kind:
+        conditions.append(AcquisitionSQLModel.kind == kind)
     if start_date:
         conditions.append(AcquisitionSQLModel.start_time >= start_date)
     if end_date:
         conditions.append(AcquisitionSQLModel.start_time <= end_date)
     if param_tile_focus_lt is not None:
-        acq_ids = (
-            await session.exec(
-                select(TileSQLModel.acquisition_id).where(TileSQLModel.focus_score < param_tile_focus_lt)
-            )
-        ).all()
-        if not acq_ids:
-            metadata = {
-                "total_count": 0,
-                "returned_count": 0,
-                "limit": limit,
-                "sort_by": sort_by,
-                "sort_order": sort_order,
-                "next_cursor": None,
-            }
-            return {"acquisitions": [], "metadata": metadata}
-        conditions.append(AcquisitionSQLModel.acquisition_id.in_(set(acq_ids)))
+        conditions.append(AcquisitionSQLModel.avg_focus_score < param_tile_focus_lt)
 
     if param_tile_match_quality_lt is not None:
         logger.warning(
@@ -261,40 +270,64 @@ async def create_acquisition(
     acq_data: AcquisitionCreate,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Create a new acquisition with validation but without transactions."""
+    """Create a new acquisition with validation but without transactions.
+
+    Runs start in flight (status NULL, end_time NULL); the terminal status is written
+    once via PATCH. Montage runs require ROI/specimen lineage; lens_correction runs
+    are exempt and reference their correction via lc_id (never via calibration_info).
+    """
+    if acq_data.kind == "montage" and acq_data.roi_id is None:
+        raise HTTPException(
+            422,
+            "roi_id is required for kind='montage' acquisitions; only lens_correction runs may omit lineage.",
+        )
     existing = await session.exec(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
     )
     if existing.first() is not None:
         raise HTTPException(400, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
-    task_and_roi = (
+    microscope = await session.exec(
+        select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
+    )
+    if microscope.first() is None:
+        raise HTTPException(404, f"Microscope '{acq_data.microscope_id}' not found.")
+    if acq_data.lc_id is not None:
+        lens_correction = await session.exec(
+            select(LensCorrectionSQLModel).where(LensCorrectionSQLModel.lc_id == acq_data.lc_id)
+        )
+        if lens_correction.first() is None:
+            raise HTTPException(404, f"Lens correction '{acq_data.lc_id}' not found.")
+    task_row = (
         await session.execute(
-            select(
-                AcquisitionTaskSQLModel,
-                ROISQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
+            select(AcquisitionTaskSQLModel, SpecimenSQLModel.id)
             .select_from(AcquisitionTaskSQLModel)
             .outerjoin(
                 SpecimenSQLModel,
                 SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
             )
-            .outerjoin(ROISQLModel, ROISQLModel.roi_id == acq_data.roi_id)
             .where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
         )
     ).first()
-    task_obj = task_and_roi[0] if task_and_roi else None
-    if task_obj is None:
+    if task_row is None:
         raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
-    roi_obj = task_and_roi[1]
-    if roi_obj is None:
-        raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
-    if task_obj.roi_id != roi_obj.roi_id:
+    task_obj, specimen_ref = task_row
+    roi_obj = None
+    roi_ref = None
+    if acq_data.roi_id is not None:
+        roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
+        roi_obj = roi.first()
+        if roi_obj is None:
+            raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
+        if task_obj.roi_id != roi_obj.roi_id:
+            raise HTTPException(
+                400,
+                f"ROI ID '{roi_obj.roi_id}' does not match ROI reference in Task '{task_obj.task_id}'.",
+            )
+        roi_ref = roi_obj.id
+    if acq_data.kind == "montage" and task_obj.specimen_id is None:
         raise HTTPException(
-            400,
-            f"ROI ID '{roi_obj.roi_id}' does not match ROI reference in Task '{task_obj.task_id}'.",
+            422,
+            f"Task '{task_obj.task_id}' has no specimen lineage; kind='montage' acquisitions require it.",
         )
     replacement_id = None
     if acq_data.replaces_acquisition_id:
@@ -319,18 +352,18 @@ async def create_acquisition(
     acquisition = AcquisitionSQLModel(
         acquisition_id=acq_data.acquisition_id,
         montage_id=acq_data.montage_id,
-        specimen_id=task_obj.specimen_id,
-        roi_id=roi_obj.roi_id,
+        specimen_id=task_obj.specimen_id if roi_obj is not None else None,
+        roi_id=roi_obj.roi_id if roi_obj is not None else None,
         acquisition_task_id=task_obj.task_id,
+        microscope_id=acq_data.microscope_id,
         dataset_id=dataset_uuid,
+        kind=acq_data.kind,
+        lc_id=acq_data.lc_id,
         hardware_settings=acq_data.hardware_settings.model_dump(),
         acquisition_settings=acq_data.acquisition_settings.model_dump(),
         calibration_info=acq_data.calibration_info.model_dump() if acq_data.calibration_info else None,
-        status=acq_data.status.value,
-        tilt_angle=acq_data.tilt_angle,
-        lens_correction=acq_data.lens_correction,
+        tilt_angle_deg=acq_data.tilt_angle_deg,
         start_time=acq_data.start_time or datetime.now(timezone.utc),
-        end_time=acq_data.end_time,
         storage_locations=(
             [loc.model_dump(mode="json") for loc in acq_data.storage_locations] if acq_data.storage_locations else None
         ),
@@ -341,8 +374,9 @@ async def create_acquisition(
     session.add(acquisition)
     await session.commit()
     await session.refresh(acquisition)
-    specimen_ref, roi_ref, task_ref = task_and_roi[2], task_and_roi[3], task_and_roi[4]
-    return _acquisition_payload(acquisition, specimen_ref, roi_ref, task_ref)
+    if roi_obj is None:
+        specimen_ref = None
+    return _acquisition_payload(acquisition, specimen_ref, roi_ref, task_obj.id)
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}", response_model=dict[str, Any])
@@ -418,6 +452,24 @@ async def update_acquisition(
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(400, "No update data provided")
+    updated_by = update_data.pop("updated_by", None)
+    now = datetime.now(timezone.utc)
+    if "end_time" in update_data and "status" not in update_data:
+        raise HTTPException(422, "end_time can only be set together with a terminal status")
+    if "status" in update_data:
+        if acq_obj.status is not None:
+            raise HTTPException(
+                409,
+                f"Acquisition '{acquisition_id}' already has terminal status '{acq_obj.status}'.",
+            )
+        if update_data.get("end_time") is None:
+            update_data["end_time"] = now
+    if "qc_state" in update_data:
+        acq_obj.qc_state_updated_at = now
+        acq_obj.qc_state_updated_by = updated_by
+    if "transfer_state" in update_data:
+        acq_obj.transfer_state_updated_at = now
+        acq_obj.transfer_state_updated_by = updated_by
     for field, value in update_data.items():
         if hasattr(acq_obj, field):
             if hasattr(value, "model_dump"):
@@ -874,7 +926,11 @@ async def list_acquisitions_with_hierarchy(
     roi_id: str | None = Query(None, description="Filter by hierarchical ROI ID"),
     acquisition_task_id: str | None = Query(None, description="Filter by human-readable Acquisition Task ID"),
     substrate_media_id: str | None = Query(None, description="Filter by substrate media ID"),
-    acq_status: AcquisitionStatus | None = Query(None, alias="status"),
+    acq_status: str | None = Query(
+        None,
+        alias="status",
+        description="Terminal status (complete, aborted, failed) or the literal 'in_flight'",
+    ),
     session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
     """Retrieve acquisitions with complete hierarchy metadata."""
@@ -886,7 +942,7 @@ async def list_acquisitions_with_hierarchy(
     if acquisition_task_id:
         conditions.append(AcquisitionSQLModel.acquisition_task_id == acquisition_task_id)
     if acq_status:
-        conditions.append(AcquisitionSQLModel.status == acq_status.value)
+        conditions.append(_status_condition(acq_status))
     if substrate_media_id:
         conditions.append(SubstrateSQLModel.media_id == substrate_media_id)
 

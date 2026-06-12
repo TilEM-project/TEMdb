@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
-from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
+from temdb.models import AcquisitionTaskStatus
 from temdb.server.sqlmodels import AcquisitionSQLModel, AcquisitionTaskSQLModel, ROISQLModel, SectionSQLModel
 
 
@@ -142,6 +142,7 @@ async def test_list_acquisition_tasks_skip_completed(
     test_roi2,
     test_acquisition_task2,
     test_db_manager,
+    test_microscope,
 ):
     async with test_db_manager.async_session_factory() as session:
         failed_acquisition = AcquisitionSQLModel(
@@ -165,8 +166,10 @@ async def test_list_acquisition_tasks_skip_completed(
                 "tile_overlap": 0.1,
                 "saved_bit_depth": 8,
             },
-            status=AcquisitionStatus.QC_FAILED.value,
+            microscope_id=test_microscope.microscope_id,
+            status="failed",
             start_time=datetime.now(timezone.utc),
+            end_time=datetime.now(timezone.utc),
         )
         passed_acquisition = AcquisitionSQLModel(
             acquisition_id="TEST_ACQ_QC_PASSED_001",
@@ -189,8 +192,11 @@ async def test_list_acquisition_tasks_skip_completed(
                 "tile_overlap": 0.1,
                 "saved_bit_depth": 8,
             },
-            status=AcquisitionStatus.QC_PASSED.value,
+            microscope_id=test_microscope.microscope_id,
+            status="complete",
+            qc_state="qc_pass",
             start_time=datetime.now(timezone.utc),
+            end_time=datetime.now(timezone.utc),
         )
         session.add(failed_acquisition)
         session.add(passed_acquisition)
