@@ -3,6 +3,31 @@
 ```mermaid
 erDiagram
     direction LR
+    AcquisitionSQLModel ||--o{ AcquisitionSQLModel : "replaces_acquisition_id"
+    AcquisitionTaskSQLModel ||--o{ AcquisitionSQLModel : "acquisition_task_id"
+    AcquisitionTaskSQLModel ||--o{ AcquisitionTaskSQLModel : "superseded_by"
+    BlockSQLModel ||--o{ AcquisitionTaskSQLModel : "specimen_id, block_id"
+    BlockSQLModel ||--o{ CuttingSessionSQLModel : "specimen_id, block_id"
+    BlockSQLModel ||--o{ ROISQLModel : "specimen_id, block_id"
+    BlockSQLModel ||--o{ SectionSQLModel : "specimen_id, block_id"
+    CuttingSessionSQLModel ||--o{ SectionSQLModel : "cutting_session_id"
+    DatasetSQLModel ||--o{ AcquisitionSQLModel : "dataset_id"
+    DatasetSQLModel ||--o{ AcquisitionTaskSQLModel : "dataset_id"
+    DatasetSQLModel ||--o{ DatasetSQLModel : "parent_dataset_id"
+    DatasetSQLModel ||--o{ ROISQLModel : "dataset_id"
+    DatasetSQLModel ||--o{ TileSQLModel : "dataset_id"
+    LensCorrectionSQLModel ||--o{ AcquisitionSQLModel : "lc_id"
+    MicroscopeSQLModel ||--o{ AcquisitionSQLModel : "microscope_id"
+    MicroscopeSQLModel ||--o{ LensCorrectionSQLModel : "microscope_id"
+    ROISQLModel ||--o{ AcquisitionSQLModel : "roi_id"
+    ROISQLModel ||--o{ AcquisitionTaskSQLModel : "roi_id"
+    ROISQLModel ||--o{ ROISQLModel : "parent_roi_id"
+    SectionSQLModel ||--o{ ROISQLModel : "section_id"
+    SpecimenSQLModel ||--o{ AcquisitionSQLModel : "specimen_id"
+    SpecimenSQLModel ||--o{ BlockSQLModel : "specimen_id"
+    SpecimenSQLModel ||--o{ DatasetSQLModel : "specimen_id"
+    SubstrateSQLModel ||--o{ ROISQLModel : "substrate_media_id"
+    SubstrateSQLModel ||--o{ SectionSQLModel : "media_id"
     AcquisitionSQLModel {
         string acquisition_id
         UUID run_id
