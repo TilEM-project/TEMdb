@@ -24,6 +24,7 @@ class CuttingSessionCreate(CuttingSessionBase):
     start_time: datetime = Field(..., description="Time when cutting session started")
     sectioning_device: str = Field(..., description="Device used for sectioning")
     media_type: str = Field(..., description="Type of substrate the sections are placed upon")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class CuttingSessionUpdate(CuttingSessionBase):

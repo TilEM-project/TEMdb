@@ -270,7 +270,7 @@ async def create_section(
         aperture_uid=section_data.aperture_uid,
         aperture_index=section_data.aperture_index,
         barcode=section_data.barcode,
-        created_at=datetime.now(timezone.utc),
+        created_at=section_data.created_at or datetime.now(timezone.utc),
     )
     session.add(new_section)
     await session.commit()
@@ -359,7 +359,7 @@ async def create_sections_batch(
                 if section_create.section_metrics is not None
                 else None
             ),
-            created_at=datetime.now(timezone.utc),
+            created_at=section_create.created_at or datetime.now(timezone.utc),
         )
         sections_to_insert.append(section_doc)
 

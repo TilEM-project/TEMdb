@@ -99,6 +99,7 @@ class AcquisitionCreate(AcquisitionBase):
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
     start_time: datetime | None = Field(None, description="Start time of acquisition (defaults to now if not provided)")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
     @field_validator("kind")
     @classmethod

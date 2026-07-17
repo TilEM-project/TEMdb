@@ -13,6 +13,7 @@ class BlockBase(BaseModel):
 class BlockCreate(BlockBase):
     block_id: str = Field(..., description="Unique block identifier")
     specimen_id: str = Field(..., description="Parent specimen ID")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class BlockUpdate(BlockBase):

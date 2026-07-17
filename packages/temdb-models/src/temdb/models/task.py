@@ -31,6 +31,7 @@ class AcquisitionTaskCreate(AcquisitionTaskBase):
     kind: str = Field(default="montage", description="Task kind: montage or lens_correction")
     tags: list[str] = Field(default_factory=list, description="Tags for filtering")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
     @model_validator(mode="after")
     def _validate_kind_and_lineage(self) -> "AcquisitionTaskCreate":

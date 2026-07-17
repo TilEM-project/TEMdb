@@ -141,6 +141,7 @@ async def create_block(
         block_id=block_data.block_id,
         specimen_id=block_data.specimen_id,
         microCT_info=block_data.microCT_info,
+        created_at=block_data.created_at or datetime.now(timezone.utc),
     )
     session.add(new_block)
     await session.commit()

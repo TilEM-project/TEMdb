@@ -120,7 +120,7 @@ async def create_substrate(
             if getattr(substrate_data, "apertures", None) is not None
             else None
         ),
-        created_at=datetime.now(timezone.utc),
+        created_at=substrate_data.created_at or datetime.now(timezone.utc),
     )
     session.add(new_substrate)
     await session.commit()

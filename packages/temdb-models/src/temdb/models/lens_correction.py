@@ -19,6 +19,7 @@ class LensCorrectionBase(BaseModel):
 
 class LensCorrectionCreate(LensCorrectionBase):
     lc_id: uuid.UUID | None = Field(None, description="Optional client-supplied UUIDv7")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class LensCorrectionUpdate(BaseModel):

@@ -75,7 +75,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
         size_class=size_class,
         estimated_tile_count=data.estimated_tile_count,
         metadata_json=data.metadata_json,
-        created_at=datetime.now(timezone.utc),
+        created_at=data.created_at or datetime.now(timezone.utc),
     )
     session.add(ds)
     await session.commit()

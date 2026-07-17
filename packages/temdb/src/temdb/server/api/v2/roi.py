@@ -127,6 +127,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         "substrate_media_id",
         "parent_roi_id",
         "section_number",
+        "created_at",
     ):
         payload.pop(key, None)
     new_roi = ROISQLModel(
@@ -140,6 +141,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         parent_roi_id=roi_data.parent_roi_id,
         section_number=roi_data.section_number,
         roi_payload=payload,
+        created_at=roi_data.created_at or datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
     session.add(new_roi)
@@ -215,6 +217,7 @@ async def create_rois_batch(
             "substrate_media_id",
             "parent_roi_id",
             "section_number",
+            "created_at",
         ):
             payload.pop(key, None)
         rois_to_insert.append(
@@ -229,6 +232,7 @@ async def create_rois_batch(
                 parent_roi_id=roi_create.parent_roi_id,
                 section_number=roi_create.section_number,
                 roi_payload=payload,
+                created_at=roi_create.created_at or datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
         )

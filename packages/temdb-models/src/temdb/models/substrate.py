@@ -98,6 +98,7 @@ class SubstrateCreate(SubstrateBase):
         "new",
         description="Status of the entire substrate",
     )
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class SubstrateUpdate(SubstrateBase):

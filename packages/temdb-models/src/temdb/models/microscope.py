@@ -14,6 +14,7 @@ class MicroscopeBase(BaseModel):
 class MicroscopeCreate(MicroscopeBase):
     label: str = Field(..., description="Unique human handle, e.g. 'TEM-01'")
     microscope_id: uuid.UUID | None = Field(None, description="Optional client-supplied UUIDv7")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class MicroscopeUpdate(BaseModel):

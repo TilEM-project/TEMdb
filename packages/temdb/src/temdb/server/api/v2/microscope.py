@@ -53,7 +53,7 @@ async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depe
         model=data.model,
         location=data.location,
         notes=data.notes,
-        created_at=datetime.now(timezone.utc),
+        created_at=data.created_at or datetime.now(timezone.utc),
     )
     session.add(scope)
     await session.commit()

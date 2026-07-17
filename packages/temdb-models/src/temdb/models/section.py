@@ -98,6 +98,7 @@ class SectionCreate(SectionBase):
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
     section_number: int = Field(..., gt=0, description="Sequential section number")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class SectionUpdate(SectionBase):

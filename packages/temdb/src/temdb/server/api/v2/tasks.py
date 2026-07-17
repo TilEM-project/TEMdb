@@ -151,7 +151,7 @@ def _task_from_create(
         sub_region=task_data.sub_region,
         tags=task_data.tags,
         metadata_json=task_data.metadata,
-        created_at=datetime.now(timezone.utc),
+        created_at=task_data.created_at or datetime.now(timezone.utc),
     )
 
 

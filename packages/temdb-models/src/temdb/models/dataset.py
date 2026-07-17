@@ -21,6 +21,7 @@ class DatasetBase(BaseModel):
 class DatasetCreate(DatasetBase):
     name: str = Field(..., description="Unique human-readable dataset name")
     parent_dataset_id: uuid.UUID | None = Field(None, description="Optional parent dataset (one level only)")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class DatasetUpdate(BaseModel):

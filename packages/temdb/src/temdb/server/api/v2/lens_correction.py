@@ -63,7 +63,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
         correction_x_uri=data.correction_x_uri,
         correction_y_uri=data.correction_y_uri,
         solver_params=data.solver_params,
-        created_at=datetime.now(timezone.utc),
+        created_at=data.created_at or datetime.now(timezone.utc),
     )
     session.add(lc)
     await session.commit()

@@ -374,6 +374,7 @@ async def create_acquisition(
         acquisition_settings=acq_data.acquisition_settings.model_dump(),
         calibration_info=acq_data.calibration_info.model_dump() if acq_data.calibration_info else None,
         tilt_angle_deg=acq_data.tilt_angle_deg,
+        created_at=acq_data.created_at or datetime.now(timezone.utc),
         start_time=acq_data.start_time or datetime.now(timezone.utc),
         storage_locations=(
             [loc.model_dump(mode="json") for loc in acq_data.storage_locations] if acq_data.storage_locations else None

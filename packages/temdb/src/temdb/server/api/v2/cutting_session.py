@@ -160,7 +160,7 @@ async def create_cutting_session(
         sectioning_device=session_data.sectioning_device,
         media_type=session_data.media_type,
         knife_id=session_data.knife_id,
-        created_at=datetime.now(timezone.utc),
+        created_at=session_data.created_at or datetime.now(timezone.utc),
     )
     session.add(new_session)
     await session.commit()
