@@ -20,9 +20,11 @@ WORKFLOW_GROUPS = {
         "BlockSQLModel",
         "CuttingSessionSQLModel",
         "SectionSQLModel",
+        "SubstrateSQLModel",
     },
     "Imaging": {
         "SectionSQLModel",
+        "SubstrateSQLModel",
         "ROISQLModel",
         "DatasetSQLModel",
         "AcquisitionTaskSQLModel",
@@ -96,7 +98,7 @@ def _model_fields(model: type[DeclarativeBase]) -> dict[str, Any]:
 def generate_model_markdown_page(model: type[DeclarativeBase]) -> str:
     model_name = _display_name(model.__name__)
     markdown = f"# {model_name} Model\n\n"
-    model_doc = inspect.getdoc(model)
+    model_doc = inspect.cleandoc(model.__doc__) if model.__doc__ else None
     if model_doc:
         markdown += f"{model_doc}\n\n"
     markdown += "## Fields\n\n"
@@ -112,6 +114,22 @@ def generate_model_markdown_page(model: type[DeclarativeBase]) -> str:
         description = description.replace("|", "\\|")
         markdown += f"| `{field_name}` | {mermaid_type} | {description} |\n"
     return markdown
+
+
+def _relationship_lines(all_models: list[type[DeclarativeBase]], models_in_diagram: set[str]) -> list[str]:
+    tablename_to_model = {m.__tablename__: m.__name__ for m in all_models}
+    all_model_map = {m.__name__: m for m in all_models}
+
+    lines: set[str] = set()
+    for model_name in models_in_diagram:
+        model = all_model_map[model_name]
+        for fk in model.__table__.foreign_key_constraints:
+            parent_model = tablename_to_model.get(fk.referred_table.name)
+            if parent_model is None or parent_model not in models_in_diagram:
+                continue
+            label = ", ".join(col.name for col in fk.columns)
+            lines.add(f'    {parent_model} ||--o{{ {model_name} : "{label}"')
+    return sorted(lines)
 
 
 def generate_erd_markdown(all_models: list[type[DeclarativeBase]], core_group_models: set[str]) -> str:
@@ -134,6 +152,10 @@ def generate_erd_markdown(all_models: list[type[DeclarativeBase]], core_group_mo
 
     mermaid_string = "erDiagram\n"
     mermaid_string += "    direction LR\n"
+    relationship_lines = _relationship_lines(all_models, models_in_diagram)
+    if relationship_lines:
+        mermaid_string += "\n".join(relationship_lines)
+        mermaid_string += "\n"
     mermaid_string += "\n".join(class_definitions)
     mermaid_string += "\n"
     return f"```mermaid\n{mermaid_string}```"
