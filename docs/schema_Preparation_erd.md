@@ -3,6 +3,11 @@
 ```mermaid
 erDiagram
     direction LR
+    BlockSQLModel ||--o{ CuttingSessionSQLModel : "specimen_id, block_id"
+    BlockSQLModel ||--o{ SectionSQLModel : "specimen_id, block_id"
+    CuttingSessionSQLModel ||--o{ SectionSQLModel : "cutting_session_id"
+    SpecimenSQLModel ||--o{ BlockSQLModel : "specimen_id"
+    SubstrateSQLModel ||--o{ SectionSQLModel : "media_id"
     BlockSQLModel {
         string block_id
         string specimen_id
@@ -31,6 +36,8 @@ erDiagram
         string aperture_uid
         int aperture_index
         string barcode
+        string condition
+        string condition_reason
         object section_metrics
     }
     SpecimenSQLModel {
@@ -38,5 +45,16 @@ erDiagram
         string description
         object specimen_images
         object functional_imaging_metadata
+    }
+    SubstrateSQLModel {
+        string media_id
+        string media_type
+        string uid
+        string status
+        object refpoint
+        object refpoint_world
+        string source_path
+        object metadata
+        object apertures
     }
 ```

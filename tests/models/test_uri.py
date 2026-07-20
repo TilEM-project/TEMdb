@@ -140,6 +140,15 @@ def test_model_serialize():
     assert obj.model_dump_json() == '{"uri":"/some/path"}'
 
 
+def test_model_json_schema():
+    class Model(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+        uri: URI.Type
+
+    schema = Model.model_json_schema()
+    assert schema["properties"]["uri"] == {"type": "string", "title": "Uri"}
+
+
 @mark.parametrize("config_file", ["data_config.yml", "data_config.yaml"])
 def test_load_config(config_file, tmp_path):
     yaml_data = """

@@ -277,7 +277,7 @@ async def test_update_section(async_client: AsyncClient, test_cutting_session, t
 
 
 @pytest.mark.asyncio
-async def test_delete_section(async_client: AsyncClient, test_cutting_session):
+async def test_delete_section(async_client: AsyncClient, test_cutting_session, test_substrate):
     """Test deleting a section successfully (when it has no dependencies like ROIs)."""
     section_data = {
         "specimen_id": test_cutting_session.specimen_id,
@@ -285,10 +285,10 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session):
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 100,
         "media_type": "tape",
-        "media_id": "TAPE_TEST_DELETE_01",
+        "media_id": test_substrate.media_id,
     }
 
-    section_id_hr = "TAPE_TEST_DELETE_01_S100"
+    section_id_hr = f"{test_substrate.media_id}_S100"
     create_response = await async_client.post("/api/v2/sections", json=section_data)
     assert create_response.status_code == 201
 

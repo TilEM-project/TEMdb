@@ -3,19 +3,22 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
+from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
     BlockSQLModel,
     CuttingSessionSQLModel,
+    DatasetSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
     SubstrateSQLModel,
     TileSQLModel,
 )
+from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
 
 class TestDataIntegration:
@@ -108,12 +111,12 @@ class TestDataIntegration:
     async def create_roi(self, section: SectionSQLModel, roi_number: int = 1) -> ROISQLModel:
         async with self.db_manager.async_session_factory() as session:
             roi = ROISQLModel(
-                roi_id=f"{section.specimen_id}.{section.block_id}.{section.section_id}.SUB001.ROI{roi_number:03d}",
+                roi_id=f"{section.specimen_id}.{section.block_id}.{section.section_id}.{section.media_id}.ROI{roi_number:03d}",
                 roi_number=roi_number,
                 section_id=section.section_id,
                 block_id=section.block_id,
                 specimen_id=section.specimen_id,
-                substrate_media_id="SUB001",
+                substrate_media_id=section.media_id,
                 hierarchy_level=1,
                 section_number=section.section_number,
                 roi_payload={},
@@ -137,9 +140,7 @@ class TestDataIntegration:
                 specimen_id=specimen.specimen_id,
                 block_id=block.block_id,
                 roi_id=roi.roi_id,
-                task_type="standard_acquisition",
-                version=1,
-                status=AcquisitionTaskStatus.PLANNED.value,
+                kind="montage",
                 tags=[],
                 metadata_json={},
                 created_at=datetime.now(timezone.utc),
@@ -156,12 +157,26 @@ class TestDataIntegration:
         task: AcquisitionTaskSQLModel,
     ) -> AcquisitionSQLModel:
         async with self.db_manager.async_session_factory() as session:
+            dataset = DatasetSQLModel(
+                dataset_id=uuid7(),
+                name=f"DS_{task.task_id}",
+                specimen_id=specimen.specimen_id,
+                size_class="small",
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(dataset)
+            microscope = MicroscopeSQLModel(label=f"SCOPE_{task.task_id}")
+            session.add(microscope)
+            await session.commit()
+            await session.refresh(dataset)
+            await session.refresh(microscope)
             acq = AcquisitionSQLModel(
                 acquisition_id=f"ACQ_{task.task_id}",
                 montage_id=f"MONT_{task.task_id}",
                 specimen_id=specimen.specimen_id,
                 roi_id=roi.roi_id,
                 acquisition_task_id=task.task_id,
+                dataset_id=dataset.dataset_id,
                 hardware_settings={
                     "scope_id": "SEM_1",
                     "camera_model": "CamA",
@@ -177,9 +192,8 @@ class TestDataIntegration:
                     "tile_overlap": 0.1,
                     "saved_bit_depth": 8,
                 },
-                status=AcquisitionStatus.QC_PENDING.value,
-                tilt_angle=0.0,
-                lens_correction=False,
+                microscope_id=microscope.microscope_id,
+                tilt_angle_deg=0.0,
                 start_time=datetime.now(timezone.utc),
             )
             session.add(acq)
@@ -189,12 +203,16 @@ class TestDataIntegration:
 
     async def create_tile(self, acquisition: AcquisitionSQLModel, raster_index: int) -> TileSQLModel:
         async with self.db_manager.async_session_factory() as session:
+            await ensure_tile_partition(session, acquisition.dataset_id)
             tile = TileSQLModel(
-                tile_id=f"TILE_{acquisition.acquisition_id}_{raster_index:04d}",
-                acquisition_id=acquisition.acquisition_id,
+                tile_id=uuid7(),
+                dataset_id=acquisition.dataset_id,
+                run_id=acquisition.run_id,
                 raster_index=raster_index,
-                stage_position={"x": float(raster_index), "y": float(raster_index)},
-                raster_position={"row": raster_index // 10, "col": raster_index % 10},
+                stage_x_nm=float(raster_index),
+                stage_y_nm=float(raster_index),
+                montage_row=raster_index // 10,
+                montage_col=raster_index % 10,
                 focus_score=0.9,
                 min_value=0.0,
                 max_value=65535.0,
@@ -307,22 +325,22 @@ class TestDataIntegration:
         task = await self.create_acquisition_task(specimen, block, roi)
         acquisition = await self.create_acquisition(specimen, roi, task)
         tile = await self.create_tile(acquisition, 1)
-        assert tile.id is not None
         assert tile.tile_id is not None
         assert tile.raster_index == 1
-        assert tile.acquisition_id == acquisition.acquisition_id
+        assert tile.run_id == acquisition.run_id
 
         async with self.db_manager.async_session_factory() as session:
             fetched_tile = (
                 await session.exec(
                     select(TileSQLModel).where(
-                        TileSQLModel.acquisition_id == acquisition.acquisition_id,
+                        TileSQLModel.dataset_id == acquisition.dataset_id,
+                        TileSQLModel.run_id == acquisition.run_id,
                         TileSQLModel.raster_index == 1,
                     )
                 )
             ).first()
         assert fetched_tile is not None
-        assert fetched_tile.id == tile.id
+        assert fetched_tile.tile_id == tile.tile_id
 
     @pytest.mark.asyncio
     async def test_multiple_tiles_creation(self):
@@ -345,12 +363,15 @@ class TestDataIntegration:
             fetched_tiles = (
                 await session.exec(
                     select(TileSQLModel)
-                    .where(TileSQLModel.acquisition_id == acquisition.acquisition_id)
+                    .where(
+                        TileSQLModel.dataset_id == acquisition.dataset_id,
+                        TileSQLModel.run_id == acquisition.run_id,
+                    )
                     .order_by(TileSQLModel.raster_index)
                 )
             ).all()
         assert len(fetched_tiles) == num_tiles
         for i in range(num_tiles):
-            assert fetched_tiles[i].id == created_tiles[i].id
+            assert fetched_tiles[i].tile_id == created_tiles[i].tile_id
             assert fetched_tiles[i].raster_index == i
-            assert fetched_tiles[i].acquisition_id == acquisition.acquisition_id
+            assert fetched_tiles[i].run_id == acquisition.run_id

@@ -1,14 +1,17 @@
+import itertools
 import logging
 from datetime import datetime, timezone
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 from testcontainers.postgres import PostgresContainer
 
-from temdb.models import AcquisitionStatus, AcquisitionTaskStatus
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
+from temdb.server.ids import uuid7
 from temdb.server.main import create_app
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
@@ -16,12 +19,15 @@ from temdb.server.sqlmodels import (
     Base,
     BlockSQLModel,
     CuttingSessionSQLModel,
+    DatasetSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
     SubstrateSQLModel,
     TileSQLModel,
 )
+from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
 logging.basicConfig(level=logging.INFO)
 
@@ -39,14 +45,28 @@ def _async_database_url(container: PostgresContainer) -> str:
 
 @pytest.fixture(scope="session")
 def postgres_container():
-    with PostgresContainer("postgres:16") as container:
+    with PostgresContainer("postgres:18") as container:
         yield container
+
+
+_fresh_db_counter = itertools.count()
+
+
+@pytest.fixture(scope="function")
+async def fresh_database_url(postgres_container):
+    admin_url = _async_database_url(postgres_container)
+    db_name = f"temdb_fresh_{next(_fresh_db_counter)}"
+    engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+    async with engine.connect() as conn:
+        await conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+    await engine.dispose()
+    yield admin_url.rsplit("/", 1)[0] + f"/{db_name}"
 
 
 @pytest.fixture(scope="function")
 async def test_db_manager(postgres_container):
     db_manager = DatabaseManager(database_url=_async_database_url(postgres_container))
-    await db_manager.initialize()
+    await db_manager.initialize(create_schema=True)
     yield db_manager
     if db_manager.sql_engine is not None:
         await db_manager.sql_engine.dispose()
@@ -88,6 +108,22 @@ async def test_specimen(init_db, test_db_manager: DatabaseManager):
         await session.commit()
         await session.refresh(specimen)
         yield specimen
+
+
+@pytest.fixture(scope="function")
+async def test_dataset(init_db, test_db_manager: DatabaseManager, test_specimen: SpecimenSQLModel):
+    async with test_db_manager.async_session_factory() as session:
+        dataset = DatasetSQLModel(
+            dataset_id=uuid7(),
+            name="TEST_DATASET_001",
+            specimen_id=test_specimen.specimen_id,
+            size_class="small",
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(dataset)
+        await session.commit()
+        await session.refresh(dataset)
+        yield dataset
 
 
 @pytest.fixture(scope="function")
@@ -169,7 +205,12 @@ async def test_section(
 
 
 @pytest.fixture(scope="function")
-async def test_roi(init_db, test_db_manager: DatabaseManager, test_section: SectionSQLModel):
+async def test_roi(
+    init_db,
+    test_db_manager: DatabaseManager,
+    test_section: SectionSQLModel,
+    test_dataset: DatasetSQLModel,
+):
     async with test_db_manager.async_session_factory() as session:
         roi = ROISQLModel(
             roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI001",
@@ -183,6 +224,7 @@ async def test_roi(init_db, test_db_manager: DatabaseManager, test_section: Sect
             updated_at=datetime.now(timezone.utc),
             section_number=test_section.section_number,
             roi_payload={},
+            dataset_id=test_dataset.dataset_id,
             created_at=datetime.now(timezone.utc),
         )
         session.add(roi)
@@ -195,12 +237,12 @@ async def test_roi(init_db, test_db_manager: DatabaseManager, test_section: Sect
 async def test_roi2(init_db, test_db_manager: DatabaseManager, test_section: SectionSQLModel):
     async with test_db_manager.async_session_factory() as session:
         roi = ROISQLModel(
-            roi_id="SPEC001.BLK001.CS001.SEC001.SUB002.ROI002",
+            roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI002",
             roi_number=2,
             section_id=test_section.section_id,
             block_id=test_section.block_id,
             specimen_id=test_section.specimen_id,
-            substrate_media_id="SUB002",
+            substrate_media_id=test_section.media_id,
             hierarchy_level=1,
             parent_roi_id=None,
             updated_at=datetime.now(timezone.utc),
@@ -228,9 +270,7 @@ async def test_acquisition_task2(
             specimen_id=test_specimen.specimen_id,
             block_id=test_block.block_id,
             roi_id=test_roi2.roi_id,
-            task_type="standard_acquisition",
-            version=1,
-            status=AcquisitionTaskStatus.PLANNED.value,
+            kind="montage",
             tags=[],
             metadata_json={},
             created_at=datetime.now(timezone.utc),
@@ -248,6 +288,7 @@ async def test_acquisition_task(
     test_specimen: SpecimenSQLModel,
     test_block: BlockSQLModel,
     test_roi: ROISQLModel,
+    test_dataset: DatasetSQLModel,
 ):
     async with test_db_manager.async_session_factory() as session:
         acquisition_task = AcquisitionTaskSQLModel(
@@ -255,11 +296,10 @@ async def test_acquisition_task(
             specimen_id=test_specimen.specimen_id,
             block_id=test_block.block_id,
             roi_id=test_roi.roi_id,
-            task_type="standard_acquisition",
-            version=1,
-            status=AcquisitionTaskStatus.PLANNED.value,
+            kind="montage",
             tags=[],
             metadata_json={},
+            dataset_id=test_dataset.dataset_id,
             created_at=datetime.now(timezone.utc),
         )
         session.add(acquisition_task)
@@ -269,12 +309,24 @@ async def test_acquisition_task(
 
 
 @pytest.fixture(scope="function")
+async def test_microscope(init_db, test_db_manager: DatabaseManager):
+    async with test_db_manager.async_session_factory() as session:
+        microscope = MicroscopeSQLModel(label="TEST_SCOPE_001")
+        session.add(microscope)
+        await session.commit()
+        await session.refresh(microscope)
+        yield microscope
+
+
+@pytest.fixture(scope="function")
 async def test_acquisition(
     init_db,
     test_db_manager: DatabaseManager,
     test_specimen: SpecimenSQLModel,
     test_roi: ROISQLModel,
     test_acquisition_task: AcquisitionTaskSQLModel,
+    test_dataset: DatasetSQLModel,
+    test_microscope: MicroscopeSQLModel,
 ):
     async with test_db_manager.async_session_factory() as session:
         acquisition = AcquisitionSQLModel(
@@ -283,6 +335,7 @@ async def test_acquisition(
             specimen_id=test_specimen.specimen_id,
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
+            dataset_id=test_dataset.dataset_id,
             hardware_settings={
                 "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
@@ -298,7 +351,7 @@ async def test_acquisition(
                 "tile_overlap": 0.1,
                 "saved_bit_depth": 8,
             },
-            status=AcquisitionStatus.QC_PENDING.value,
+            microscope_id=test_microscope.microscope_id,
             start_time=datetime.now(timezone.utc),
         )
         session.add(acquisition)
@@ -308,14 +361,23 @@ async def test_acquisition(
 
 
 @pytest.fixture(scope="function")
-async def test_tile(init_db, test_db_manager: DatabaseManager, test_acquisition: AcquisitionSQLModel):
+async def test_tile(
+    init_db,
+    test_db_manager: DatabaseManager,
+    test_dataset: DatasetSQLModel,
+    test_acquisition: AcquisitionSQLModel,
+):
     async with test_db_manager.async_session_factory() as session:
+        await ensure_tile_partition(session, test_dataset.dataset_id)
         tile = TileSQLModel(
-            tile_id="TEST_TILE_001",
-            acquisition_id=test_acquisition.acquisition_id,
+            tile_id=uuid7(),
+            dataset_id=test_dataset.dataset_id,
+            run_id=test_acquisition.run_id,
             raster_index=1,
-            stage_position={"x": 100, "y": 200},
-            raster_position={"row": 0, "col": 0},
+            stage_x_nm=100.0,
+            stage_y_nm=200.0,
+            montage_row=0,
+            montage_col=0,
             focus_score=0.95,
             min_value=0,
             max_value=255,

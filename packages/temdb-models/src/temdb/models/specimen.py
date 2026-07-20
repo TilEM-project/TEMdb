@@ -19,6 +19,7 @@ class SpecimenBase(BaseModel):
 
 class SpecimenCreate(SpecimenBase):
     specimen_id: str = Field(..., description="Unique specimen identifier")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class SpecimenUpdate(SpecimenBase):

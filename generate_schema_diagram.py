@@ -1,6 +1,5 @@
 import inspect
 import re
-import sys
 from enum import Enum as PyEnum
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
@@ -8,12 +7,12 @@ from typing import Any, Union, get_args, get_origin
 from pydantic import BaseModel
 from sqlalchemy.orm import DeclarativeBase
 
+import temdb.server.sqlmodels as sqlmodels_module
+from temdb.server.sqlmodels import Base
+
 PROJECT_ROOT = Path(__file__).parent
 DOCS_DIR = PROJECT_ROOT / "docs"
 MODELS_DOCS_DIR = DOCS_DIR / "models"
-
-
-sys.path.insert(0, str(PROJECT_ROOT / "packages/temdb/src"))
 
 WORKFLOW_GROUPS = {
     "Preparation": {
@@ -21,12 +20,17 @@ WORKFLOW_GROUPS = {
         "BlockSQLModel",
         "CuttingSessionSQLModel",
         "SectionSQLModel",
+        "SubstrateSQLModel",
     },
     "Imaging": {
         "SectionSQLModel",
+        "SubstrateSQLModel",
         "ROISQLModel",
+        "DatasetSQLModel",
         "AcquisitionTaskSQLModel",
         "AcquisitionSQLModel",
+        "MicroscopeSQLModel",
+        "LensCorrectionSQLModel",
         "TileSQLModel",
     },
 }
@@ -80,9 +84,6 @@ def _parse_type(field_type: type) -> str:
 
 
 def find_sqlmodel_models() -> list[type[DeclarativeBase]]:
-    import temdb.server.sqlmodels as sqlmodels_module
-    from temdb.server.sqlmodels import Base
-
     discovered_models: list[type[DeclarativeBase]] = []
     for _, obj in inspect.getmembers(sqlmodels_module):
         if inspect.isclass(obj) and issubclass(obj, Base) and obj is not Base and getattr(obj, "__tablename__", None):
@@ -97,7 +98,7 @@ def _model_fields(model: type[DeclarativeBase]) -> dict[str, Any]:
 def generate_model_markdown_page(model: type[DeclarativeBase]) -> str:
     model_name = _display_name(model.__name__)
     markdown = f"# {model_name} Model\n\n"
-    model_doc = inspect.getdoc(model)
+    model_doc = inspect.cleandoc(model.__doc__) if model.__doc__ else None
     if model_doc:
         markdown += f"{model_doc}\n\n"
     markdown += "## Fields\n\n"
@@ -113,6 +114,22 @@ def generate_model_markdown_page(model: type[DeclarativeBase]) -> str:
         description = description.replace("|", "\\|")
         markdown += f"| `{field_name}` | {mermaid_type} | {description} |\n"
     return markdown
+
+
+def _relationship_lines(all_models: list[type[DeclarativeBase]], models_in_diagram: set[str]) -> list[str]:
+    tablename_to_model = {m.__tablename__: m.__name__ for m in all_models}
+    all_model_map = {m.__name__: m for m in all_models}
+
+    lines: set[str] = set()
+    for model_name in models_in_diagram:
+        model = all_model_map[model_name]
+        for fk in model.__table__.foreign_key_constraints:
+            parent_model = tablename_to_model.get(fk.referred_table.name)
+            if parent_model is None or parent_model not in models_in_diagram:
+                continue
+            label = ", ".join(col.name for col in fk.columns)
+            lines.add(f'    {parent_model} ||--o{{ {model_name} : "{label}"')
+    return sorted(lines)
 
 
 def generate_erd_markdown(all_models: list[type[DeclarativeBase]], core_group_models: set[str]) -> str:
@@ -135,6 +152,10 @@ def generate_erd_markdown(all_models: list[type[DeclarativeBase]], core_group_mo
 
     mermaid_string = "erDiagram\n"
     mermaid_string += "    direction LR\n"
+    relationship_lines = _relationship_lines(all_models, models_in_diagram)
+    if relationship_lines:
+        mermaid_string += "\n".join(relationship_lines)
+        mermaid_string += "\n"
     mermaid_string += "\n".join(class_definitions)
     mermaid_string += "\n"
     return f"```mermaid\n{mermaid_string}```"
@@ -147,6 +168,10 @@ def main():
         return
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    full_erd_content = generate_erd_markdown(all_models, {m.__name__ for m in all_models})
+    with open(DOCS_DIR / "schema_erd.md", "w") as f:
+        f.write(f"# Database Schema ERD\n\n{full_erd_content}")
+
     for group_name, core_models_set in WORKFLOW_GROUPS.items():
         group_erd_content = generate_erd_markdown(all_models, core_models_set)
         group_erd_filename = DOCS_DIR / f"schema_{group_name}_erd.md"

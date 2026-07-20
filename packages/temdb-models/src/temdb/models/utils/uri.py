@@ -7,7 +7,14 @@ import boto3
 import yaml
 from pathlib_abc import JoinablePath, vfspath
 from platformdirs import user_config_path
-from pydantic import BaseModel, BeforeValidator, PlainSerializer, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    PlainSerializer,
+    ValidationError,
+    WithJsonSchema,
+    field_validator,
+)
 from smart_open import open, parse_uri
 
 logger = logging.getLogger(__name__)
@@ -133,7 +140,12 @@ class URI(JoinablePath):
 
     @_classproperty
     def Type(cls):
-        return Annotated[cls, PlainSerializer(cls.serialize), BeforeValidator(cls.validate)]
+        return Annotated[
+            cls,
+            PlainSerializer(cls.serialize),
+            BeforeValidator(cls.validate),
+            WithJsonSchema({"type": "string"}),
+        ]
 
     def __init__(self, *pathsegments):
         if not pathsegments:

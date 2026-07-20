@@ -49,6 +49,7 @@ class ROICreate(ROIBase):
         None,
         description="Hierarchical ID of parent ROI (e.g., 'SPEC001.BLK001.SEC001.SUB001.ROI001')",
     )
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
     @field_validator("parent_roi_id", mode="after")
     @classmethod

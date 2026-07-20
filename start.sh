@@ -24,6 +24,8 @@ echo "Host: $HOST:$PORT"
 echo "App: $APP_MODULE"
 echo "=========================="
 
+uv run alembic -c packages/temdb/alembic.ini upgrade head
+
 exec python -m uvicorn "$APP_MODULE" \
     --host $HOST \
     --port $PORT \

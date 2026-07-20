@@ -1,16 +1,17 @@
+import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
-    AcquisitionStatus,
     AcquisitionTaskCreate,
-    AcquisitionTaskStatus,
     AcquisitionTaskUpdate,
 )
 from temdb.server.dependencies import get_async_session
+from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -25,8 +26,30 @@ acquisition_task_api = APIRouter(
 )
 
 
+def derive_task_state(runs: list[AcquisitionSQLModel]) -> str:
+    """Task state is a function of its runs.
+
+    pending  - no runs
+    acquired - runs exist, none qc-resolved yet (includes in-flight runs)
+    complete - a run reached qc_pass
+    failed   - every run is failed/aborted
+    needs_review - newest run is qc_fail/needs_review
+    """
+    if not runs:
+        return "pending"
+    if any(r.qc_state == "qc_pass" for r in runs):
+        return "complete"
+    if all(r.status in ("failed", "aborted") for r in runs):
+        return "failed"
+    newest = max(runs, key=lambda r: r.start_time)
+    if newest.qc_state in ("qc_fail", "needs_review"):
+        return "needs_review"
+    return "acquired"
+
+
 def _task_payload(
     task: AcquisitionTaskSQLModel,
+    derived_status: str,
     specimen_id: int | None = None,
     block_id: int | None = None,
     roi_id: int | None = None,
@@ -37,12 +60,12 @@ def _task_payload(
         "specimen_id": task.specimen_id,
         "block_id": task.block_id,
         "roi_id": task.roi_id,
-        "task_type": task.task_type,
-        "version": task.version,
-        "status": task.status,
-        "error_message": task.error_message,
-        "started_at": task.started_at,
-        "completed_at": task.completed_at,
+        "kind": task.kind,
+        "status": derived_status,
+        "superseded_by": task.superseded_by,
+        "task_group_id": str(task.task_group_id) if task.task_group_id is not None else None,
+        "tilt_angle_deg": task.tilt_angle_deg,
+        "sub_region": task.sub_region,
         "tags": task.tags or [],
         "metadata": task.metadata_json or {},
         "created_at": task.created_at,
@@ -54,85 +77,28 @@ def _task_payload(
     return payload
 
 
-@acquisition_task_api.get("/acquisition-tasks")
-async def list_tasks(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
-    specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
-    block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
-    roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
-    task_type: str | None = None,
-    media_id: str | None = Query(None, description="Filter by media ID (substrate)"),
-    skip_destroyed: bool = Query(True, description="Filter out tasks whose ROI section is destroyed"),
-    skip_completed: bool = Query(True, description="Filter out tasks with QC_PENDING or QC_PASSED acquisitions"),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """List acquisition tasks."""
-    statement = (
-        select(
-            AcquisitionTaskSQLModel,
-            SpecimenSQLModel.id,
-            BlockSQLModel.id,
-            ROISQLModel.id,
-        )
-        .select_from(AcquisitionTaskSQLModel)
-        .outerjoin(
-            SpecimenSQLModel,
-            SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-        )
-        .outerjoin(
-            BlockSQLModel,
-            and_(
-                BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-            ),
-        )
-        .outerjoin(
-            ROISQLModel,
-            ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id,
-        )
-    )
-    filters = []
-    if task_type:
-        filters.append(AcquisitionTaskSQLModel.task_type == task_type)
-    if specimen_id:
-        filters.append(AcquisitionTaskSQLModel.specimen_id == specimen_id)
-    if block_id:
-        filters.append(AcquisitionTaskSQLModel.block_id == block_id)
-    if roi_id:
-        filters.append(AcquisitionTaskSQLModel.roi_id == roi_id)
-    if media_id:
-        filters.append(ROISQLModel.substrate_media_id == media_id)
-    if skip_destroyed:
-        statement = statement.outerjoin(
-            SectionSQLModel,
-            SectionSQLModel.section_id == ROISQLModel.section_id,
-        )
-        filters.append(SectionSQLModel.destroyed.is_not(True))
-    if skip_completed:
-        completed_subq = (
-            select(AcquisitionSQLModel.acquisition_task_id)
-            .where(
-                AcquisitionSQLModel.status.in_([AcquisitionStatus.QC_PENDING.value, AcquisitionStatus.QC_PASSED.value])
-            )
-            .scalar_subquery()
-        )
-        filters.append(AcquisitionTaskSQLModel.task_id.not_in(completed_subq))
-    if filters:
-        statement = statement.where(and_(*filters))
-
-    rows = (await session.execute(statement.offset(skip).limit(limit))).all()
-    if not rows:
-        return []
-    return [_task_payload(task, specimen_ref, block_ref, roi_ref) for task, specimen_ref, block_ref, roi_ref in rows]
+async def _runs_by_task(session: AsyncSession, task_ids: list[str]) -> dict[str, list[AcquisitionSQLModel]]:
+    """Fetch all runs for the given tasks, grouped by task_id."""
+    grouped: dict[str, list[AcquisitionSQLModel]] = defaultdict(list)
+    if not task_ids:
+        return grouped
+    runs_query = select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id.in_(task_ids))
+    runs = (await session.execute(runs_query)).scalars().all()
+    for run in runs:
+        grouped[run.acquisition_task_id].append(run)
+    return grouped
 
 
-@acquisition_task_api.post("/acquisition-tasks", status_code=status.HTTP_201_CREATED)
-async def create_task(
-    task_data: AcquisitionTaskCreate,
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Create a new acquisition task with sequential operations."""
+async def _validate_lineage(session: AsyncSession, task_data: AcquisitionTaskCreate) -> tuple:
+    """Validate the specimen/block/ROI triple of a task create payload.
+
+    Returns (specimen_ref, block_ref, roi_ref) internal ids; all None for a
+    lens_correction task created without lineage.
+    """
+    if task_data.roi_id is None and task_data.specimen_id is None and task_data.block_id is None:
+        return None, None, None
+    if not (task_data.roi_id and task_data.specimen_id and task_data.block_id):
+        raise HTTPException(422, "specimen_id, block_id, and roi_id must be provided together")
     validation_row = (
         await session.execute(
             select(
@@ -167,36 +133,161 @@ async def create_task(
             f"ROI '{task_data.roi_id}' does not belong to block '{block_obj.block_id}' "
             f"or specimen '{specimen_obj.specimen_id}'",
         )
+    return specimen_obj.id, block_obj.id, roi_obj.id
+
+
+def _task_from_create(
+    task_data: AcquisitionTaskCreate, task_group_id: uuid.UUID | None = None
+) -> AcquisitionTaskSQLModel:
+    """Build an AcquisitionTaskSQLModel from a validated create payload."""
+    return AcquisitionTaskSQLModel(
+        task_id=task_data.task_id,
+        specimen_id=task_data.specimen_id,
+        block_id=task_data.block_id,
+        roi_id=task_data.roi_id,
+        kind=task_data.kind,
+        task_group_id=task_group_id if task_group_id is not None else task_data.task_group_id,
+        tilt_angle_deg=task_data.tilt_angle_deg,
+        sub_region=task_data.sub_region,
+        tags=task_data.tags,
+        metadata_json=task_data.metadata,
+        created_at=task_data.created_at or datetime.now(timezone.utc),
+    )
+
+
+@acquisition_task_api.get("/acquisition-tasks")
+async def list_tasks(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
+    block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
+    roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
+    kind: str | None = Query(None, description="Filter by task kind (montage, lens_correction)"),
+    media_id: str | None = Query(None, description="Filter by media ID (substrate)"),
+    task_group_id: uuid.UUID | None = Query(None, description="Filter by task group; results ordered by tilt angle"),
+    current_only: bool = Query(True, description="Filter out superseded tasks"),
+    skip_destroyed: bool = Query(True, description="Filter out tasks whose ROI section is destroyed"),
+    skip_completed: bool = Query(True, description="Filter out tasks with QC-pending or QC-passed runs"),
+    imageable: bool = Query(False, description="Only tasks that can be imaged right now"),
+    loaded_media_id: list[str] | None = Query(
+        None,
+        description="Substrates physically loaded in the scope; restricts imageable montage tasks",
+    ),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """List acquisition tasks."""
+    statement = (
+        select(
+            AcquisitionTaskSQLModel,
+            SpecimenSQLModel.id,
+            BlockSQLModel.id,
+            ROISQLModel.id,
+        )
+        .select_from(AcquisitionTaskSQLModel)
+        .outerjoin(
+            SpecimenSQLModel,
+            SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
+        )
+        .outerjoin(
+            BlockSQLModel,
+            and_(
+                BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
+                BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
+            ),
+        )
+        .outerjoin(
+            ROISQLModel,
+            ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id,
+        )
+    )
+    filters = []
+    if kind:
+        filters.append(AcquisitionTaskSQLModel.kind == kind)
+    if specimen_id:
+        filters.append(AcquisitionTaskSQLModel.specimen_id == specimen_id)
+    if block_id:
+        filters.append(AcquisitionTaskSQLModel.block_id == block_id)
+    if roi_id:
+        filters.append(AcquisitionTaskSQLModel.roi_id == roi_id)
+    if media_id:
+        filters.append(ROISQLModel.substrate_media_id == media_id)
+    if task_group_id is not None:
+        filters.append(AcquisitionTaskSQLModel.task_group_id == task_group_id)
+        statement = statement.order_by(AcquisitionTaskSQLModel.tilt_angle_deg)
+    if current_only or imageable:
+        filters.append(AcquisitionTaskSQLModel.superseded_by.is_(None))
+    if skip_destroyed or imageable:
+        statement = statement.outerjoin(
+            SectionSQLModel,
+            SectionSQLModel.section_id == ROISQLModel.section_id,
+        )
+        filters.append(SectionSQLModel.condition.is_distinct_from("destroyed"))
+    if skip_completed:
+        completed_subq = (
+            select(AcquisitionSQLModel.acquisition_task_id)
+            .where(
+                AcquisitionSQLModel.status == "complete",
+                AcquisitionSQLModel.qc_state.in_(["pending", "qc_pass"]),
+            )
+            .scalar_subquery()
+        )
+        filters.append(AcquisitionTaskSQLModel.task_id.not_in(completed_subq))
+    if imageable:
+        blocking_run = exists(
+            select(AcquisitionSQLModel.id).where(
+                AcquisitionSQLModel.acquisition_task_id == AcquisitionTaskSQLModel.task_id,
+                or_(
+                    AcquisitionSQLModel.end_time.is_(None),
+                    and_(
+                        AcquisitionSQLModel.status == "complete",
+                        AcquisitionSQLModel.qc_state.in_(["pending", "qc_pass", "needs_review"]),
+                    ),
+                ),
+            )
+        )
+        filters.append(~blocking_run)
+        if loaded_media_id:
+            filters.append(
+                or_(
+                    AcquisitionTaskSQLModel.kind == "lens_correction",
+                    ROISQLModel.substrate_media_id.in_(loaded_media_id),
+                )
+            )
+    if filters:
+        statement = statement.where(and_(*filters))
+
+    rows = (await session.execute(statement.offset(skip).limit(limit))).all()
+    if not rows:
+        return []
+    runs_map = await _runs_by_task(session, [task.task_id for task, _, _, _ in rows])
+    return [
+        _task_payload(task, derive_task_state(runs_map[task.task_id]), specimen_ref, block_ref, roi_ref)
+        for task, specimen_ref, block_ref, roi_ref in rows
+    ]
+
+
+@acquisition_task_api.post("/acquisition-tasks", status_code=status.HTTP_201_CREATED)
+async def create_task(
+    task_data: AcquisitionTaskCreate,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Create a new acquisition task (a plan; its state derives from runs)."""
+    specimen_ref, block_ref, roi_ref = await _validate_lineage(session, task_data)
     existing = await session.exec(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
     )
     if existing.one_or_none() is not None:
         raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
-    new_task = AcquisitionTaskSQLModel(
-        task_id=task_data.task_id,
-        specimen_id=task_data.specimen_id,
-        block_id=task_data.block_id,
-        roi_id=task_data.roi_id,
-        tags=task_data.tags,
-        metadata_json=task_data.metadata,
-        task_type=task_data.task_type,
-        version=task_data.version,
-        status=task_data.status.value,
-        error_message=task_data.error_message,
-        started_at=task_data.started_at,
-        completed_at=task_data.completed_at,
-        created_at=datetime.now(timezone.utc),
-    )
+    new_task = _task_from_create(task_data)
     session.add(new_task)
     await session.commit()
     await session.refresh(new_task)
-    return _task_payload(new_task, specimen_obj.id, block_obj.id, roi_obj.id)
+    return _task_payload(new_task, derive_task_state([]), specimen_ref, block_ref, roi_ref)
 
 
 @acquisition_task_api.get("/acquisition-tasks/{task_id}")
 async def get_task(
     task_id: str,
-    version: int | None = None,
     session: AsyncSession = Depends(get_async_session),
 ):
     statement = (
@@ -221,16 +312,16 @@ async def get_task(
         .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
         .where(AcquisitionTaskSQLModel.task_id == task_id)
     )
-    if version is not None:
-        statement = statement.where(AcquisitionTaskSQLModel.version == version)
-    else:
-        statement = statement.order_by(AcquisitionTaskSQLModel.version.desc())
     row = (await session.execute(statement)).first()
     if row is None:
-        detail = f"Acquisition task ID '{task_id}'" + (f" version {version}" if version else "") + " not found."
-        raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=404, detail=f"Acquisition task ID '{task_id}' not found.")
     task, specimen_ref, block_ref, roi_ref = row
-    return _task_payload(task, specimen_ref, block_ref, roi_ref)
+    runs = (
+        (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)))
+        .scalars()
+        .all()
+    )
+    return _task_payload(task, derive_task_state(list(runs)), specimen_ref, block_ref, roi_ref)
 
 
 @acquisition_task_api.patch("/acquisition-tasks/{task_id}")
@@ -261,7 +352,6 @@ async def update_task(
             )
             .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
             .where(AcquisitionTaskSQLModel.task_id == task_id)
-            .order_by(AcquisitionTaskSQLModel.version.desc())
         )
     ).first()
     if row is None:
@@ -277,8 +367,6 @@ async def update_task(
                 task_obj.metadata_json = value
                 changed = True
             continue
-        if field == "status":
-            value = value if isinstance(value, str) else value.value
         if hasattr(task_obj, field) and getattr(task_obj, field) != value:
             setattr(task_obj, field, value)
             changed = True
@@ -287,7 +375,12 @@ async def update_task(
         session.add(task_obj)
         await session.commit()
         await session.refresh(task_obj)
-    return _task_payload(task_obj, specimen_ref, block_ref, roi_ref)
+    runs = (
+        (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)))
+        .scalars()
+        .all()
+    )
+    return _task_payload(task_obj, derive_task_state(list(runs)), specimen_ref, block_ref, roi_ref)
 
 
 @acquisition_task_api.delete("/acquisition-tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -337,59 +430,53 @@ async def get_task_acquisitions(
     return [acq.model_dump() for acq in acquisitions[skip : skip + limit]]
 
 
-@acquisition_task_api.post("/acquisition-tasks/{task_id}/status")
-async def update_task_status(
+@acquisition_task_api.post("/acquisition-tasks/{task_id}/supersede", status_code=status.HTTP_201_CREATED)
+async def supersede_task(
     task_id: str,
-    status: AcquisitionTaskStatus = Body(..., embed=True),
+    task_data: AcquisitionTaskCreate,
     session: AsyncSession = Depends(get_async_session),
 ):
-    row = (
-        await session.execute(
-            select(
-                AcquisitionTaskSQLModel,
-                SpecimenSQLModel.id,
-                BlockSQLModel.id,
-                ROISQLModel.id,
-            )
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                    BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-                ),
-            )
-            .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
-            .order_by(AcquisitionTaskSQLModel.version.desc())
-        )
-    ).first()
-    if row is None:
+    """Replace a task with a corrected plan in a single transaction.
+
+    The old task gets superseded_by = new task_id; existing runs keep pointing
+    at the old task_id (uq(task_id) survives — the FK is unaffected).
+    """
+    old_task = (
+        await session.exec(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    ).one_or_none()
+    if old_task is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-
-    task_obj, specimen_ref, block_ref, roi_ref = row
-    if task_obj.status != status.value:
-        task_obj.status = status.value
-        task_obj.updated_at = datetime.now(timezone.utc)
-        session.add(task_obj)
-        await session.commit()
-        await session.refresh(task_obj)
-
-    return _task_payload(task_obj, specimen_ref, block_ref, roi_ref)
+    if old_task.superseded_by is not None:
+        raise HTTPException(409, f"Task '{task_id}' is already superseded by '{old_task.superseded_by}'")
+    existing = await session.exec(
+        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
+    )
+    if existing.one_or_none() is not None:
+        raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
+    specimen_ref, block_ref, roi_ref = await _validate_lineage(session, task_data)
+    new_task = _task_from_create(task_data)
+    session.add(new_task)
+    await session.flush()
+    old_task.superseded_by = task_data.task_id
+    old_task.updated_at = datetime.now(timezone.utc)
+    session.add(old_task)
+    await session.commit()
+    await session.refresh(new_task)
+    return _task_payload(new_task, derive_task_state([]), specimen_ref, block_ref, roi_ref)
 
 
 @acquisition_task_api.post("/acquisition-tasks/batch", status_code=status.HTTP_201_CREATED)
 async def create_tasks_batch(
-    tasks: list[AcquisitionTaskCreate],
+    tasks: list[AcquisitionTaskCreate] = Body(...),
+    group: bool = Body(False),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Create multiple acquisition tasks with sequential validation and creation."""
+    """Create multiple acquisition tasks in a single transaction.
+
+    With group=true the server mints one task_group_id and stamps it on every
+    task in the batch (tilt-series contract, spec §13).
+    """
     processed_ids: set[str] = set()
-    created_ids: list[int] = []
     for task_data in tasks:
         if task_data.task_id in processed_ids:
             raise HTTPException(400, f"Duplicate task ID '{task_data.task_id}' in batch.")
@@ -400,56 +487,17 @@ async def create_tasks_batch(
         if existing.one_or_none() is not None:
             raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists.")
 
+    group_id = uuid7() if group else None
+    new_tasks = []
     for task_data in tasks:
-        validation_row = (
-            await session.execute(
-                select(
-                    SpecimenSQLModel,
-                    BlockSQLModel,
-                    ROISQLModel,
-                )
-                .select_from(SpecimenSQLModel)
-                .outerjoin(
-                    BlockSQLModel,
-                    and_(
-                        BlockSQLModel.specimen_id == SpecimenSQLModel.specimen_id,
-                        BlockSQLModel.block_id == task_data.block_id,
-                    ),
-                )
-                .outerjoin(ROISQLModel, ROISQLModel.roi_id == task_data.roi_id)
-                .where(SpecimenSQLModel.specimen_id == task_data.specimen_id)
-            )
-        ).first()
-        specimen_obj = validation_row[0] if validation_row else None
-        if specimen_obj is None:
-            raise HTTPException(404, f"Specimen '{task_data.specimen_id}' not found for task '{task_data.task_id}'")
-        block_obj = validation_row[1]
-        if block_obj is None:
-            raise HTTPException(404, f"Block '{task_data.block_id}' not found for task '{task_data.task_id}'")
-        roi_obj = validation_row[2]
-        if roi_obj is None:
-            raise HTTPException(404, f"ROI '{task_data.roi_id}' not found for task '{task_data.task_id}'")
-        if roi_obj.block_id != block_obj.block_id or roi_obj.specimen_id != specimen_obj.specimen_id:
-            raise HTTPException(
-                400,
-                f"ROI '{roi_obj.roi_id}' does not match block/specimen for task '{task_data.task_id}'",
-            )
-        new_task = AcquisitionTaskSQLModel(
-            task_id=task_data.task_id,
-            specimen_id=task_data.specimen_id,
-            block_id=task_data.block_id,
-            roi_id=task_data.roi_id,
-            task_type=task_data.task_type,
-            version=task_data.version,
-            status=task_data.status.value,
-            tags=task_data.tags,
-            metadata_json=task_data.metadata,
-            created_at=datetime.now(timezone.utc),
-        )
+        await _validate_lineage(session, task_data)
+        new_task = _task_from_create(task_data, task_group_id=group_id)
         session.add(new_task)
-        await session.commit()  # preserve partial-success semantics
+        new_tasks.append(new_task)
+    await session.commit()
+    for new_task in new_tasks:
         await session.refresh(new_task)
-        created_ids.append(new_task.id)
+    created_ids = [new_task.id for new_task in new_tasks]
 
     created_rows = (
         await session.execute(
@@ -476,7 +524,7 @@ async def create_tasks_batch(
         )
     ).all()
     created_map = {
-        task.id: _task_payload(task, specimen_ref, block_ref, roi_ref)
+        task.id: _task_payload(task, derive_task_state([]), specimen_ref, block_ref, roi_ref)
         for task, specimen_ref, block_ref, roi_ref in created_rows
     }
-    return [created_map[task_id] for task_id in created_ids if task_id in created_map]
+    return [created_map[internal_id] for internal_id in created_ids if internal_id in created_map]

@@ -24,9 +24,27 @@ Specimen
 - **Cutting Session** - Session where blocks are sectioned
 - **Section** - Thin slice placed on a substrate (grid or support film)
 - **ROI** - Region within section(s) targeted for imaging
-- **Acquisition Task** - Planned imaging task with parameters
-- **Acquisition** - Completed imaging run
+- **Acquisition Task** - Pure imaging plan (no status; replanning supersedes via `superseded_by`)
+- **Acquisition** - Imaging run (in-flight or terminal, see status axes below)
 - **Tile** - Individual image in the acquisition montage
+
+Cross-cutting entities: **Dataset** (groups tasks/acquisitions/tiles and drives tile partitioning; may nest via `parent_dataset_id`), **Microscope** (instrument registry referenced by acquisitions), and **Lens Correction** (optical distortion correction referenced by montage runs).
+
+ERDs are generated from the SQLAlchemy models by `uv run python generate_schema_diagram.py` — see `docs/schema_erd.md`.
+
+### Acquisition Status Axes
+
+Acquisitions carry three orthogonal status axes instead of a single lifecycle enum:
+
+- `status` - terminal run outcome: `complete` / `aborted` / `failed`. `NULL` means in-flight. Write-once: once set it cannot change.
+- `qc_state` - QC review axis: `pending` / `qc_pass` / `qc_fail` / `needs_review`.
+- `transfer_state` - data transfer axis: `not_started` / `in_progress` / `complete` / `error`.
+
+`qc_state` and `transfer_state` changes are stamped with `*_updated_at` / `*_updated_by`. For migrating consumers (PyTEM, roi-sandbox-v2) from the old `AcquisitionStatus` enum, see the mapping table in `docs/superpowers/plans/2026-06-10-pg18-unified-adoption/00-overview.md`.
+
+### Lens Corrections
+
+Lens-correction transforms live on the `lens_corrections` table (`shared_transform` JSONB plus `correction_x_uri` / `correction_y_uri` for the per-axis correction fields). Montage runs reference one via `acquisitions.lc_id`. Do not stuff LC data into `calibration_info` — that field is for run-time calibration snapshots only.
 
 ## Packages
 
@@ -39,23 +57,20 @@ Shared Pydantic models defining the API schema. Provides:
 - `*Response` - API response models
 
 ```python
-from temdb.models import SpecimenCreate, TileCreate, AcquisitionStatus
+from temdb.models import SpecimenCreate, TileCreate, AcquisitionCreate
 ```
 
 ### temdb-client (`packages/temdb-client/`)
 
-Python SDK with async and sync clients for the TEMdb API.
+Python SDK with an async client for the TEMdb API.
 
 ```python
-from temdb.client import AsyncTEMdbClient, SyncTEMdbClient
+from temdb.client import AsyncTEMdbClient
 from temdb.models import TileCreate
 
 async with AsyncTEMdbClient("https://temdb.example.com") as client:
     specimens = await client.specimen.list()
     await client.acquisition.add_tiles_bulk("ACQ001", [TileCreate(...)])
-
-with SyncTEMdbClient("https://temdb.example.com") as client:
-    specimens = client.specimen.list()
 ```
 
 ### temdb (`packages/temdb/`)
@@ -94,10 +109,23 @@ Pre-commit hooks run automatically on `git commit`:
 
 Run manually: `uv run pre-commit run --all-files`
 
+### Migrations
+
+The schema is managed by Alembic (`packages/temdb/migrations/`).
+
+- **Fresh deploy**: `alembic upgrade head` creates the full schema. This runs automatically — `start.sh` invokes it before launching the server, and docker-compose runs it via the one-shot `migrate` service.
+- **Local reset**: `docker compose down -v && docker compose up --build`. A pre-Alembic database volume has no `alembic_version` table and must be dropped — Alembic cannot adopt it.
+- **Models == migrations** is enforced by `tests/server/test_migrations_apply.py::test_models_match_migrations`, which runs `alembic check` against a migrated database. If you change a model, add a migration or the suite fails.
+
+```bash
+# Run migrations manually against a configured database
+uv run alembic -c packages/temdb/alembic.ini upgrade head
+```
+
 ### Docker
 
 ```bash
-# Start PostgreSQL + server
+# Start PostgreSQL + run migrations + start server
 docker-compose up
 
 # API: http://localhost:8000
@@ -124,3 +152,13 @@ client   server
 ```
 
 The server does not depend on the client. Both import from `temdb-models`.
+
+## API Contracts
+
+### Natural keys are immutable
+
+Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable once children reference them. Renames are rejected by the `ON UPDATE NO ACTION` foreign keys — this is by design, not a bug. If an id is wrong, create a new entity via the CRUD endpoints rather than renaming an existing one.
+
+### All writers go through the API
+
+Services must not write to Postgres directly — this includes tilem-ingest when it deploys against TEMdb. `updated_at` and the status-axis stamp columns (`qc_state_updated_at` / `qc_state_updated_by`, `transfer_state_updated_at` / `transfer_state_updated_by`) are maintained by the ORM, not by database triggers. Any future direct-SQL writer must set them explicitly or they will silently go stale.

@@ -1,32 +1,38 @@
-from datetime import datetime, timezone
+import uuid
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, String
+from sqlalchemy import ForeignKey, ForeignKeyConstraint, Identity, Index, String, Uuid, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, ModelDumpMixin
+from .base import Base, ModelDumpMixin, TimestampMixin
 
 
-class ROISQLModel(ModelDumpMixin, Base):
+class ROISQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "rois"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    roi_id: Mapped[str] = mapped_column(String, index=True, unique=True)
-    roi_number: Mapped[int] = mapped_column(index=True)
-    section_id: Mapped[str] = mapped_column(String, index=True)
-    block_id: Mapped[str] = mapped_column(String, index=True)
-    specimen_id: Mapped[str] = mapped_column(String, index=True)
-    substrate_media_id: Mapped[str] = mapped_column(String, index=True)
-    hierarchy_level: Mapped[int] = mapped_column(index=True)
-    parent_roi_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
-    section_number: Mapped[int | None] = mapped_column(nullable=True, index=True)
-    roi_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+    __table_args__ = (
+        ForeignKeyConstraint(["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"]),
+        Index("ix_rois_specimen_block", "specimen_id", "block_id"),
+        Index("ix_rois_parent_roi_id_nn", "parent_roi_id", postgresql_where=text("parent_roi_id IS NOT NULL")),
+        Index("ix_rois_dataset_id_nn", "dataset_id", postgresql_where=text("dataset_id IS NOT NULL")),
     )
+
+    id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
+    # unique=True (constraint, not separate index): the self-referential
+    # parent_roi_id FK needs the UNIQUE inside the same CREATE TABLE.
+    roi_id: Mapped[str] = mapped_column(String, unique=True)
+    roi_number: Mapped[int] = mapped_column()
+    section_id: Mapped[str] = mapped_column(ForeignKey("sections.section_id"), index=True)
+    block_id: Mapped[str] = mapped_column(String)
+    specimen_id: Mapped[str] = mapped_column(String)
+    substrate_media_id: Mapped[str] = mapped_column(ForeignKey("substrates.media_id"), index=True)
+    hierarchy_level: Mapped[int] = mapped_column()
+    parent_roi_id: Mapped[str | None] = mapped_column(ForeignKey("rois.roi_id"), nullable=True)
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("datasets.dataset_id"), nullable=True
+    )
+    section_number: Mapped[int | None] = mapped_column(nullable=True)
+    roi_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     @classmethod
     def generate_roi_id(

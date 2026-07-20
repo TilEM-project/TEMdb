@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
-from .enums import SectionQuality
+from .enums import SECTION_CONDITIONS, SectionQuality
 from .utils.uri import URI
 
 
@@ -87,7 +87,6 @@ class SectionBase(BaseModel):
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
-    destroyed: bool = Field(False, description="Denotes if the section has been destroyed.")
 
 
 class SectionCreate(SectionBase):
@@ -99,12 +98,30 @@ class SectionCreate(SectionBase):
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
     section_number: int = Field(..., gt=0, description="Sequential section number")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class SectionUpdate(SectionBase):
     """Schema for updating a section."""
 
-    pass
+    model_config = ConfigDict(extra="forbid")
+
+    condition: str | None = Field(None, description="Physical condition of the section")
+    condition_reason: str | None = Field(None, description="Reason for the current condition")
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_destroyed(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "destroyed" in data:
+            raise ValueError("`destroyed` is read-only; set condition='destroyed' instead")
+        return data
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, value: str | None) -> str | None:
+        if value is not None and value not in SECTION_CONDITIONS:
+            raise ValueError(f"condition must be one of {SECTION_CONDITIONS}")
+        return value
 
 
 class SectionResponse(SectionBase):
@@ -116,6 +133,20 @@ class SectionResponse(SectionBase):
     block_id: str = Field(..., description="ID of the block")
     specimen_id: str = Field(..., description="ID of the specimen")
     media_id: str = Field(..., description="ID of the substrate")
+    condition: str = Field("ok", description="Physical condition of the section")
+    condition_reason: str | None = Field(None, description="Reason for the current condition")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_wire_destroyed(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "destroyed" in data:
+            data = {key: value for key, value in data.items() if key != "destroyed"}
+        return data
+
+    @computed_field(description="Deprecated: derived from condition == 'destroyed'")
+    @property
+    def destroyed(self) -> bool:
+        return self.condition == "destroyed"

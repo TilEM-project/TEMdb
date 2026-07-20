@@ -9,6 +9,9 @@ from temdb.server.sqlmodels import (
     Base,
     BlockSQLModel,
     CuttingSessionSQLModel,
+    DatasetSQLModel,
+    LensCorrectionSQLModel,
+    MicroscopeSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
@@ -45,6 +48,7 @@ class DatabaseManager:
         # Ensure metadata for ORM entities is registered.
         self._sql_models = (
             SpecimenSQLModel,
+            DatasetSQLModel,
             BlockSQLModel,
             CuttingSessionSQLModel,
             SubstrateSQLModel,
@@ -53,9 +57,12 @@ class DatabaseManager:
             AcquisitionTaskSQLModel,
             AcquisitionSQLModel,
             TileSQLModel,
+            MicroscopeSQLModel,
+            LensCorrectionSQLModel,
         )
 
-    async def initialize(self):
-        if self.sql_engine is not None:
+    async def initialize(self, create_schema: bool = False):
+        """Schema is owned by Alembic in deployments; create_schema=True is for tests."""
+        if create_schema and self.sql_engine is not None:
             async with self.sql_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
