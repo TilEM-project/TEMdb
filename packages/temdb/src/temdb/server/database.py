@@ -1,7 +1,6 @@
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.sql import Select
 
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
@@ -23,12 +22,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class TEMDBAsyncSession(AsyncSession):
-    async def exec(self, statement: Select, *args, **kwargs):
-        result = await self.execute(statement, *args, **kwargs)
-        return result.scalars()
-
-
 class DatabaseManager:
     """Manages SQLAlchemy database connections and schema initialization."""
 
@@ -38,10 +31,21 @@ class DatabaseManager:
     ):
         self.database_url = database_url
         self.sql_engine: AsyncEngine | None = (
-            create_async_engine(database_url, echo=False, pool_pre_ping=True) if database_url else None
+            create_async_engine(
+                database_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_recycle=1800,  # bound connection age; pre_ping alone doesn't (see async best-practices research)
+                connect_args={
+                    "server_settings": {"application_name": "temdb"},  # attributable pg_stat_activity / slow-query logs
+                    "command_timeout": 30,  # backstop against a hung query pinning a pool slot
+                },
+            )
+            if database_url
+            else None
         )
-        self.async_session_factory: async_sessionmaker[TEMDBAsyncSession] | None = (
-            async_sessionmaker(bind=self.sql_engine, class_=TEMDBAsyncSession, expire_on_commit=False)
+        self.async_session_factory: async_sessionmaker[AsyncSession] | None = (
+            async_sessionmaker(bind=self.sql_engine, expire_on_commit=False)
             if self.sql_engine
             else None
         )
@@ -66,3 +70,8 @@ class DatabaseManager:
         if create_schema and self.sql_engine is not None:
             async with self.sql_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+
+    async def dispose(self):
+        """Dispose the engine and its connection pool (call on app shutdown)."""
+        if self.sql_engine is not None:
+            await self.sql_engine.dispose()

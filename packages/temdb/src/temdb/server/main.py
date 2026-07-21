@@ -113,7 +113,10 @@ async def lifespan(app: FastAPI):
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     await db_manager.initialize()
-    yield
+    try:
+        yield
+    finally:
+        await db_manager.dispose()
 
 
 def create_app():
