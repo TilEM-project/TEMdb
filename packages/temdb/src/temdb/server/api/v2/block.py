@@ -82,7 +82,7 @@ async def create_block(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new block associated with a specimen."""
-    specimen = await session.exec(
+    specimen = await session.scalars(
         select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == block_data.specimen_id)
     )
     specimen_obj = specimen.one_or_none()
@@ -91,7 +91,7 @@ async def create_block(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{block_data.specimen_id}' not found",
         )
-    existing_block = await session.exec(
+    existing_block = await session.scalars(
         select(BlockSQLModel).where(
             BlockSQLModel.block_id == block_data.block_id,
             BlockSQLModel.specimen_id == block_data.specimen_id,
@@ -179,7 +179,7 @@ async def delete_block(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a specific block."""
-    block = await session.exec(
+    block = await session.scalars(
         select(BlockSQLModel).where(BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id)
     )
     block_obj = block.one_or_none()
@@ -189,7 +189,7 @@ async def delete_block(
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
     session_count = (
-        await session.exec(
+        await session.scalars(
             select(func.count())
             .select_from(CuttingSessionSQLModel)
             .where(

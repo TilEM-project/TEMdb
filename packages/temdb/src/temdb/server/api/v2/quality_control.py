@@ -102,7 +102,7 @@ async def get_acquisition_focus_scores(
     """
     logger.info(f"Fetching focus scores for acquisition_id: {acquisition_id}")
 
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -116,7 +116,7 @@ async def get_acquisition_focus_scores(
         tiles = []
     else:
         tiles = (
-            await session.exec(
+            await session.scalars(
                 select(TileSQLModel)
                 .where(
                     TileSQLModel.dataset_id == acq_obj.dataset_id,

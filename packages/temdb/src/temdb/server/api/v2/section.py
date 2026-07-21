@@ -44,7 +44,7 @@ async def list_sections(
         statement = statement.where(SectionSQLModel.cutting_session_id == cutting_session_id)
     if media_id:
         statement = statement.where(SectionSQLModel.media_id == media_id)
-    sections = (await session.exec(statement.offset(skip).limit(limit))).all()
+    sections = (await session.scalars(statement.offset(skip).limit(limit))).all()
     if quality:
         sections = [
             section
@@ -77,7 +77,7 @@ async def count_sections(
         conditions.append(SectionSQLModel.section_metrics["quality"].as_string() == quality.value)
     if conditions:
         statement = statement.where(and_(*conditions))
-    return (await session.exec(statement)).one()
+    return (await session.scalars(statement)).one()
 
 
 @section_api.get("/sections/sessions/{cutting_session_id}", response_model=list[SectionResponse])
@@ -114,7 +114,7 @@ async def list_block_sections(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific block using its human-readable ID."""
-    sections = await session.exec(
+    sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.block_id == block_id)
         .order_by(SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
@@ -132,7 +132,7 @@ async def list_specimen_sections(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific specimen using its human-readable ID."""
-    sections = await session.exec(
+    sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.specimen_id == specimen_id)
         .order_by(SectionSQLModel.block_id, SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
@@ -273,7 +273,7 @@ async def create_sections_batch(
         session_id = section_create.cutting_session_id
         media_id = section_create.media_id
         if session_id not in session_cache:
-            session_result = await session.exec(
+            session_result = await session.scalars(
                 select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == session_id)
             )
             cut_session = session_result.one_or_none()
@@ -286,7 +286,7 @@ async def create_sections_batch(
         cut_session = session_cache[session_id]
 
         if media_id not in substrate_cache:
-            substrate_result = await session.exec(
+            substrate_result = await session.scalars(
                 select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id)
             )
             substrate = substrate_result.one_or_none()
@@ -342,7 +342,7 @@ async def update_section(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific section."""
-    section = await session.exec(
+    section = await session.scalars(
         select(SectionSQLModel).where(
             SectionSQLModel.section_id == section_id,
             SectionSQLModel.cutting_session_id == cutting_session_id,
@@ -419,7 +419,7 @@ async def list_sections_by_media(
     statement = select(SectionSQLModel).where(SectionSQLModel.media_id == media_id)
     if relative_position is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_position is not supported")
-    sections = await session.exec(statement.offset(skip).limit(limit))
+    sections = await session.scalars(statement.offset(skip).limit(limit))
     return sections.all()
 
 
@@ -431,7 +431,7 @@ async def get_sections_by_barcode(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections by barcode."""
-    sections = await session.exec(
+    sections = await session.scalars(
         select(SectionSQLModel).where(SectionSQLModel.barcode == barcode).offset(skip).limit(limit)
     )
     return sections.all()

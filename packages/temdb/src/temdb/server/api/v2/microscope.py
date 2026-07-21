@@ -19,7 +19,7 @@ async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQL
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid microscope_id '{microscope_id}'")
     scope = (
-        await session.exec(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == key))
+        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == key))
     ).one_or_none()
     if scope is None:
         raise HTTPException(status_code=404, detail=f"Microscope '{microscope_id}' not found")
@@ -29,7 +29,7 @@ async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQL
 @microscope_api.post("/microscopes", status_code=status.HTTP_201_CREATED, response_model=MicroscopeResponse)
 async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (
-        await session.exec(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == data.label))
+        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == data.label))
     ).one_or_none()
     if existing is not None:
         raise HTTPException(status_code=409, detail=f"Microscope label '{data.label}' already exists")
@@ -55,7 +55,7 @@ async def list_microscopes(
     session: AsyncSession = Depends(get_async_session),
 ):
     rows = (
-        await session.exec(select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.label).offset(skip).limit(limit))
+        await session.scalars(select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.label).offset(skip).limit(limit))
     ).all()
     return rows
 
@@ -66,7 +66,7 @@ async def get_microscope(id_or_label: str, session: AsyncSession = Depends(get_a
         key = uuid.UUID(id_or_label)
     except ValueError:
         scope = (
-            await session.exec(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == id_or_label))
+            await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == id_or_label))
         ).one_or_none()
         if scope is None:
             raise HTTPException(status_code=404, detail=f"Microscope '{id_or_label}' not found")

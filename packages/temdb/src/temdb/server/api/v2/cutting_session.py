@@ -30,7 +30,7 @@ async def list_cutting_sessions(
         statement = statement.where(CuttingSessionSQLModel.block_id == block_id)
     if operator:
         statement = statement.where(CuttingSessionSQLModel.operator == operator)
-    sessions = (await session.exec(statement.offset(skip).limit(limit))).all()
+    sessions = (await session.scalars(statement.offset(skip).limit(limit))).all()
     return sessions
 
 
@@ -47,7 +47,7 @@ async def get_cutting_session_sections(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific cutting session."""
-    cutting_session = await session.exec(
+    cutting_session = await session.scalars(
         select(CuttingSessionSQLModel).where(
             CuttingSessionSQLModel.cutting_session_id == cutting_session_id,
             CuttingSessionSQLModel.block_id == block_id,
@@ -60,7 +60,7 @@ async def get_cutting_session_sections(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session '{cutting_session_id}' not found or does not match specimen/block.",
         )
-    sections = await session.exec(
+    sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.cutting_session_id == cutting_session_id)
         .offset(skip)
@@ -79,7 +79,7 @@ async def create_cutting_session(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new cutting session."""
-    existing = await session.exec(
+    existing = await session.scalars(
         select(CuttingSessionSQLModel).where(
             CuttingSessionSQLModel.cutting_session_id == session_data.cutting_session_id
         )
@@ -150,7 +150,7 @@ async def update_cutting_session(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific cutting session."""
-    cutting_session = await session.exec(
+    cutting_session = await session.scalars(
         select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
     )
     cutting_session_obj = cutting_session.one_or_none()
@@ -177,7 +177,7 @@ async def delete_cutting_session(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a specific cutting session."""
-    cutting_session = await session.exec(
+    cutting_session = await session.scalars(
         select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
     )
     cutting_session_obj = cutting_session.one_or_none()
@@ -186,7 +186,7 @@ async def delete_cutting_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{cutting_session_id}' not found",
         )
-    sections = await session.exec(
+    sections = await session.scalars(
         select(SectionSQLModel).where(SectionSQLModel.cutting_session_id == cutting_session_id)
     )
     if sections.first() is not None:

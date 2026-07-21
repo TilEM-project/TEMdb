@@ -19,7 +19,7 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
         key = uuid.UUID(dataset_id)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid dataset_id '{dataset_id}'")
-    ds = (await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == key))).one_or_none()
+    ds = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == key))).one_or_none()
     if ds is None:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
     return ds
@@ -27,12 +27,12 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
 
 @dataset_api.post("/datasets", status_code=status.HTTP_201_CREATED, response_model=DatasetResponse)
 async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(get_async_session)):
-    existing = (await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
+    existing = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
     if existing is not None:
         raise HTTPException(status_code=400, detail=f"Dataset name '{data.name}' already exists")
     if data.parent_dataset_id is not None:
         parent = (
-            await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == data.parent_dataset_id))
+            await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == data.parent_dataset_id))
         ).one_or_none()
         if parent is None:
             raise HTTPException(status_code=404, detail=f"Parent dataset '{data.parent_dataset_id}' not found")
@@ -80,13 +80,13 @@ async def list_datasets(
         stmt = stmt.where(DatasetSQLModel.status == status_filter)
     if parent_dataset_id is not None:
         stmt = stmt.where(DatasetSQLModel.parent_dataset_id == parent_dataset_id)
-    rows = (await session.exec(stmt.order_by(DatasetSQLModel.created_at).offset(skip).limit(limit))).all()
+    rows = (await session.scalars(stmt.order_by(DatasetSQLModel.created_at).offset(skip).limit(limit))).all()
     return rows
 
 
 @dataset_api.get("/datasets/by-name/{name}", response_model=DatasetResponse)
 async def get_dataset_by_name(name: str, session: AsyncSession = Depends(get_async_session)):
-    ds = (await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.name == name))).one_or_none()
+    ds = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == name))).one_or_none()
     if ds is None:
         raise HTTPException(status_code=404, detail=f"Dataset name '{name}' not found")
     return ds
@@ -101,7 +101,7 @@ async def get_dataset(dataset_id: str, session: AsyncSession = Depends(get_async
 async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends(get_async_session)):
     parent = await _get_by_id(session, dataset_id)
     rows = (
-        await session.exec(
+        await session.scalars(
             select(DatasetSQLModel)
             .where(DatasetSQLModel.parent_dataset_id == parent.dataset_id)
             .order_by(DatasetSQLModel.created_at)

@@ -275,18 +275,18 @@ async def create_acquisition(
             422,
             "roi_id is required for kind='montage' acquisitions; only lens_correction runs may omit lineage.",
         )
-    existing = await session.exec(
+    existing = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
     )
     if existing.first() is not None:
         raise HTTPException(400, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
-    microscope = await session.exec(
+    microscope = await session.scalars(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )
     if microscope.first() is None:
         raise HTTPException(404, f"Microscope '{acq_data.microscope_id}' not found.")
     if acq_data.lc_id is not None:
-        lens_correction = await session.exec(
+        lens_correction = await session.scalars(
             select(LensCorrectionSQLModel).where(LensCorrectionSQLModel.lc_id == acq_data.lc_id)
         )
         if lens_correction.first() is None:
@@ -307,7 +307,7 @@ async def create_acquisition(
     task_obj, _specimen_ref = task_row
     roi_obj = None
     if acq_data.roi_id is not None:
-        roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
+        roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
         roi_obj = roi.first()
         if roi_obj is None:
             raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
@@ -323,7 +323,7 @@ async def create_acquisition(
         )
     replacement_id = None
     if acq_data.replaces_acquisition_id:
-        replacement = await session.exec(
+        replacement = await session.scalars(
             select(AcquisitionSQLModel).where(
                 AcquisitionSQLModel.acquisition_id == str(acq_data.replaces_acquisition_id)
             )
@@ -500,7 +500,7 @@ async def delete_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a specific acquisition."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -509,7 +509,7 @@ async def delete_acquisition(
     tile_count = 0
     if acq_obj.dataset_id is not None:
         tile_count = (
-            await session.exec(
+            await session.scalars(
                 select(func.count())
                 .select_from(TileSQLModel)
                 .where(
@@ -530,7 +530,7 @@ async def delete_acquisition(
 
 async def _ensure_leaf_dataset(session: AsyncSession, dataset_id: uuid.UUID) -> None:
     has_children = (
-        await session.exec(
+        await session.scalars(
             select(DatasetSQLModel.dataset_id).where(DatasetSQLModel.parent_dataset_id == dataset_id).limit(1)
         )
     ).first()
@@ -549,7 +549,7 @@ async def add_tile_to_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Add a single tile to an acquisition."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -647,7 +647,7 @@ async def get_tiles_from_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve tiles associated with a specific acquisition."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -663,7 +663,7 @@ async def get_tiles_from_acquisition(
         if cursor is not None:
             query = query.where(TileSQLModel.raster_index > cursor)
         query = query.order_by(TileSQLModel.raster_index).limit(limit + 1)
-        rows = (await session.exec(query)).all()
+        rows = (await session.scalars(query)).all()
     has_more = len(rows) > limit
     tiles = rows[:limit]
     payloads = [_tile_payload(tile, acq_obj.acquisition_id, acq_obj.id) for tile in tiles]
@@ -703,14 +703,14 @@ async def get_tile_from_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve a specific tile by its tile_id (UUID), verifying acquisition parent."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     tile_key = _tile_uuid_or_404(tile_id)
-    tile = await session.exec(
+    tile = await session.scalars(
         select(TileSQLModel).where(
             TileSQLModel.tile_id == tile_key,
             TileSQLModel.dataset_id == acq_obj.dataset_id,
@@ -793,7 +793,7 @@ async def get_current_storage_location(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Get the current storage location for an acquisition."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -811,7 +811,7 @@ async def get_minimap_uri(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Get the calculated URI for the acquisition's minimap image."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -828,7 +828,7 @@ async def get_tile_count(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Get the total count of tiles associated with an acquisition."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
@@ -837,7 +837,7 @@ async def get_tile_count(
     if acq_obj.dataset_id is None:
         return {"tile_count": 0}
     tile_count = (
-        await session.exec(
+        await session.scalars(
             select(func.count())
             .select_from(TileSQLModel)
             .where(
@@ -859,14 +859,14 @@ async def delete_tile_from_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a specific tile, ensuring it belongs to the specified acquisition."""
-    acquisition = await session.exec(
+    acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     tile_key = _tile_uuid_or_404(tile_id)
-    tile = await session.exec(
+    tile = await session.scalars(
         select(TileSQLModel).where(
             TileSQLModel.tile_id == tile_key,
             TileSQLModel.dataset_id == acq_obj.dataset_id,

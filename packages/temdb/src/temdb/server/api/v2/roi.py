@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 async def _has_children(session: AsyncSession, roi_id: str) -> bool:
     """Whether any ROI references `roi_id` as its parent."""
-    result = await session.exec(select(ROISQLModel.id).where(ROISQLModel.parent_roi_id == roi_id).limit(1))
+    result = await session.scalars(select(ROISQLModel.id).where(ROISQLModel.parent_roi_id == roi_id).limit(1))
     return result.first() is not None
 
 
@@ -35,7 +35,7 @@ async def _parents_with_children(session: AsyncSession, roi_ids: Iterable[str]) 
     candidate_ids = [roi_id for roi_id in roi_ids if roi_id]
     if not candidate_ids:
         return set()
-    result = await session.exec(
+    result = await session.scalars(
         select(ROISQLModel.parent_roi_id).where(ROISQLModel.parent_roi_id.in_(candidate_ids)).distinct()
     )
     return {parent_id for parent_id in result if parent_id is not None}
@@ -66,7 +66,7 @@ async def list_rois(
     if block_id:
         conditions.append(ROISQLModel.block_id == block_id)
     if cutting_session_id:
-        sections = await session.exec(
+        sections = await session.scalars(
             select(SectionSQLModel.section_id).where(SectionSQLModel.cutting_session_id == cutting_session_id)
         )
         section_ids = [item for item in sections]
@@ -77,7 +77,7 @@ async def list_rois(
         conditions.append(ROISQLModel.section_id == section_id)
     if conditions:
         statement = statement.where(and_(*conditions))
-    rois = (await session.exec(statement.offset(skip).limit(limit))).all()
+    rois = (await session.scalars(statement.offset(skip).limit(limit))).all()
     parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in rois))
     return [_to_response(roi, roi.roi_id in parents_with_children) for roi in rois]
 
@@ -85,14 +85,14 @@ async def list_rois(
 @roi_api.post("/rois", response_model=ROIResponse, status_code=status.HTTP_201_CREATED)
 async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_async_session)):
     """Create a new ROI with hierarchical ID generation."""
-    section = await session.exec(select(SectionSQLModel).where(SectionSQLModel.section_id == roi_data.section_id))
+    section = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.section_id == roi_data.section_id))
     section_obj = section.one_or_none()
     if section_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section with ID '{roi_data.section_id}' not found",
         )
-    substrate = await session.exec(
+    substrate = await session.scalars(
         select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == roi_data.substrate_media_id)
     )
     if substrate.one_or_none() is None:
@@ -103,7 +103,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
     parent_roi = None
     hierarchy_level = 1
     if roi_data.parent_roi_id:
-        parent_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_data.parent_roi_id))
+        parent_result = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_data.parent_roi_id))
         parent_roi = parent_result.one_or_none()
         if parent_roi is None:
             raise HTTPException(
@@ -119,7 +119,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         roi_number=roi_data.roi_number,
         parent_roi_id=roi_data.parent_roi_id,
     )
-    existing_roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
+    existing_roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     if existing_roi.one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"ROI with ID '{roi_id}' already exists")
 
@@ -170,7 +170,7 @@ async def create_rois_batch(
     for index, roi_create in enumerate(rois_data):
         section_id = roi_create.section_id
         if section_id not in section_cache:
-            section = await session.exec(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
+            section = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
             section_obj = section.one_or_none()
             if section_obj is None:
                 raise HTTPException(
@@ -180,7 +180,7 @@ async def create_rois_batch(
             section_cache[section_id] = section_obj
         section_obj = section_cache[section_id]
 
-        substrate = await session.exec(
+        substrate = await session.scalars(
             select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == roi_create.substrate_media_id)
         )
         if substrate.one_or_none() is None:
@@ -236,7 +236,7 @@ async def create_rois_batch(
 @roi_api.get("/rois/{roi_id}", response_model=ROIResponse)
 async def get_roi(roi_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific ROI by its human-readable integer ID."""
-    roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
+    roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     roi_obj = roi.one_or_none()
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
@@ -247,7 +247,7 @@ async def get_roi(roi_id: str, session: AsyncSession = Depends(get_async_session
 @roi_api.get("/rois/{roi_id}/hierarchy", response_model=dict)
 async def get_roi_hierarchy(roi_id: str, session: AsyncSession = Depends(get_async_session)):
     """Get the full hierarchy path for an ROI."""
-    roi_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
+    roi_result = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     current = roi_result.one_or_none()
     if current is None:
         raise HTTPException(status_code=404, detail=f"ROI with ID '{roi_id}' not found")
@@ -258,7 +258,9 @@ async def get_roi_hierarchy(roi_id: str, session: AsyncSession = Depends(get_asy
             {"roi_id": current.roi_id, "hierarchy_level": current.hierarchy_level, "section_id": current.section_id},
         )
         if current.parent_roi_id:
-            parent_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == current.parent_roi_id))
+            parent_result = await session.scalars(
+                select(ROISQLModel).where(ROISQLModel.roi_id == current.parent_roi_id)
+            )
             current = parent_result.one_or_none()
         else:
             current = None
@@ -272,7 +274,7 @@ async def update_roi(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details (attributes from ROIPayload) of a specific ROI."""
-    roi_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
+    roi_result = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     roi_obj = roi_result.one_or_none()
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
@@ -293,23 +295,23 @@ async def update_roi(
 @roi_api.delete("/rois/{roi_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_roi(roi_id: str, session: AsyncSession = Depends(get_async_session)):
     """Delete a specific ROI."""
-    roi_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
+    roi_result = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     roi_obj = roi_result.one_or_none()
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
-    child_rois_count = await session.exec(select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id))
+    child_rois_count = await session.scalars(select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id))
     if child_rois_count.first() is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot delete ROI '{roi_id}' as it has child ROIs",
         )
-    task_count = await session.exec(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.roi_id == roi_id))
+    task_count = await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.roi_id == roi_id))
     if task_count.first() is not None:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete ROI '{roi_id}' as it has associated Acquisition Tasks.",
         )
-    acq_count = await session.exec(select(AcquisitionSQLModel).where(AcquisitionSQLModel.roi_id == roi_id))
+    acq_count = await session.scalars(select(AcquisitionSQLModel).where(AcquisitionSQLModel.roi_id == roi_id))
     if acq_count.first() is not None:
         raise HTTPException(status_code=400, detail=f"Cannot delete ROI '{roi_id}' as it has associated Acquisitions.")
     await session.delete(roi_obj)
@@ -325,7 +327,7 @@ async def list_section_rois(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve ROIs associated with a specific section using its human-readable ID."""
-    rois = await session.exec(
+    rois = await session.scalars(
         select(ROISQLModel)
         .where(ROISQLModel.section_id == section_id)
         .order_by(ROISQLModel.roi_id)
@@ -334,7 +336,7 @@ async def list_section_rois(
     )
     roi_items = rois.all()
     if not roi_items:
-        section = await session.exec(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
+        section = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
         if section.one_or_none() is None:
             raise HTTPException(status_code=404, detail=f"Section '{section_id}' not found")
     parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in roi_items))
@@ -349,11 +351,11 @@ async def get_child_rois(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve child ROIs for a given parent ROI using the parent's hierarchical ID."""
-    parent_roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
+    parent_roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     parent_obj = parent_roi.one_or_none()
     if parent_obj is None:
         raise HTTPException(status_code=404, detail=f"Parent ROI with ID '{roi_id}' not found")
-    children = await session.exec(
+    children = await session.scalars(
         select(ROISQLModel)
         .where(ROISQLModel.parent_roi_id == roi_id)
         .order_by(ROISQLModel.roi_id)
@@ -361,7 +363,7 @@ async def get_child_rois(
         .limit(limit)
     )
     children_list = children.all()
-    total_children = len((await session.exec(select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id))).all())
+    total_children = len((await session.scalars(select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id))).all())
     more_results = skip + limit < total_children
     parents_with_children = await _parents_with_children(session, (child.roi_id for child in children_list))
     return {

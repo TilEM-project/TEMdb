@@ -36,7 +36,7 @@ async def list_substrates(
         statement = statement.where(SubstrateSQLModel.media_type == media_type)
     if status:
         statement = statement.where(SubstrateSQLModel.status == status)
-    substrates = (await session.exec(statement.offset(skip).limit(limit))).all()
+    substrates = (await session.scalars(statement.offset(skip).limit(limit))).all()
     return substrates
 
 
@@ -46,7 +46,7 @@ async def create_substrate(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new substrate."""
-    existing_substrate = await session.exec(
+    existing_substrate = await session.scalars(
         select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == substrate_data.media_id)
     )
     if existing_substrate.one_or_none() is not None:
@@ -69,7 +69,7 @@ async def create_substrate(
             if getattr(substrate_data, "refpoint_world", None) is not None
             else None
         ),
-        source_path=substrate_data.source_path,
+        source_path=str(substrate_data.source_path) if substrate_data.source_path is not None else None,
         metadata_json=(
             substrate_data.metadata.model_dump(mode="json")
             if getattr(substrate_data, "metadata", None) is not None
@@ -91,7 +91,7 @@ async def create_substrate(
 @substrate_api.get("/substrates/{media_id}", response_model=SubstrateResponse)
 async def get_substrate(media_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific substrate by its unique media_id."""
-    substrate = await session.exec(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
+    substrate = await session.scalars(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
     substrate_obj = substrate.one_or_none()
     if substrate_obj is None:
         raise HTTPException(
@@ -108,7 +108,7 @@ async def update_substrate(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific substrate identified by media_id."""
-    substrate = await session.exec(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
+    substrate = await session.scalars(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
     substrate_obj = substrate.one_or_none()
     if substrate_obj is None:
         raise HTTPException(
@@ -123,6 +123,8 @@ async def update_substrate(
     for field in ("refpoint", "refpoint_world", "apertures"):
         if field in update_data:
             update_data[field] = _to_json_compatible(update_data[field])
+    if update_data.get("source_path") is not None:
+        update_data["source_path"] = str(update_data["source_path"])  # URI.Type -> String column
     for field, value in update_data.items():
         setattr(substrate_obj, field, value)
     substrate_obj.updated_at = datetime.now(timezone.utc)
@@ -135,14 +137,14 @@ async def update_substrate(
 @substrate_api.delete("/substrates/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_substrate(media_id: str, session: AsyncSession = Depends(get_async_session)):
     """Delete a specific substrate by its media_id."""
-    substrate = await session.exec(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
+    substrate = await session.scalars(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
     substrate_obj = substrate.one_or_none()
     if substrate_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate with media_id '{media_id}' not found",
         )
-    section_count = await session.exec(select(SectionSQLModel).where(SectionSQLModel.media_id == media_id))
+    section_count = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.media_id == media_id))
     if len(section_count.all()) > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,14 +163,14 @@ async def get_substrate_sections(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific substrate, identified by media_id."""
-    substrate = await session.exec(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
+    substrate = await session.scalars(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
     substrate_obj = substrate.one_or_none()
     if substrate_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate with media_id '{media_id}' not found",
         )
-    sections = await session.exec(
+    sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.media_id == media_id)
         .order_by(SectionSQLModel.section_number)

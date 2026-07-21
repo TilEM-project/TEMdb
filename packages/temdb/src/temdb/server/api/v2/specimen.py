@@ -30,7 +30,7 @@ async def list_specimens(
                 SpecimenSQLModel.description.ilike(like_pattern),
             )
         )
-    return (await session.exec(statement.offset(skip).limit(limit))).all()
+    return (await session.scalars(statement.offset(skip).limit(limit))).all()
 
 
 @specimen_api.get("/specimens/count", response_model=int)
@@ -47,7 +47,7 @@ async def count_specimens(
                 SpecimenSQLModel.description.ilike(like_pattern),
             )
         )
-    return (await session.exec(statement)).one()
+    return (await session.scalars(statement)).one()
 
 
 @specimen_api.get("/specimens/{specimen_id}/blocks", response_model=list[BlockResponse])
@@ -80,7 +80,7 @@ async def create_specimen(
     specimen_data: SpecimenCreate,
     session: AsyncSession = Depends(get_async_session),
 ):
-    existing_specimen = await session.exec(
+    existing_specimen = await session.scalars(
         select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_data.specimen_id)
     )
     if existing_specimen.one_or_none() is not None:
@@ -105,7 +105,7 @@ async def create_specimen(
 @specimen_api.get("/specimens/{specimen_id}", response_model=SpecimenResponse)
 async def get_specimen(specimen_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific specimen by its human-readable ID."""
-    specimen_result = await session.exec(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
+    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
     specimen = specimen_result.one_or_none()
     if specimen is None:
         raise HTTPException(
@@ -122,7 +122,7 @@ async def update_specimen(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific specimen."""
-    specimen_result = await session.exec(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
+    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
     specimen = specimen_result.one_or_none()
     if specimen is None:
         raise HTTPException(
@@ -161,14 +161,14 @@ async def update_specimen(
 @specimen_api.delete("/specimens/{specimen_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_async_session)):
     """Delete a specific specimen."""
-    specimen_result = await session.exec(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
+    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
     specimen = specimen_result.one_or_none()
     if specimen is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
-    block_count_query = await session.exec(
+    block_count_query = await session.scalars(
         select(func.count()).select_from(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id)
     )
     block_count = block_count_query.one()
@@ -193,7 +193,7 @@ async def add_specimen_image(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Add an image URL to a specimen."""
-    specimen_result = await session.exec(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
+    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
     specimen = specimen_result.one_or_none()
     if specimen is None:
         raise HTTPException(
@@ -223,7 +223,7 @@ async def remove_specimen_image(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Remove an image URL from a specimen using a query parameter."""
-    specimen_result = await session.exec(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
+    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
     specimen = specimen_result.one_or_none()
     if specimen is None:
         raise HTTPException(
