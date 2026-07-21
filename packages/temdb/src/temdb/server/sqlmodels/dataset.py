@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -25,7 +25,7 @@ class DatasetSQLModel(TimestampMixin, ModelDumpMixin, Base):
     parent_dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("datasets.dataset_id"), nullable=True
     )
-    status: Mapped[str] = mapped_column(String, default="collecting")
+    status: Mapped[str] = mapped_column(String, server_default=text("'collecting'"))
     collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     size_class: Mapped[str] = mapped_column(String)
