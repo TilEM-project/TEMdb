@@ -21,7 +21,9 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 class AcquisitionTaskSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "acquisition_tasks"
     __table_args__ = (
-        ForeignKeyConstraint(["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"]),
+        ForeignKeyConstraint(
+            ["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"], name="fk_acquisition_tasks_block"
+        ),
         Index("ix_acquisition_tasks_specimen_block", "specimen_id", "block_id"),
         Index("ix_acquisition_tasks_dataset_id_nn", "dataset_id", postgresql_where=text("dataset_id IS NOT NULL")),
         Index(

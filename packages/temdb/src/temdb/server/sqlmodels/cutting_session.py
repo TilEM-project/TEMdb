@@ -9,7 +9,9 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 class CuttingSessionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "cutting_sessions"
     __table_args__ = (
-        ForeignKeyConstraint(["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"]),
+        ForeignKeyConstraint(
+            ["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"], name="fk_cutting_sessions_block"
+        ),
         Index("ix_cutting_sessions_specimen_block", "specimen_id", "block_id"),
     )
 

@@ -11,7 +11,9 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 class ROISQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "rois"
     __table_args__ = (
-        ForeignKeyConstraint(["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"]),
+        ForeignKeyConstraint(
+            ["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"], name="fk_rois_block"
+        ),
         Index("ix_rois_specimen_block", "specimen_id", "block_id"),
         Index("ix_rois_parent_roi_id_nn", "parent_roi_id", postgresql_where=text("parent_roi_id IS NOT NULL")),
         Index("ix_rois_dataset_id_nn", "dataset_id", postgresql_where=text("dataset_id IS NOT NULL")),

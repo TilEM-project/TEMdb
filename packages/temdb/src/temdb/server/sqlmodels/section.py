@@ -22,7 +22,9 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "sections"
     __table_args__ = (
         UniqueConstraint("cutting_session_id", "section_number", name="uq_sections_session_number"),
-        ForeignKeyConstraint(["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"]),
+        ForeignKeyConstraint(
+            ["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"], name="fk_sections_block"
+        ),
         Index("ix_sections_specimen_block", "specimen_id", "block_id"),
         Index("ix_sections_barcode_nn", "barcode", postgresql_where=text("barcode IS NOT NULL")),
         CheckConstraint(
