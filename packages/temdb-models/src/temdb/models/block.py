@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from .base import TEMDBModel
 
 
-class BlockBase(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class BlockBase(TEMDBModel):
     microCT_info: dict[str, Any] | None = Field(None, description="MicroCT information of block")
+    description: str | None = Field(None, description="Description of block")
 
 
 class BlockCreate(BlockBase):
@@ -21,6 +22,9 @@ class BlockUpdate(BlockBase):
 
 
 class BlockResponse(BlockBase):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int
     block_id: str = Field(..., description="Unique block identifier")
     specimen_id: str = Field(..., description="Parent specimen ID")
 

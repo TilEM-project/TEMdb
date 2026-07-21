@@ -122,6 +122,23 @@ The schema is managed by Alembic (`packages/temdb/migrations/`).
 uv run alembic -c packages/temdb/alembic.ini upgrade head
 ```
 
+#### Local development (running Alembic against the Docker Postgres)
+
+Alembic reads its database URL from `TEMDB_MIGRATION_URL`, falling back to `database_url` from config. When you run the `alembic` CLI from `packages/temdb/`, the config's `dev.env` is *not* found (it lives at the repo root and is written for Docker networking — `DATABASE_HOST=postgres`, unexpanded `${...}` interpolation). So for host-side commands, set `TEMDB_MIGRATION_URL` explicitly to reach the container's exposed port:
+
+```bash
+# Postgres from docker-compose is exposed on localhost:5432 (temdb/temdb)
+export TEMDB_MIGRATION_URL="postgresql+asyncpg://temdb:temdb@localhost:5432/temdb"
+
+# Autogenerate a migration after changing a model (compares models vs. live DB)
+uv run alembic -c packages/temdb/alembic.ini revision --autogenerate -m "describe change"
+
+# Apply migrations
+uv run alembic -c packages/temdb/alembic.ini upgrade head
+```
+
+Autogenerate connects to the database and diffs it against the models, so the DB must be running and already at `head` before you generate a new revision.
+
 ### Docker
 
 ```bash

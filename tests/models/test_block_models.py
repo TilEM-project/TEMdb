@@ -16,9 +16,9 @@ class TestBlockBase:
         assert block.microCT_info["resolution"] == 1.5
         assert block.microCT_info["unit"] == "um"
 
-    def test_extra_fields_allowed(self):
-        block = BlockBase(custom_field="custom_value")
-        assert block.custom_field == "custom_value"
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            BlockBase(custom_field="custom_value")
 
 
 class TestBlockCreate:
@@ -62,6 +62,7 @@ class TestBlockUpdate:
 class TestBlockResponse:
     def test_valid_response(self):
         response = BlockResponse(
+            id=1,
             block_id="BLOCK001",
             specimen_id="SPEC001",
             microCT_info={"resolution": 1.5},
