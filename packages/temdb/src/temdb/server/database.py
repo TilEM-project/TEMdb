@@ -35,7 +35,7 @@ class DatabaseManager:
                 database_url,
                 echo=False,
                 pool_pre_ping=True,
-                pool_recycle=1800,  # bound connection age; pre_ping alone doesn't (see async best-practices research)
+                pool_recycle=1800, 
                 connect_args={
                     "server_settings": {"application_name": "temdb"},  # attributable pg_stat_activity / slow-query logs
                     "command_timeout": 30,  # backstop against a hung query pinning a pool slot
@@ -65,11 +65,9 @@ class DatabaseManager:
             LensCorrectionSQLModel,
         )
 
-    async def initialize(self, create_schema: bool = False):
-        """Schema is owned by Alembic in deployments; create_schema=True is for tests."""
-        if create_schema and self.sql_engine is not None:
-            async with self.sql_engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+    async def initialize(self):
+        async with self.sql_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
     async def dispose(self):
         """Dispose the engine and its connection pool (call on app shutdown)."""
