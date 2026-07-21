@@ -58,9 +58,9 @@ from temdb.models.quality_control import (
     TileFocusScore,
 )
 from temdb.models.roi import (
-    ROIBase,
     ROIChildrenResponse,
     ROICreate,
+    ROIPayload,
     ROIResponse,
     ROIUpdate,
 )
@@ -142,7 +142,7 @@ __all__ = [
     "BlockUpdate",
     "BlockResponse",
     # ROI
-    "ROIBase",
+    "ROIPayload",
     "ROICreate",
     "ROIUpdate",
     "ROIResponse",

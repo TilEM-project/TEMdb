@@ -2,15 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from pydantic_core import PydanticCustomError
 
+from temdb.models.base import TEMDBModel
 from temdb.models.enums import QC_STATES, RUN_STATUSES, TASK_KINDS, TRANSFER_STATES
 
 
-class LensCorrectionModel(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class LensCorrectionModel(TEMDBModel):
     id: int = Field(..., description="ID of lens correction model")
     type: str = Field(
         ...,
@@ -26,18 +25,14 @@ class LensCorrectionModel(BaseModel):
     )
 
 
-class Calibration(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class Calibration(TEMDBModel):
     pixel_size: float = Field(..., description="Pixel size in nm")
     rotation_angle: float = Field(..., description="Rotation angle in degrees")
     lens_model: LensCorrectionModel | None = Field(None, description="Lens correction model")
     aperture_centroid: list[float] | None = Field(None, description="Aperture centroid in stage coordinates in nm")
 
 
-class HardwareParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class HardwareParams(TEMDBModel):
     scope_id: str = Field(..., description="ID of microscope")
     camera_model: str = Field(..., description="Model of camera")
     camera_serial: str = Field(..., description="Serial number of camera")
@@ -45,9 +40,7 @@ class HardwareParams(BaseModel):
     media_type: str = Field(..., description="Type of substrate in microscope")
 
 
-class AcquisitionParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class AcquisitionParams(TEMDBModel):
     magnification: int = Field(..., description="Magnification of acquisition")
     spot_size: int = Field(..., description="Spot size of acquisition")
     exposure_time: int = Field(..., description="Exposure time of camera in ms")
@@ -56,9 +49,7 @@ class AcquisitionParams(BaseModel):
     saved_bit_depth: int = Field(..., description="Bit depth of saved image")
 
 
-class StorageLocation(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class StorageLocation(TEMDBModel):
     location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
     base_path: str = Field(..., description="Base path of storage location")
     is_current: bool = Field(..., description="Whether this is the current storage location")
@@ -66,17 +57,13 @@ class StorageLocation(BaseModel):
     metadata: dict[str, Any] = Field(..., description="Metadata of storage location")
 
 
-class StorageLocationCreate(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class StorageLocationCreate(TEMDBModel):
     location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
     base_path: str = Field(..., description="Base path of storage location")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata of storage location")
 
 
-class AcquisitionBase(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class AcquisitionBase(TEMDBModel):
     hardware_settings: HardwareParams | None = None
     acquisition_settings: AcquisitionParams | None = None
     calibration_info: Calibration | None = None
@@ -145,6 +132,9 @@ class AcquisitionUpdate(AcquisitionBase):
 
 
 class AcquisitionResponse(AcquisitionBase):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int = Field(..., description="Internal database ID")
     acquisition_id: str = Field(..., description="Unique acquisition identifier")
     run_id: uuid.UUID = Field(..., description="DB-minted UUIDv7 execution key")
     montage_id: str = Field(..., description="Montage identifier")
@@ -152,11 +142,14 @@ class AcquisitionResponse(AcquisitionBase):
     roi_id: str | None = Field(None, description="ROI identifier")
     acquisition_task_id: str = Field(..., description="Parent task identifier")
     microscope_id: uuid.UUID = Field(..., description="Microscope that executed this run")
-    dataset_id: str | None = Field(None, description="Dataset this acquisition belongs to (UUIDv7)")
+    dataset_id: uuid.UUID | None = Field(None, description="Dataset this acquisition belongs to (UUIDv7)")
     kind: str = Field(..., description="Run kind: montage or lens_correction")
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
+    replaces_acquisition_id: str | None = Field(
+        None, description="Business ID (acquisition_id) of acquisition this acquisition replaces"
+    )
     status: str | None = Field(None, description="Terminal run status; null while in flight")
     error_message: str | None = Field(None, description="Failure detail for terminal status")
     qc_state: str = Field(..., description="QC axis state")
@@ -176,13 +169,13 @@ class AcquisitionResponse(AcquisitionBase):
     updated_at: datetime | None = None
 
 
-class AcquisitionFullMetadata(BaseModel):
+class AcquisitionFullMetadata(TEMDBModel):
     """Acquisition with complete hierarchy metadata."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
 
     acquisition: AcquisitionResponse
-    task: dict[str, Any] | None = None
+    task: dict[str, Any] | None = Field(None, alias="acquisition_task")
     roi: dict[str, Any] | None = None
     section: dict[str, Any] | None = None
     cutting_session: dict[str, Any] | None = None

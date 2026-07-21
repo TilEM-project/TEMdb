@@ -2,10 +2,12 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from .base import TEMDBModel
 
 
-class APIErrorResponse(BaseModel):
+class APIErrorResponse(TEMDBModel):
     """Standard structure for API error responses."""
 
     detail: str = Field(..., description="Human-readable description of the error.")

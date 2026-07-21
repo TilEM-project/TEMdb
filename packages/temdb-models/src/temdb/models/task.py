@@ -2,16 +2,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
+from temdb.models.base import TEMDBModel
 from temdb.models.enums import TASK_KINDS
 
 
-class AcquisitionTaskBase(BaseModel):
+class AcquisitionTaskBase(TEMDBModel):
     """Base acquisition task fields."""
-
-    model_config = ConfigDict(extra="allow")
 
     kind: str | None = Field(None, description="Task kind: montage or lens_correction")
     task_group_id: uuid.UUID | None = Field(None, description="Group ID linking related tasks (e.g., a tilt series)")
@@ -58,6 +57,9 @@ class AcquisitionTaskUpdate(AcquisitionTaskBase):
 class AcquisitionTaskResponse(AcquisitionTaskBase):
     """Schema for acquisition task API responses."""
 
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int = Field(..., description="Internal integer primary key")
     task_id: str = Field(..., description="Unique identifier for this task")
     specimen_id: str | None = Field(None, description="ID of specimen")
     block_id: str | None = Field(None, description="ID of block")
@@ -65,6 +67,11 @@ class AcquisitionTaskResponse(AcquisitionTaskBase):
     kind: str = Field(..., description="Task kind: montage or lens_correction")
     status: str | None = Field(None, description="Task state derived from runs (ADR 0011)")
     superseded_by: str | None = Field(None, description="task_id of the replacement task, if superseded")
+    metadata: dict[str, Any] | None = Field(
+        None,
+        description="Additional metadata",
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+    )
 
     created_at: datetime | None = None
     updated_at: datetime | None = None

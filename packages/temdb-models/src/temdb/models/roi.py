@@ -1,13 +1,15 @@
+import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
+from .base import TEMDBModel
 from .utils.uri import URI
 
 
-class ROIBase(BaseModel):
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+class ROIPayload(TEMDBModel):
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     aperture_width_height: list[float] | None = Field(
         None,
@@ -38,7 +40,7 @@ class ROIBase(BaseModel):
     vertices: list[Any] | None = Field(None, description="Vertices of the ROI polygon")
 
 
-class ROICreate(ROIBase):
+class ROICreate(TEMDBModel):
     roi_number: int = Field(..., description="Sequential number for this ROI within its parent context")
     section_id: str = Field(..., description="ID of section")
     specimen_id: str = Field(..., description="ID of specimen")
@@ -50,6 +52,7 @@ class ROICreate(ROIBase):
         description="Hierarchical ID of parent ROI (e.g., 'SPEC001.BLK001.SEC001.SUB001.ROI001')",
     )
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
+    payload: ROIPayload = Field(default_factory=ROIPayload, description="Domain attributes of the ROI")
 
     @field_validator("parent_roi_id", mode="after")
     @classmethod
@@ -67,25 +70,35 @@ class ROICreate(ROIBase):
         return v
 
 
-class ROIUpdate(ROIBase):
-    pass
+class ROIUpdate(TEMDBModel):
+    payload: ROIPayload = Field(default_factory=ROIPayload, description="Domain attributes to merge into the ROI")
 
 
-class ROIResponse(ROIBase):
+class ROIResponse(TEMDBModel):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int
     roi_id: str = Field(..., description="Hierarchical ID of ROI")
     roi_number: int = Field(..., description="Sequential number for this ROI within its parent context")
     section_id: str = Field(..., description="ID of section")
-    specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")
+    specimen_id: str = Field(..., description="ID of specimen")
     substrate_media_id: str = Field(..., description="Media ID of the substrate")
     hierarchy_level: int = Field(..., description="Depth level in ROI hierarchy (1=top-level, 2=child, etc.)")
+    section_number: int | None = Field(None, description="Number of section from collection")
+    parent_roi_id: str | None = Field(None, description="Hierarchical ID of parent ROI")
+    dataset_id: uuid.UUID | None = Field(None, description="ID of the dataset this ROI belongs to")
     is_parent: bool = Field(default=False, description="Whether this ROI has child ROIs")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    roi_payload: ROIPayload | None = Field(None, description="Domain attributes of the ROI")
 
-class ROIChildrenResponse(BaseModel):
+
+class ROIChildrenResponse(TEMDBModel):
     """Response model for ROI children query."""
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     children: list[ROIResponse]

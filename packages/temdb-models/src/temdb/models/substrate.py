@@ -1,25 +1,22 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, ConfigDict, Field
 
+from .base import TEMDBModel
 from .utils.uri import URI
 
 
-class ReferencePoints(BaseModel):
+class ReferencePoints(TEMDBModel):
     """Reference points for substrate calibration."""
-
-    model_config = ConfigDict(extra="allow")
 
     origin: tuple[float, float, float] | None = Field(None, description="Origin point (x, y, z)")
     end: tuple[float, float, float] | None = Field(None, description="End point (x, y, z)")
     ref: tuple[float, float, float] | None = Field(None, description="Reference point (x, y, z)")
 
 
-class Aperture(BaseModel):
+class Aperture(TEMDBModel):
     """Represents a single aperture or slot on a substrate."""
-
-    model_config = ConfigDict(extra="allow")
 
     uid: str = Field(
         ...,
@@ -38,15 +35,13 @@ class Aperture(BaseModel):
     status: str | None = Field(None, description="Status of the aperture (e.g., available, used, damaged)")
     tracking_uid: str | None = Field(
         None,
-        alias="tuid",
+        validation_alias=AliasChoices("tuid", "tracking_uid"),
         description="Tracking UID from source if available",
     )
 
 
-class SubstrateMetadata(BaseModel):
+class SubstrateMetadata(TEMDBModel):
     """General metadata about a substrate."""
-
-    model_config = ConfigDict(extra="allow")
 
     name: str | None = Field(None, description="User-defined name for the substrate")
     user: str | None = Field(None, description="User associated with substrate creation/calibration")
@@ -58,10 +53,10 @@ class SubstrateMetadata(BaseModel):
     )
 
 
-class SubstrateBase(BaseModel):
+class SubstrateBase(TEMDBModel):
     """Base substrate fields."""
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     uid: str | None = Field(
         None,
@@ -111,6 +106,14 @@ class SubstrateUpdate(SubstrateBase):
 class SubstrateResponse(SubstrateBase):
     """Schema for substrate API responses."""
 
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int
+    metadata: SubstrateMetadata | None = Field(
+        None,
+        description="General metadata about the substrate",
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+    )
     media_id: str = Field(..., description="Primary unique identifier")
     media_type: str = Field(..., description="Type of substrate")
 

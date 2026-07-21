@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from .base import TEMDBModel
 
 
-class TileFocusScore(BaseModel):
+class TileFocusScore(TEMDBModel):
     """Represents focus score data for a single tile."""
 
     tile_id: str = Field(..., description="Unique ID of the tile.")
@@ -9,7 +11,7 @@ class TileFocusScore(BaseModel):
     focus_score: float = Field(..., description="Calculated focus score for the tile.")
 
 
-class AcquisitionFocusScoresResponse(BaseModel):
+class AcquisitionFocusScoresResponse(TEMDBModel):
     """Response model containing focus scores for an acquisition."""
 
     acquisition_id: str = Field(..., description="ID of the acquisition analyzed.")
@@ -22,7 +24,7 @@ class AcquisitionFocusScoresResponse(BaseModel):
     max_focus: float | None = Field(None, description="Maximum focus score found.")
 
 
-class BadFocusTileInfo(BaseModel):
+class BadFocusTileInfo(TEMDBModel):
     """Information about a tile with bad focus."""
 
     tile_id: str
@@ -35,7 +37,7 @@ class BadFocusTileInfo(BaseModel):
     specimen_id: str | None = None
 
 
-class BadFocusTilesResponse(BaseModel):
+class BadFocusTilesResponse(TEMDBModel):
     """Response model for bad focus tiles query."""
 
     threshold: float

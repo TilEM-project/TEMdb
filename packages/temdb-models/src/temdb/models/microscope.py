@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from .base import TEMDBModel
 
 
-class MicroscopeBase(BaseModel):
+class MicroscopeBase(TEMDBModel):
     microscope_type: str = Field("TEM", description="Instrument type")
     model: str | None = Field(None, description="Manufacturer model")
     location: str | None = Field(None, description="Physical location")
@@ -17,9 +19,7 @@ class MicroscopeCreate(MicroscopeBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class MicroscopeUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class MicroscopeUpdate(TEMDBModel):
     microscope_type: str | None = None
     model: str | None = None
     location: str | None = None
@@ -27,6 +27,8 @@ class MicroscopeUpdate(BaseModel):
 
 
 class MicroscopeResponse(MicroscopeBase):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
     microscope_id: uuid.UUID
     label: str = Field(..., description="Unique human handle, e.g. 'TEM-01'")
     created_at: datetime

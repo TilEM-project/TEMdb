@@ -1,16 +1,15 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
+from .base import TEMDBModel
 from .enums import SECTION_CONDITIONS, SectionQuality
 from .utils.uri import URI
 
 
-class SectioningRunParameters(BaseModel):
+class SectioningRunParameters(TEMDBModel):
     """Parameters from a sectioning run."""
-
-    model_config = ConfigDict(extra="allow")
 
     cutting_speed_mms: float | None = Field(None, description="Cutting speed in mm/s")
     retract_speed_mms: float | None = Field(None, description="Retract speed in mm/s")
@@ -30,10 +29,8 @@ class SectioningRunParameters(BaseModel):
     )
 
 
-class SectionMetric(BaseModel):
+class SectionMetric(TEMDBModel):
     """Section Metric with Confidence"""
-
-    model_config = ConfigDict(extra="allow")
 
     confidence: float | None = Field(None, description="The confidence value of this metric.", ge=0, le=1)
     label: Any | None = Field(None, description="")
@@ -41,10 +38,8 @@ class SectionMetric(BaseModel):
     message: str | None = Field(None, description="Additional human readable infomation about this metric.")
 
 
-class SectionMetrics(BaseModel):
+class SectionMetrics(TEMDBModel):
     """Metrics and parameters of a section."""
-
-    model_config = ConfigDict(extra="allow")
 
     quality: SectionQuality | None = Field(None, description="Qualitative state of the section (e.g., Good, Broken)")
     thickness_um: SectionMetric | None = Field(None, description="Measured section thickness in micrometers")
@@ -59,17 +54,15 @@ class SectionMetrics(BaseModel):
     )
 
 
-class OpticalImage(BaseModel):
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+class OpticalImage(TEMDBModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     image_path: URI.Type = Field(description="The URI of where the optical image is stored")
     metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
 
 
-class SectionBase(BaseModel):
+class SectionBase(TEMDBModel):
     """Base section fields."""
-
-    model_config = ConfigDict(extra="allow")
 
     section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
@@ -104,8 +97,6 @@ class SectionCreate(SectionBase):
 class SectionUpdate(SectionBase):
     """Schema for updating a section."""
 
-    model_config = ConfigDict(extra="forbid")
-
     condition: str | None = Field(None, description="Physical condition of the section")
     condition_reason: str | None = Field(None, description="Reason for the current condition")
 
@@ -127,6 +118,9 @@ class SectionUpdate(SectionBase):
 class SectionResponse(SectionBase):
     """Schema for section API responses."""
 
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int
     section_id: str = Field(..., description="Unique, system-generated ID for the section")
     section_number: int = Field(..., gt=0, description="Sequential section number within the cutting session")
     cutting_session_id: str = Field(..., description="ID of the cutting session")

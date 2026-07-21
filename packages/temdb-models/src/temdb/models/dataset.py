@@ -2,15 +2,15 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from .base import TEMDBModel
 
 SizeClass = Literal["small", "medium", "large", "xlarge"]
 DatasetStatus = Literal["collecting", "collected", "archived"]
 
 
-class DatasetBase(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class DatasetBase(TEMDBModel):
     description: str | None = Field(None, description="Human description of the dataset")
     specimen_id: str | None = Field(None, description="Specimen this dataset belongs to")
     size_class: SizeClass | None = Field(None, description="Planner size class; drives tile partitioning")
@@ -24,9 +24,7 @@ class DatasetCreate(DatasetBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class DatasetUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DatasetUpdate(TEMDBModel):
     description: str | None = None
     status: DatasetStatus | None = None
     size_class: SizeClass | None = None
@@ -34,7 +32,9 @@ class DatasetUpdate(BaseModel):
 
 
 class DatasetResponse(DatasetBase):
-    dataset_id: str = Field(..., description="UUIDv7 primary key")
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    dataset_id: uuid.UUID = Field(..., description="UUIDv7 primary key")
     name: str = Field(..., description="Unique human-readable dataset name")
     parent_dataset_id: uuid.UUID | None = Field(None, description="Parent dataset if this is a child (one level only)")
     status: DatasetStatus = Field(..., description="Lifecycle status")

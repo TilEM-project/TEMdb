@@ -2,10 +2,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from .base import TEMDBModel
 
 
-class LensCorrectionBase(BaseModel):
+class LensCorrectionBase(TEMDBModel):
     microscope_id: uuid.UUID
     magnification: int
     started_at: datetime
@@ -22,9 +24,7 @@ class LensCorrectionCreate(LensCorrectionBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class LensCorrectionUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class LensCorrectionUpdate(TEMDBModel):
     shared_transform: dict[str, Any] | None = None
     correction_x_uri: str | None = None
     correction_y_uri: str | None = None
@@ -32,6 +32,8 @@ class LensCorrectionUpdate(BaseModel):
 
 
 class LensCorrectionResponse(LensCorrectionBase):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
     lc_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
