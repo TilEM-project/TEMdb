@@ -66,8 +66,6 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
 
     section_id_hr = f"{substrate_id_hr}_S99"
     section_data = {
-        "specimen_id": test_cutting_session.specimen_id,
-        "block_id": test_cutting_session.block_id,
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 99,
         "media_id": substrate_id_hr,
@@ -115,8 +113,6 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
         section_number = i + 1
         sections_data.append(
             {
-                "specimen_id": test_cutting_session.specimen_id,
-                "block_id": test_cutting_session.block_id,
                 "cutting_session_id": test_cutting_session.cutting_session_id,
                 "section_number": section_number,
                 "media_id": f"{media_base}_{substrate_idx}",
@@ -168,8 +164,6 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
     """Test creating sections with an invalid cutting session ID."""
     sections_data = [
         {
-            "specimen_id": "test_specimen",
-            "block_id": "test_block",
             "cutting_session_id": "NON_EXISTENT_SESSION_ID",
             "section_number": 1,
             "media_id": test_substrate.media_id,
@@ -188,8 +182,6 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
     """Test creating sections with an invalid substrate/media ID."""
     sections_data = [
         {
-            "specimen_id": test_cutting_session.specimen_id,
-            "block_id": test_cutting_session.block_id,
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": "NON_EXISTENT_MEDIA_ID",
@@ -222,16 +214,12 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
 
     sections_data = [
         {
-            "specimen_id": test_cutting_session.specimen_id,
-            "block_id": test_cutting_session.block_id,
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
             "optical_image": {"url": "http://image.server.com/image1.png"},
         },
         {
-            "specimen_id": test_cutting_session.specimen_id,
-            "block_id": test_cutting_session.block_id,
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
@@ -253,7 +241,7 @@ async def test_get_section(async_client: AsyncClient, test_cutting_session, test
     response_data = response.json()
     assert response_data["section_id"] == test_section.section_id
     assert response_data["cutting_session_id"] == test_cutting_session.cutting_session_id
-    assert response_data["_id"] == str(test_section.id)
+    assert response_data["id"] == test_section.id
 
 
 @pytest.mark.asyncio
@@ -280,11 +268,8 @@ async def test_update_section(async_client: AsyncClient, test_cutting_session, t
 async def test_delete_section(async_client: AsyncClient, test_cutting_session, test_substrate):
     """Test deleting a section successfully (when it has no dependencies like ROIs)."""
     section_data = {
-        "specimen_id": test_cutting_session.specimen_id,
-        "block_id": test_cutting_session.block_id,
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 100,
-        "media_type": "tape",
         "media_id": test_substrate.media_id,
     }
 

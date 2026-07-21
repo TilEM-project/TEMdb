@@ -7,7 +7,9 @@ from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
+    AcquisitionResponse,
     AcquisitionTaskCreate,
+    AcquisitionTaskResponse,
     AcquisitionTaskUpdate,
 )
 from temdb.server.dependencies import get_async_session
@@ -47,34 +49,11 @@ def derive_task_state(runs: list[AcquisitionSQLModel]) -> str:
     return "acquired"
 
 
-def _task_payload(
-    task: AcquisitionTaskSQLModel,
-    derived_status: str,
-    specimen_id: int | None = None,
-    block_id: int | None = None,
-    roi_id: int | None = None,
-) -> dict:
-    payload = {
-        "_id": str(task.id),
-        "task_id": task.task_id,
-        "specimen_id": task.specimen_id,
-        "block_id": task.block_id,
-        "roi_id": task.roi_id,
-        "kind": task.kind,
-        "status": derived_status,
-        "superseded_by": task.superseded_by,
-        "task_group_id": str(task.task_group_id) if task.task_group_id is not None else None,
-        "tilt_angle_deg": task.tilt_angle_deg,
-        "sub_region": task.sub_region,
-        "tags": task.tags or [],
-        "metadata": task.metadata_json or {},
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
-    }
-    payload["specimen_ref"] = {"id": str(specimen_id)} if specimen_id is not None else None
-    payload["block_ref"] = {"id": str(block_id)} if block_id is not None else None
-    payload["roi_ref"] = {"id": str(roi_id)} if roi_id is not None else None
-    return payload
+def _task_response(task: AcquisitionTaskSQLModel, derived_status: str) -> AcquisitionTaskResponse:
+    """Build the response model, filling in the derived (non-column) status field."""
+    response = AcquisitionTaskResponse.model_validate(task)
+    response.status = derived_status
+    return response
 
 
 async def _runs_by_task(session: AsyncSession, task_ids: list[str]) -> dict[str, list[AcquisitionSQLModel]]:
@@ -155,7 +134,7 @@ def _task_from_create(
     )
 
 
-@acquisition_task_api.get("/acquisition-tasks")
+@acquisition_task_api.get("/acquisition-tasks", response_model=list[AcquisitionTaskResponse])
 async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -259,20 +238,20 @@ async def list_tasks(
     rows = (await session.execute(statement.offset(skip).limit(limit))).all()
     if not rows:
         return []
-    runs_map = await _runs_by_task(session, [task.task_id for task, _, _, _ in rows])
-    return [
-        _task_payload(task, derive_task_state(runs_map[task.task_id]), specimen_ref, block_ref, roi_ref)
-        for task, specimen_ref, block_ref, roi_ref in rows
-    ]
+    tasks = [row[0] for row in rows]
+    runs_map = await _runs_by_task(session, [task.task_id for task in tasks])
+    return [_task_response(task, derive_task_state(runs_map[task.task_id])) for task in tasks]
 
 
-@acquisition_task_api.post("/acquisition-tasks", status_code=status.HTTP_201_CREATED)
+@acquisition_task_api.post(
+    "/acquisition-tasks", status_code=status.HTTP_201_CREATED, response_model=AcquisitionTaskResponse
+)
 async def create_task(
     task_data: AcquisitionTaskCreate,
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new acquisition task (a plan; its state derives from runs)."""
-    specimen_ref, block_ref, roi_ref = await _validate_lineage(session, task_data)
+    await _validate_lineage(session, task_data)
     existing = await session.exec(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
     )
@@ -282,10 +261,10 @@ async def create_task(
     session.add(new_task)
     await session.commit()
     await session.refresh(new_task)
-    return _task_payload(new_task, derive_task_state([]), specimen_ref, block_ref, roi_ref)
+    return _task_response(new_task, derive_task_state([]))
 
 
-@acquisition_task_api.get("/acquisition-tasks/{task_id}")
+@acquisition_task_api.get("/acquisition-tasks/{task_id}", response_model=AcquisitionTaskResponse)
 async def get_task(
     task_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -315,16 +294,16 @@ async def get_task(
     row = (await session.execute(statement)).first()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition task ID '{task_id}' not found.")
-    task, specimen_ref, block_ref, roi_ref = row
+    task, _specimen_ref, _block_ref, _roi_ref = row
     runs = (
         (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)))
         .scalars()
         .all()
     )
-    return _task_payload(task, derive_task_state(list(runs)), specimen_ref, block_ref, roi_ref)
+    return _task_response(task, derive_task_state(list(runs)))
 
 
-@acquisition_task_api.patch("/acquisition-tasks/{task_id}")
+@acquisition_task_api.patch("/acquisition-tasks/{task_id}", response_model=AcquisitionTaskResponse)
 async def update_task(
     task_id: str,
     updated_fields: AcquisitionTaskUpdate = Body(...),
@@ -356,31 +335,24 @@ async def update_task(
     ).first()
     if row is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    task_obj, specimen_ref, block_ref, roi_ref = row
+    task_obj, _specimen_ref, _block_ref, _roi_ref = row
     update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
     if not update_data:
         raise HTTPException(400, "No update fields provided")
-    changed = False
+    if "metadata" in update_data:
+        task_obj.metadata_json = update_data.pop("metadata")
     for field, value in update_data.items():
-        if field == "metadata":
-            if task_obj.metadata_json != value:
-                task_obj.metadata_json = value
-                changed = True
-            continue
-        if hasattr(task_obj, field) and getattr(task_obj, field) != value:
-            setattr(task_obj, field, value)
-            changed = True
-    if changed:
-        task_obj.updated_at = datetime.now(timezone.utc)
-        session.add(task_obj)
-        await session.commit()
-        await session.refresh(task_obj)
+        setattr(task_obj, field, value)
+    task_obj.updated_at = datetime.now(timezone.utc)
+    session.add(task_obj)
+    await session.commit()
+    await session.refresh(task_obj)
     runs = (
         (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)))
         .scalars()
         .all()
     )
-    return _task_payload(task_obj, derive_task_state(list(runs)), specimen_ref, block_ref, roi_ref)
+    return _task_response(task_obj, derive_task_state(list(runs)))
 
 
 @acquisition_task_api.delete("/acquisition-tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -406,7 +378,7 @@ async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_se
     return None
 
 
-@acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions")
+@acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=list[AcquisitionResponse])
 async def get_task_acquisitions(
     task_id: str,
     skip: int = Query(0, ge=0),
@@ -427,10 +399,14 @@ async def get_task_acquisitions(
     if not joined_rows:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     acquisitions = [row[1] for row in joined_rows if row[1] is not None]
-    return [acq.model_dump() for acq in acquisitions[skip : skip + limit]]
+    return acquisitions[skip : skip + limit]
 
 
-@acquisition_task_api.post("/acquisition-tasks/{task_id}/supersede", status_code=status.HTTP_201_CREATED)
+@acquisition_task_api.post(
+    "/acquisition-tasks/{task_id}/supersede",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AcquisitionTaskResponse,
+)
 async def supersede_task(
     task_id: str,
     task_data: AcquisitionTaskCreate,
@@ -453,7 +429,7 @@ async def supersede_task(
     )
     if existing.one_or_none() is not None:
         raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
-    specimen_ref, block_ref, roi_ref = await _validate_lineage(session, task_data)
+    await _validate_lineage(session, task_data)
     new_task = _task_from_create(task_data)
     session.add(new_task)
     await session.flush()
@@ -462,10 +438,12 @@ async def supersede_task(
     session.add(old_task)
     await session.commit()
     await session.refresh(new_task)
-    return _task_payload(new_task, derive_task_state([]), specimen_ref, block_ref, roi_ref)
+    return _task_response(new_task, derive_task_state([]))
 
 
-@acquisition_task_api.post("/acquisition-tasks/batch", status_code=status.HTTP_201_CREATED)
+@acquisition_task_api.post(
+    "/acquisition-tasks/batch", status_code=status.HTTP_201_CREATED, response_model=list[AcquisitionTaskResponse]
+)
 async def create_tasks_batch(
     tasks: list[AcquisitionTaskCreate] = Body(...),
     group: bool = Body(False),
@@ -524,7 +502,7 @@ async def create_tasks_batch(
         )
     ).all()
     created_map = {
-        task.id: _task_payload(task, derive_task_state([]), specimen_ref, block_ref, roi_ref)
-        for task, specimen_ref, block_ref, roi_ref in created_rows
+        task.id: _task_response(task, derive_task_state([]))
+        for task, _specimen_ref, _block_ref, _roi_ref in created_rows
     }
     return [created_map[internal_id] for internal_id in created_ids if internal_id in created_map]

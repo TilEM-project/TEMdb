@@ -12,7 +12,6 @@ from fastapi import (
     Response,
     status,
 )
-from pydantic import BaseModel
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,10 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from temdb.models import (
     RUN_STATUSES,
     AcquisitionCreate,
+    AcquisitionFullMetadata,
+    AcquisitionResponse,
     AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
     TileCreate,
+    TileResponse,
 )
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
@@ -50,10 +52,6 @@ acquisition_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-def _ref_payload(value: int | None) -> dict[str, str] | None:
-    return {"id": str(value)} if value is not None else None
-
-
 def _status_condition(acq_status: str):
     """Axis-1 filter; the literal 'in_flight' selects runs without a terminal status."""
     if acq_status == "in_flight":
@@ -63,25 +61,10 @@ def _status_condition(acq_status: str):
     raise HTTPException(422, f"status filter must be 'in_flight' or one of {RUN_STATUSES}")
 
 
-def _acquisition_payload(
-    acquisition: AcquisitionSQLModel,
-    specimen_internal_id: int | None = None,
-    roi_internal_id: int | None = None,
-    task_internal_id: int | None = None,
-) -> dict[str, Any]:
-    payload = acquisition.model_dump()
-    payload["_id"] = str(acquisition.id)
-    payload["specimen_ref"] = _ref_payload(specimen_internal_id)
-    payload["roi_ref"] = _ref_payload(roi_internal_id)
-    payload["acquisition_task_ref"] = _ref_payload(task_internal_id)
-    return payload
-
-
 def _tile_payload(
     tile: TileSQLModel, acquisition_id: str, acquisition_internal_id: int | None = None
 ) -> dict[str, Any]:
     payload = {
-        "_id": str(tile.tile_id),
         "tile_id": str(tile.tile_id),
         "dataset_id": str(tile.dataset_id),
         "acquisition_id": acquisition_id,
@@ -255,11 +238,11 @@ async def list_acquisitions(
     total_count = len(acquisitions)
     rows = rows[:limit]
     payloads = []
-    for acq, specimen_ref, roi_ref, task_ref in rows:
-        payload = _acquisition_payload(acq, specimen_ref, roi_ref, task_ref)
+    for acq, _specimen_ref, _roi_ref, _task_ref in rows:
+        payload = AcquisitionResponse.model_validate(acq).model_dump(mode="json")
         if fields:
             kept = {field: payload.get(field) for field in fields}
-            kept["_id"] = payload["_id"]
+            kept["id"] = payload["id"]
             payload = kept
         payloads.append(payload)
     next_cursor = str(rows[-1][0].id) if rows else None
@@ -276,7 +259,7 @@ async def list_acquisitions(
     return {"acquisitions": payloads, "metadata": metadata}
 
 
-@acquisition_api.post("/acquisitions", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
+@acquisition_api.post("/acquisitions", response_model=AcquisitionResponse, status_code=status.HTTP_201_CREATED)
 async def create_acquisition(
     acq_data: AcquisitionCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -321,9 +304,8 @@ async def create_acquisition(
     ).first()
     if task_row is None:
         raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
-    task_obj, specimen_ref = task_row
+    task_obj, _specimen_ref = task_row
     roi_obj = None
-    roi_ref = None
     if acq_data.roi_id is not None:
         roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
         roi_obj = roi.first()
@@ -334,7 +316,6 @@ async def create_acquisition(
                 400,
                 f"ROI ID '{roi_obj.roi_id}' does not match ROI reference in Task '{task_obj.task_id}'.",
             )
-        roi_ref = roi_obj.id
     if acq_data.kind == "montage" and task_obj.specimen_id is None:
         raise HTTPException(
             422,
@@ -386,12 +367,10 @@ async def create_acquisition(
     session.add(acquisition)
     await session.commit()
     await session.refresh(acquisition)
-    if roi_obj is None:
-        specimen_ref = None
-    return _acquisition_payload(acquisition, specimen_ref, roi_ref, task_obj.id)
+    return acquisition
 
 
-@acquisition_api.get("/acquisitions/{acquisition_id}", response_model=dict[str, Any])
+@acquisition_api.get("/acquisitions/{acquisition_id}", response_model=AcquisitionResponse)
 async def get_acquisition(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -423,11 +402,11 @@ async def get_acquisition(
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, specimen_ref, roi_ref, task_ref = row
-    return _acquisition_payload(acq_obj, specimen_ref, roi_ref, task_ref)
+    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
+    return acq_obj
 
 
-@acquisition_api.patch("/acquisitions/{acquisition_id}", response_model=dict[str, Any])
+@acquisition_api.patch("/acquisitions/{acquisition_id}", response_model=AcquisitionResponse)
 async def update_acquisition(
     acquisition_id: str,
     updated_fields: AcquisitionUpdate = Body(...),
@@ -460,7 +439,7 @@ async def update_acquisition(
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, specimen_ref, roi_ref, task_ref = row
+    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(400, "No update data provided")
@@ -505,14 +484,14 @@ async def update_acquisition(
             )
         await session.commit()
         await session.refresh(acq_obj)
-        return _acquisition_payload(acq_obj, specimen_ref, roi_ref, task_ref)
+        return acq_obj
     for field, value in update_data.items():
         if hasattr(acq_obj, field):
             setattr(acq_obj, field, _column_value(value))
     session.add(acq_obj)
     await session.commit()
     await session.refresh(acq_obj)
-    return _acquisition_payload(acq_obj, specimen_ref, roi_ref, task_ref)
+    return acq_obj
 
 
 @acquisition_api.delete("/acquisitions/{acquisition_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -717,7 +696,7 @@ def _tile_uuid_or_404(tile_id: str) -> uuid.UUID:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found")
 
 
-@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=dict[str, Any])
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=TileResponse)
 async def get_tile_from_acquisition(
     acquisition_id: str,
     tile_id: str,
@@ -750,7 +729,7 @@ def _current_storage_location(storage_locations: list[dict[str, Any]] | None) ->
     return next((loc for loc in storage_locations if loc.get("is_current")), None)
 
 
-@acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=dict[str, Any])
+@acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=AcquisitionResponse)
 async def add_storage_location(
     acquisition_id: str,
     storage_location: StorageLocationCreate,
@@ -783,7 +762,7 @@ async def add_storage_location(
     ).first()
     if row is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, specimen_ref, roi_ref, task_ref = row
+    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
 
     new_location = storage_location.model_dump(mode="json")
     make_current = new_location.get("is_current", True)
@@ -802,7 +781,7 @@ async def add_storage_location(
     session.add(acq_obj)
     await session.commit()
     await session.refresh(acq_obj)
-    return _acquisition_payload(acq_obj, specimen_ref, roi_ref, task_ref)
+    return acq_obj
 
 
 @acquisition_api.get(
@@ -902,19 +881,6 @@ async def delete_tile_from_acquisition(
     return None
 
 
-class AcquisitionFullMetadata(BaseModel):
-    """Acquisition with complete hierarchy metadata"""
-
-    acquisition: dict[str, Any]
-    acquisition_task: dict[str, Any] | None = None
-    roi: dict[str, Any] | None = None
-    section: dict[str, Any] | None = None
-    cutting_session: dict[str, Any] | None = None
-    block: dict[str, Any] | None = None
-    specimen: dict[str, Any] | None = None
-    substrate: dict[str, Any] | None = None
-
-
 @acquisition_api.get("/acquisitions/{acquisition_id}/metadata", response_model=AcquisitionFullMetadata)
 async def get_acquisition_with_full_metadata(
     acquisition_id: str,
@@ -982,20 +948,20 @@ async def get_acquisition_with_full_metadata(
         block_obj,
         specimen_obj,
         substrate_obj,
-        specimen_ref,
-        roi_ref,
-        task_ref,
+        _specimen_ref,
+        _roi_ref,
+        _task_ref,
     ) = row
-    return {
-        "acquisition": _acquisition_payload(acq_obj, specimen_ref, roi_ref, task_ref),
-        "acquisition_task": task_obj.model_dump() if task_obj else None,
-        "roi": roi_obj.model_dump() if roi_obj else None,
-        "section": section_obj.model_dump() if section_obj else None,
-        "cutting_session": cutting_session_obj.model_dump() if cutting_session_obj else None,
-        "block": block_obj.model_dump() if block_obj else None,
-        "specimen": specimen_obj.model_dump() if specimen_obj else None,
-        "substrate": substrate_obj.model_dump() if substrate_obj else None,
-    }
+    return AcquisitionFullMetadata(
+        acquisition=AcquisitionResponse.model_validate(acq_obj),
+        task=task_obj.model_dump() if task_obj else None,
+        roi=roi_obj.model_dump() if roi_obj else None,
+        section=section_obj.model_dump() if section_obj else None,
+        cutting_session=cutting_session_obj.model_dump() if cutting_session_obj else None,
+        block=block_obj.model_dump() if block_obj else None,
+        specimen=specimen_obj.model_dump() if specimen_obj else None,
+        substrate=substrate_obj.model_dump() if substrate_obj else None,
+    )
 
 
 @acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])
@@ -1096,25 +1062,25 @@ async def list_acquisitions_with_hierarchy(
         cutting_obj,
         block_obj,
         specimen_obj,
-        specimen_ref,
-        roi_ref_value,
-        task_ref,
+        _specimen_ref,
+        _roi_ref_value,
+        _task_ref,
     ) in rows:
         formatted_results.append(
-            {
-                "acquisition": _acquisition_payload(acq, specimen_ref, roi_ref_value, task_ref),
-                "acquisition_task": task_obj.model_dump() if task_obj else None,
-                "roi": roi_obj.model_dump() if roi_obj else None,
-                "section": section_obj.model_dump() if section_obj else None,
-                "substrate": substrate_obj.model_dump() if substrate_obj else None,
-                "cutting_session": cutting_obj.model_dump() if cutting_obj else None,
-                "block": block_obj.model_dump() if block_obj else None,
-                "specimen": specimen_obj.model_dump() if specimen_obj else None,
-            }
+            AcquisitionFullMetadata(
+                acquisition=AcquisitionResponse.model_validate(acq),
+                task=task_obj.model_dump() if task_obj else None,
+                roi=roi_obj.model_dump() if roi_obj else None,
+                section=section_obj.model_dump() if section_obj else None,
+                substrate=substrate_obj.model_dump() if substrate_obj else None,
+                cutting_session=cutting_obj.model_dump() if cutting_obj else None,
+                block=block_obj.model_dump() if block_obj else None,
+                specimen=specimen_obj.model_dump() if specimen_obj else None,
+            ).model_dump(mode="json", by_alias=True)
         )
     total_count = len(formatted_results)
     formatted_results = formatted_results[:limit]
-    next_cursor = str(formatted_results[-1]["acquisition"].get("_id")) if formatted_results else None
+    next_cursor = str(formatted_results[-1]["acquisition"]["id"]) if formatted_results else None
     metadata = {
         "total_count": total_count,
         "returned_count": len(formatted_results),

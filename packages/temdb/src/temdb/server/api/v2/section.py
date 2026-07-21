@@ -2,11 +2,12 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import APIErrorResponse, SectionCreate, SectionQuality, SectionUpdate
+from temdb.models import APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import (
     CuttingSessionSQLModel,
@@ -22,40 +23,7 @@ section_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-def _to_section_payload(
-    section: SectionSQLModel,
-    *,
-    cutting_session_ref_id: int | None = None,
-    substrate_ref_id: int | None = None,
-) -> dict:
-    payload = {
-        "_id": str(section.id),
-        "section_id": section.section_id,
-        "section_number": section.section_number,
-        "timestamp": section.timestamp,
-        "cutting_session_id": section.cutting_session_id,
-        "block_id": section.block_id,
-        "specimen_id": section.specimen_id,
-        "media_id": section.media_id,
-        "optical_image": section.optical_image,
-        "aperture_uid": section.aperture_uid,
-        "aperture_index": section.aperture_index,
-        "barcode": section.barcode,
-        "condition": section.condition,
-        "condition_reason": section.condition_reason,
-        "destroyed": section.condition == "destroyed",
-        "section_metrics": section.section_metrics,
-        "created_at": section.created_at,
-        "updated_at": section.updated_at,
-    }
-    if cutting_session_ref_id is not None:
-        payload["cutting_session_ref"] = {"id": str(cutting_session_ref_id)}
-    if substrate_ref_id is not None:
-        payload["substrate_ref"] = {"id": str(substrate_ref_id)}
-    return payload
-
-
-@section_api.get("/sections")
+@section_api.get("/sections", response_model=list[SectionResponse])
 async def list_sections(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -83,7 +51,7 @@ async def list_sections(
             for section in sections
             if isinstance(section.section_metrics, dict) and section.section_metrics.get("quality") == quality.value
         ]
-    return [_to_section_payload(section) for section in sections]
+    return sections
 
 
 @section_api.get("/sections/count", response_model=int)
@@ -112,7 +80,7 @@ async def count_sections(
     return (await session.exec(statement)).one()
 
 
-@section_api.get("/sections/sessions/{cutting_session_id}")
+@section_api.get("/sections/sessions/{cutting_session_id}", response_model=list[SectionResponse])
 async def list_cutting_session_sections(
     cutting_session_id: str,
     skip: int = Query(0, ge=0),
@@ -135,10 +103,10 @@ async def list_cutting_session_sections(
     if not rows:
         raise HTTPException(status_code=404, detail=f"Cutting Session '{cutting_session_id}' not found")
     sections = [row[1] for row in rows if row[1] is not None]
-    return [_to_section_payload(section) for section in sections[skip : skip + limit]]
+    return sections[skip : skip + limit]
 
 
-@section_api.get("/sections/blocks/{block_id}")
+@section_api.get("/sections/blocks/{block_id}", response_model=list[SectionResponse])
 async def list_block_sections(
     block_id: str,
     skip: int = Query(0, ge=0),
@@ -153,10 +121,10 @@ async def list_block_sections(
         .offset(skip)
         .limit(limit)
     )
-    return [_to_section_payload(section) for section in sections.all()]
+    return sections.all()
 
 
-@section_api.get("/sections/specimens/{specimen_id}")
+@section_api.get("/sections/specimens/{specimen_id}", response_model=list[SectionResponse])
 async def list_specimen_sections(
     specimen_id: str,
     skip: int = Query(0, ge=0),
@@ -171,10 +139,10 @@ async def list_specimen_sections(
         .offset(skip)
         .limit(limit)
     )
-    return [_to_section_payload(section) for section in sections.all()]
+    return sections.all()
 
 
-@section_api.get("/sections/sessions/{cutting_session_id}/sections/{section_id}")
+@section_api.get("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
 async def get_section(
     cutting_session_id: str,
     section_id: str,
@@ -208,15 +176,11 @@ async def get_section(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
-    section_obj, cutting_session_ref, substrate_ref = row
-    return _to_section_payload(
-        section_obj,
-        cutting_session_ref_id=cutting_session_ref,
-        substrate_ref_id=substrate_ref,
-    )
+    section_obj, _cutting_session_ref, _substrate_ref = row
+    return section_obj
 
 
-@section_api.post("/sections", status_code=status.HTTP_201_CREATED)
+@section_api.post("/sections", status_code=status.HTTP_201_CREATED, response_model=SectionResponse)
 async def create_section(
     section_data: SectionCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -248,7 +212,6 @@ async def create_section(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{section_data.cutting_session_id}' not found",
         )
-    substrate_ref = validation_row[1]
     existing_ref = validation_row[2]
     if existing_ref is not None:
         raise HTTPException(
@@ -275,17 +238,14 @@ async def create_section(
     session.add(new_section)
     await session.commit()
     await session.refresh(new_section)
-    return _to_section_payload(
-        new_section,
-        cutting_session_ref_id=cut_obj.id,
-        substrate_ref_id=substrate_ref,
-    )
+    return new_section
 
 
 @section_api.post(
     "/sections/batch",
     status_code=status.HTTP_201_CREATED,
     summary="Create multiple Sections in bulk",
+    response_model=list[SectionResponse],
     responses={
         status.HTTP_400_BAD_REQUEST: {"model": APIErrorResponse, "description": "Invalid input data"},
         status.HTTP_404_NOT_FOUND: {"model": APIErrorResponse, "description": "Parent resource not found"},
@@ -371,10 +331,10 @@ async def create_sections_batch(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"duplicate sections: {error.orig}") from error
     for item in sections_to_insert:
         await session.refresh(item)
-    return [_to_section_payload(item) for item in sections_to_insert]
+    return sections_to_insert
 
 
-@section_api.patch("/sections/sessions/{cutting_session_id}/sections/{section_id}")
+@section_api.patch("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
 async def update_section(
     cutting_session_id: str,
     section_id: str,
@@ -397,32 +357,16 @@ async def update_section(
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
-    needs_save = False
-    if "section_metrics" in update_data and update_data["section_metrics"] is not None:
-        metrics_value = update_data["section_metrics"]
-        metrics = metrics_value.model_dump(mode="json") if hasattr(metrics_value, "model_dump") else metrics_value
-        if section_obj.section_metrics != metrics:
-            section_obj.section_metrics = metrics
-            needs_save = True
-    simple_fields = [
-        "optical_image",
-        "aperture_uid",
-        "aperture_index",
-        "barcode",
-        "timestamp",
-        "condition",
-        "condition_reason",
-    ]
-    for field in simple_fields:
-        if field in update_data and getattr(section_obj, field) != update_data[field]:
-            setattr(section_obj, field, update_data[field])
-            needs_save = True
-    if needs_save:
-        section_obj.updated_at = datetime.now(timezone.utc)
-        session.add(section_obj)
-        await session.commit()
-        await session.refresh(section_obj)
-    return _to_section_payload(section_obj)
+    metrics = update_data.pop("section_metrics", None)
+    if metrics is not None:
+        section_obj.section_metrics = jsonable_encoder(metrics)
+    for field, value in update_data.items():
+        setattr(section_obj, field, value)
+    section_obj.updated_at = datetime.now(timezone.utc)
+    session.add(section_obj)
+    await session.commit()
+    await session.refresh(section_obj)
+    return section_obj
 
 
 @section_api.delete(
@@ -463,7 +407,7 @@ async def delete_section(
     return None
 
 
-@section_api.get("/sections/media/{media_id}")
+@section_api.get("/sections/media/{media_id}", response_model=list[SectionResponse])
 async def list_sections_by_media(
     media_id: str,
     skip: int = Query(0, ge=0),
@@ -476,10 +420,10 @@ async def list_sections_by_media(
     if relative_position is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_position is not supported")
     sections = await session.exec(statement.offset(skip).limit(limit))
-    return [_to_section_payload(section) for section in sections.all()]
+    return sections.all()
 
 
-@section_api.get("/sections/barcode/{barcode}")
+@section_api.get("/sections/barcode/{barcode}", response_model=list[SectionResponse])
 async def get_sections_by_barcode(
     barcode: str,
     skip: int = Query(0, ge=0),
@@ -490,4 +434,4 @@ async def get_sections_by_barcode(
     sections = await session.exec(
         select(SectionSQLModel).where(SectionSQLModel.barcode == barcode).offset(skip).limit(limit)
     )
-    return [_to_section_payload(section) for section in sections.all()]
+    return sections.all()

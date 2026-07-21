@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -23,27 +24,30 @@ roi_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-def _roi_payload(roi: ROISQLModel, parent_internal_id: int | None = None) -> dict:
-    base = dict(roi.roi_payload or {})
-    base.update(
-        {
-            "_id": str(roi.id),
-            "roi_id": roi.roi_id,
-            "roi_number": roi.roi_number,
-            "section_id": roi.section_id,
-            "block_id": roi.block_id,
-            "specimen_id": roi.specimen_id,
-            "substrate_media_id": roi.substrate_media_id,
-            "hierarchy_level": roi.hierarchy_level,
-            "section_number": roi.section_number,
-            "updated_at": roi.updated_at,
-        }
+async def _has_children(session: AsyncSession, roi_id: str) -> bool:
+    """Whether any ROI references `roi_id` as its parent."""
+    result = await session.exec(select(ROISQLModel.id).where(ROISQLModel.parent_roi_id == roi_id).limit(1))
+    return result.first() is not None
+
+
+async def _parents_with_children(session: AsyncSession, roi_ids: Iterable[str]) -> set[str]:
+    """Batch version of `_has_children`: which of `roi_ids` have at least one child."""
+    candidate_ids = [roi_id for roi_id in roi_ids if roi_id]
+    if not candidate_ids:
+        return set()
+    result = await session.exec(
+        select(ROISQLModel.parent_roi_id).where(ROISQLModel.parent_roi_id.in_(candidate_ids)).distinct()
     )
-    base["parent_roi_ref"] = {"id": str(parent_internal_id)} if parent_internal_id is not None else None
-    return base
+    return {parent_id for parent_id in result if parent_id is not None}
 
 
-@roi_api.get("/rois")
+def _to_response(roi: ROISQLModel, is_parent: bool = False) -> ROIResponse:
+    response = ROIResponse.model_validate(roi)
+    response.is_parent = is_parent
+    return response
+
+
+@roi_api.get("/rois", response_model=list[ROIResponse])
 async def list_rois(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -74,10 +78,11 @@ async def list_rois(
     if conditions:
         statement = statement.where(and_(*conditions))
     rois = (await session.exec(statement.offset(skip).limit(limit))).all()
-    return [_roi_payload(roi, None) for roi in rois]
+    parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in rois))
+    return [_to_response(roi, roi.roi_id in parents_with_children) for roi in rois]
 
 
-@roi_api.post("/rois", status_code=status.HTTP_201_CREATED)
+@roi_api.post("/rois", response_model=ROIResponse, status_code=status.HTTP_201_CREATED)
 async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_async_session)):
     """Create a new ROI with hierarchical ID generation."""
     section = await session.exec(select(SectionSQLModel).where(SectionSQLModel.section_id == roi_data.section_id))
@@ -118,18 +123,6 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
     if existing_roi.one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"ROI with ID '{roi_id}' already exists")
 
-    payload = roi_data.model_dump(mode="json")
-    for key in (
-        "roi_number",
-        "section_id",
-        "specimen_id",
-        "block_id",
-        "substrate_media_id",
-        "parent_roi_id",
-        "section_number",
-        "created_at",
-    ):
-        payload.pop(key, None)
     new_roi = ROISQLModel(
         roi_id=roi_id,
         roi_number=roi_data.roi_number,
@@ -140,14 +133,14 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         hierarchy_level=hierarchy_level,
         parent_roi_id=roi_data.parent_roi_id,
         section_number=roi_data.section_number,
-        roi_payload=payload,
+        roi_payload=roi_data.payload.model_dump(mode="json"),
         created_at=roi_data.created_at or datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
     session.add(new_roi)
     await session.commit()
     await session.refresh(new_roi)
-    return _roi_payload(new_roi, parent_roi.id if parent_roi else None)
+    return _to_response(new_roi, is_parent=False)
 
 
 @roi_api.post(
@@ -208,18 +201,6 @@ async def create_rois_batch(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="duplicate ROI IDs in batch")
         seen_roi_ids.add(roi_id)
         hierarchy_level = ROISQLModel.parse_hierarchy_level(roi_id)
-        payload = roi_create.model_dump(mode="json")
-        for key in (
-            "roi_number",
-            "section_id",
-            "specimen_id",
-            "block_id",
-            "substrate_media_id",
-            "parent_roi_id",
-            "section_number",
-            "created_at",
-        ):
-            payload.pop(key, None)
         rois_to_insert.append(
             ROISQLModel(
                 roi_id=roi_id,
@@ -231,7 +212,7 @@ async def create_rois_batch(
                 hierarchy_level=hierarchy_level,
                 parent_roi_id=roi_create.parent_roi_id,
                 section_number=roi_create.section_number,
-                roi_payload=payload,
+                roi_payload=roi_create.payload.model_dump(mode="json"),
                 created_at=roi_create.created_at or datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
@@ -245,24 +226,22 @@ async def create_rois_batch(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"duplicate ROI IDs: {error.orig}") from error
     for roi in rois_to_insert:
         await session.refresh(roi)
-    parent_map = {roi.roi_id: roi.id for roi in rois_to_insert}
-    return [
-        _roi_payload(roi, parent_map.get(roi.parent_roi_id) if roi.parent_roi_id else None) for roi in rois_to_insert
-    ]
+    # Newly inserted ROIs may be parents of each other (child created before parent in the
+    # same batch is impossible given FK ordering, but a batch may contain a parent whose
+    # child is also in the batch), so derive is_parent from the batch's own parent links.
+    parent_ids_in_batch = {roi.parent_roi_id for roi in rois_to_insert if roi.parent_roi_id}
+    return [_to_response(roi, roi.roi_id in parent_ids_in_batch) for roi in rois_to_insert]
 
 
-@roi_api.get("/rois/{roi_id}")
+@roi_api.get("/rois/{roi_id}", response_model=ROIResponse)
 async def get_roi(roi_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific ROI by its human-readable integer ID."""
     roi = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     roi_obj = roi.one_or_none()
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
-    parent = None
-    if roi_obj.parent_roi_id:
-        parent_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_obj.parent_roi_id))
-        parent = parent_result.one_or_none()
-    return _roi_payload(roi_obj, parent.id if parent else None)
+    is_parent = await _has_children(session, roi_obj.roi_id)
+    return _to_response(roi_obj, is_parent)
 
 
 @roi_api.get("/rois/{roi_id}/hierarchy", response_model=dict)
@@ -286,18 +265,18 @@ async def get_roi_hierarchy(roi_id: str, session: AsyncSession = Depends(get_asy
     return {"roi_id": roi_id, "hierarchy_path": hierarchy_path, "total_levels": len(hierarchy_path)}
 
 
-@roi_api.patch("/rois/{roi_id}")
+@roi_api.patch("/rois/{roi_id}", response_model=ROIResponse)
 async def update_roi(
     roi_id: str,
     updated_fields: ROIUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Update details (attributes from ROIBase) of a specific ROI."""
+    """Update details (attributes from ROIPayload) of a specific ROI."""
     roi_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     roi_obj = roi_result.one_or_none()
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
-    update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
+    update_data = updated_fields.payload.model_dump(mode="json", exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     payload = dict(roi_obj.roi_payload or {})
@@ -307,11 +286,8 @@ async def update_roi(
     session.add(roi_obj)
     await session.commit()
     await session.refresh(roi_obj)
-    parent = None
-    if roi_obj.parent_roi_id:
-        parent_result = await session.exec(select(ROISQLModel).where(ROISQLModel.roi_id == roi_obj.parent_roi_id))
-        parent = parent_result.one_or_none()
-    return _roi_payload(roi_obj, parent.id if parent else None)
+    is_parent = await _has_children(session, roi_obj.roi_id)
+    return _to_response(roi_obj, is_parent)
 
 
 @roi_api.delete("/rois/{roi_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -341,7 +317,7 @@ async def delete_roi(roi_id: str, session: AsyncSession = Depends(get_async_sess
     return None
 
 
-@roi_api.get("/sections/{section_id}/rois")
+@roi_api.get("/sections/{section_id}/rois", response_model=list[ROIResponse])
 async def list_section_rois(
     section_id: str,
     skip: int = Query(0, ge=0),
@@ -361,8 +337,8 @@ async def list_section_rois(
         section = await session.exec(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
         if section.one_or_none() is None:
             raise HTTPException(status_code=404, detail=f"Section '{section_id}' not found")
-    id_map = {roi.roi_id: roi.id for roi in roi_items}
-    return [_roi_payload(roi, id_map.get(roi.parent_roi_id) if roi.parent_roi_id else None) for roi in roi_items]
+    parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in roi_items))
+    return [_to_response(roi, roi.roi_id in parents_with_children) for roi in roi_items]
 
 
 @roi_api.get("/rois/{roi_id}/children", response_model=dict)
@@ -387,7 +363,8 @@ async def get_child_rois(
     children_list = children.all()
     total_children = len((await session.exec(select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id))).all())
     more_results = skip + limit < total_children
+    parents_with_children = await _parents_with_children(session, (child.roi_id for child in children_list))
     return {
-        "children": [_roi_payload(child, parent_obj.id) for child in children_list],
+        "children": [_to_response(child, child.roi_id in parents_with_children) for child in children_list],
         "metadata": {"skip": skip, "limit": limit, "total_children": total_children, "has_more": more_results},
     }

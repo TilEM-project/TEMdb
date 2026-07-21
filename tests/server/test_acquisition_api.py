@@ -91,12 +91,10 @@ async def test_create_acquisition(
     assert response_data["tilt_angle_deg"] == 5.0
     assert response_data["status"] is None
     assert response_data["run_id"]
+    assert isinstance(response_data["id"], int)
     assert response_data["roi_id"] == test_roi.roi_id
     assert response_data["acquisition_task_id"] == test_acquisition_task.task_id
     assert response_data["specimen_id"] == test_specimen.specimen_id
-    assert response_data["roi_ref"]["id"] == str(test_roi.id)
-    assert response_data["acquisition_task_ref"]["id"] == str(test_acquisition_task.id)
-    assert response_data["specimen_ref"]["id"] == str(test_specimen.id)
 
     # await async_client.delete(f"/api/v2/acquisitions/{acq_id_hr}")
 
@@ -146,7 +144,7 @@ async def test_get_acquisition(async_client: AsyncClient, test_acquisition):
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["acquisition_id"] == test_acquisition.acquisition_id
-    assert response_data["_id"] == str(test_acquisition.id)
+    assert response_data["id"] == test_acquisition.id
     assert response_data["specimen_id"] == test_acquisition.specimen_id
     assert response_data["roi_id"] == test_acquisition.roi_id
     assert response_data["acquisition_task_id"] == test_acquisition.acquisition_task_id
@@ -549,7 +547,6 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
         json={
             "acquisition_id": "ACQ_E2E_001",
             "montage_id": "M_E2E",
-            "specimen_id": test_acquisition_task.specimen_id,
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
             "microscope_id": str(test_microscope.microscope_id),

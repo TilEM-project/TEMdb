@@ -5,32 +5,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import DatasetCreate, DatasetUpdate
+from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
 
 dataset_api = APIRouter(tags=["Datasets"])
-
-
-def _dataset_payload(ds: DatasetSQLModel) -> dict:
-    return {
-        "dataset_id": str(ds.dataset_id),
-        "name": ds.name,
-        "description": ds.description,
-        "specimen_id": ds.specimen_id,
-        "parent_dataset_id": str(ds.parent_dataset_id) if ds.parent_dataset_id is not None else None,
-        "status": ds.status,
-        "size_class": ds.size_class,
-        "estimated_tile_count": ds.estimated_tile_count,
-        "tile_hash_modulus": ds.tile_hash_modulus,
-        "collected_at": ds.collected_at,
-        "archived_at": ds.archived_at,
-        "metadata_json": ds.metadata_json,
-        "created_at": ds.created_at,
-        "updated_at": ds.updated_at,
-    }
 
 
 async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
@@ -44,7 +25,7 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
     return ds
 
 
-@dataset_api.post("/datasets", status_code=status.HTTP_201_CREATED)
+@dataset_api.post("/datasets", status_code=status.HTTP_201_CREATED, response_model=DatasetResponse)
 async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
     if existing is not None:
@@ -80,10 +61,10 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
     session.add(ds)
     await session.commit()
     await session.refresh(ds)
-    return _dataset_payload(ds)
+    return ds
 
 
-@dataset_api.get("/datasets")
+@dataset_api.get("/datasets", response_model=list[DatasetResponse])
 async def list_datasets(
     specimen_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
@@ -100,23 +81,23 @@ async def list_datasets(
     if parent_dataset_id is not None:
         stmt = stmt.where(DatasetSQLModel.parent_dataset_id == parent_dataset_id)
     rows = (await session.exec(stmt.order_by(DatasetSQLModel.created_at).offset(skip).limit(limit))).all()
-    return [_dataset_payload(ds) for ds in rows]
+    return rows
 
 
-@dataset_api.get("/datasets/by-name/{name}")
+@dataset_api.get("/datasets/by-name/{name}", response_model=DatasetResponse)
 async def get_dataset_by_name(name: str, session: AsyncSession = Depends(get_async_session)):
     ds = (await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.name == name))).one_or_none()
     if ds is None:
         raise HTTPException(status_code=404, detail=f"Dataset name '{name}' not found")
-    return _dataset_payload(ds)
+    return ds
 
 
-@dataset_api.get("/datasets/{dataset_id}")
+@dataset_api.get("/datasets/{dataset_id}", response_model=DatasetResponse)
 async def get_dataset(dataset_id: str, session: AsyncSession = Depends(get_async_session)):
-    return _dataset_payload(await _get_by_id(session, dataset_id))
+    return await _get_by_id(session, dataset_id)
 
 
-@dataset_api.get("/datasets/{dataset_id}/children")
+@dataset_api.get("/datasets/{dataset_id}/children", response_model=list[DatasetResponse])
 async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends(get_async_session)):
     parent = await _get_by_id(session, dataset_id)
     rows = (
@@ -126,10 +107,10 @@ async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends
             .order_by(DatasetSQLModel.created_at)
         )
     ).all()
-    return [_dataset_payload(ds) for ds in rows]
+    return rows
 
 
-@dataset_api.patch("/datasets/{dataset_id}")
+@dataset_api.patch("/datasets/{dataset_id}", response_model=DatasetResponse)
 async def update_dataset(
     dataset_id: str,
     updated: DatasetUpdate = Body(...),
@@ -140,13 +121,12 @@ async def update_dataset(
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
     now = datetime.now(timezone.utc)
-    if "description" in data:
-        ds.description = data["description"]
-    if "size_class" in data:
-        ds.size_class = data["size_class"]
-    if "metadata_json" in data:
-        ds.metadata_json = data["metadata_json"]
-    if "status" in data and data["status"] != ds.status:
+    status_changed = "status" in data and data["status"] != ds.status
+    for field, value in data.items():
+        if field == "status":
+            continue
+        setattr(ds, field, value)
+    if status_changed:
         ds.status = data["status"]
         if ds.status == "collected" and ds.collected_at is None:
             ds.collected_at = now
@@ -156,4 +136,4 @@ async def update_dataset(
     session.add(ds)
     await session.commit()
     await session.refresh(ds)
-    return _dataset_payload(ds)
+    return ds

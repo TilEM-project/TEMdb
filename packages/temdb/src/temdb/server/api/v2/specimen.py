@@ -5,7 +5,7 @@ from pydantic import AnyHttpUrl
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import SpecimenCreate, SpecimenUpdate
+from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, SpecimenUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
@@ -14,31 +14,7 @@ specimen_api = APIRouter(
 )
 
 
-def _sql_specimen_payload(specimen: SpecimenSQLModel) -> dict:
-    return {
-        "_id": str(specimen.id),
-        "specimen_id": specimen.specimen_id,
-        "description": specimen.description,
-        "specimen_images": specimen.specimen_images or [],
-        "functional_imaging_metadata": specimen.functional_imaging_metadata,
-        "created_at": specimen.created_at,
-        "updated_at": specimen.updated_at,
-    }
-
-
-def _sql_block_payload(block: BlockSQLModel, specimen_internal_id: int | None = None) -> dict:
-    return {
-        "_id": str(block.id),
-        "block_id": block.block_id,
-        "specimen_id": block.specimen_id,
-        "specimen_ref": {"id": str(specimen_internal_id)} if specimen_internal_id is not None else None,
-        "microCT_info": block.microCT_info,
-        "created_at": block.created_at,
-        "updated_at": block.updated_at,
-    }
-
-
-@specimen_api.get("/specimens")
+@specimen_api.get("/specimens", response_model=list[SpecimenResponse])
 async def list_specimens(
     search: str | None = Query(None, description="Search term for specimen ID or description"),
     skip: int = Query(0, ge=0),
@@ -54,8 +30,7 @@ async def list_specimens(
                 SpecimenSQLModel.description.ilike(like_pattern),
             )
         )
-    specimens = (await session.exec(statement.offset(skip).limit(limit))).all()
-    return [_sql_specimen_payload(specimen) for specimen in specimens]
+    return (await session.exec(statement.offset(skip).limit(limit))).all()
 
 
 @specimen_api.get("/specimens/count", response_model=int)
@@ -75,7 +50,7 @@ async def count_specimens(
     return (await session.exec(statement)).one()
 
 
-@specimen_api.get("/specimens/{specimen_id}/blocks")
+@specimen_api.get("/specimens/{specimen_id}/blocks", response_model=list[BlockResponse])
 async def get_specimen_blocks(
     specimen_id: str,
     skip: int = Query(0, ge=0),
@@ -97,11 +72,10 @@ async def get_specimen_blocks(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
-    specimen_ref = rows[0][0]
-    return [_sql_block_payload(block, specimen_ref) for _, block in rows if block is not None]
+    return [block for _, block in rows if block is not None]
 
 
-@specimen_api.post("/specimens", status_code=status.HTTP_201_CREATED)
+@specimen_api.post("/specimens", status_code=status.HTTP_201_CREATED, response_model=SpecimenResponse)
 async def create_specimen(
     specimen_data: SpecimenCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -125,10 +99,10 @@ async def create_specimen(
     session.add(specimen)
     await session.commit()
     await session.refresh(specimen)
-    return _sql_specimen_payload(specimen)
+    return specimen
 
 
-@specimen_api.get("/specimens/{specimen_id}")
+@specimen_api.get("/specimens/{specimen_id}", response_model=SpecimenResponse)
 async def get_specimen(specimen_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific specimen by its human-readable ID."""
     specimen_result = await session.exec(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
@@ -138,10 +112,10 @@ async def get_specimen(specimen_id: str, session: AsyncSession = Depends(get_asy
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
-    return _sql_specimen_payload(specimen)
+    return specimen
 
 
-@specimen_api.patch("/specimens/{specimen_id}")
+@specimen_api.patch("/specimens/{specimen_id}", response_model=SpecimenResponse)
 async def update_specimen(
     specimen_id: str,
     updated_fields: SpecimenUpdate = Body(...),
@@ -181,7 +155,7 @@ async def update_specimen(
         session.add(specimen)
         await session.commit()
         await session.refresh(specimen)
-    return _sql_specimen_payload(specimen)
+    return specimen
 
 
 @specimen_api.delete("/specimens/{specimen_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -211,6 +185,7 @@ async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_
 @specimen_api.post(
     "/specimens/{specimen_id}/images",
     status_code=status.HTTP_200_OK,
+    response_model=SpecimenResponse,
 )
 async def add_specimen_image(
     specimen_id: str,
@@ -234,12 +209,13 @@ async def add_specimen_image(
         session.add(specimen)
         await session.commit()
         await session.refresh(specimen)
-    return _sql_specimen_payload(specimen)
+    return specimen
 
 
 @specimen_api.delete(
     "/specimens/{specimen_id}/images",
     status_code=status.HTTP_200_OK,
+    response_model=SpecimenResponse,
 )
 async def remove_specimen_image(
     specimen_id: str,
@@ -267,4 +243,4 @@ async def remove_specimen_image(
     session.add(specimen)
     await session.commit()
     await session.refresh(specimen)
-    return _sql_specimen_payload(specimen)
+    return specimen

@@ -5,25 +5,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import MicroscopeCreate, MicroscopeUpdate
+from temdb.models import MicroscopeCreate, MicroscopeResponse, MicroscopeUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import MicroscopeSQLModel
 
 microscope_api = APIRouter(tags=["Microscopes"])
-
-
-def _microscope_payload(scope: MicroscopeSQLModel) -> dict:
-    return {
-        "microscope_id": str(scope.microscope_id),
-        "label": scope.label,
-        "microscope_type": scope.microscope_type,
-        "model": scope.model,
-        "location": scope.location,
-        "notes": scope.notes,
-        "created_at": scope.created_at,
-        "updated_at": scope.updated_at,
-    }
 
 
 async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQLModel:
@@ -39,7 +26,7 @@ async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQL
     return scope
 
 
-@microscope_api.post("/microscopes", status_code=status.HTTP_201_CREATED)
+@microscope_api.post("/microscopes", status_code=status.HTTP_201_CREATED, response_model=MicroscopeResponse)
 async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (
         await session.exec(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == data.label))
@@ -58,10 +45,10 @@ async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depe
     session.add(scope)
     await session.commit()
     await session.refresh(scope)
-    return _microscope_payload(scope)
+    return scope
 
 
-@microscope_api.get("/microscopes")
+@microscope_api.get("/microscopes", response_model=list[MicroscopeResponse])
 async def list_microscopes(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -70,10 +57,10 @@ async def list_microscopes(
     rows = (
         await session.exec(select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.label).offset(skip).limit(limit))
     ).all()
-    return [_microscope_payload(scope) for scope in rows]
+    return rows
 
 
-@microscope_api.get("/microscopes/{id_or_label}")
+@microscope_api.get("/microscopes/{id_or_label}", response_model=MicroscopeResponse)
 async def get_microscope(id_or_label: str, session: AsyncSession = Depends(get_async_session)):
     try:
         key = uuid.UUID(id_or_label)
@@ -83,11 +70,11 @@ async def get_microscope(id_or_label: str, session: AsyncSession = Depends(get_a
         ).one_or_none()
         if scope is None:
             raise HTTPException(status_code=404, detail=f"Microscope '{id_or_label}' not found")
-        return _microscope_payload(scope)
-    return _microscope_payload(await _get_by_id(session, str(key)))
+        return scope
+    return await _get_by_id(session, str(key))
 
 
-@microscope_api.patch("/microscopes/{microscope_id}")
+@microscope_api.patch("/microscopes/{microscope_id}", response_model=MicroscopeResponse)
 async def update_microscope(
     microscope_id: str,
     updated: MicroscopeUpdate = Body(...),
@@ -103,4 +90,4 @@ async def update_microscope(
     session.add(scope)
     await session.commit()
     await session.refresh(scope)
-    return _microscope_payload(scope)
+    return scope

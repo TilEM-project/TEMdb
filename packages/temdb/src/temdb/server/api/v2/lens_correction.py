@@ -5,29 +5,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import LensCorrectionCreate, LensCorrectionUpdate
+from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
 lens_correction_api = APIRouter(tags=["Lens Corrections"])
-
-
-def _lens_correction_payload(lc: LensCorrectionSQLModel) -> dict:
-    return {
-        "lc_id": str(lc.lc_id),
-        "microscope_id": str(lc.microscope_id),
-        "magnification": lc.magnification,
-        "started_at": lc.started_at,
-        "source_run_id": str(lc.source_run_id) if lc.source_run_id is not None else None,
-        "source_dataset_id": str(lc.source_dataset_id) if lc.source_dataset_id is not None else None,
-        "shared_transform": lc.shared_transform,
-        "correction_x_uri": lc.correction_x_uri,
-        "correction_y_uri": lc.correction_y_uri,
-        "solver_params": lc.solver_params,
-        "created_at": lc.created_at,
-        "updated_at": lc.updated_at,
-    }
 
 
 async def _get_by_id(session: AsyncSession, lc_id: str) -> LensCorrectionSQLModel:
@@ -43,7 +26,9 @@ async def _get_by_id(session: AsyncSession, lc_id: str) -> LensCorrectionSQLMode
     return lc
 
 
-@lens_correction_api.post("/lens-corrections", status_code=status.HTTP_201_CREATED)
+@lens_correction_api.post(
+    "/lens-corrections", status_code=status.HTTP_201_CREATED, response_model=LensCorrectionResponse
+)
 async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSession = Depends(get_async_session)):
     microscope = (
         await session.exec(
@@ -68,10 +53,10 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
     session.add(lc)
     await session.commit()
     await session.refresh(lc)
-    return _lens_correction_payload(lc)
+    return lc
 
 
-@lens_correction_api.get("/lens-corrections")
+@lens_correction_api.get("/lens-corrections", response_model=list[LensCorrectionResponse])
 async def list_lens_corrections(
     microscope_id: uuid.UUID | None = Query(None),
     magnification: int | None = Query(None),
@@ -89,11 +74,11 @@ async def list_lens_corrections(
             stmt.order_by(LensCorrectionSQLModel.started_at.desc()).offset(skip).limit(limit)
         )
     ).all()
-    return [_lens_correction_payload(lc) for lc in rows]
+    return rows
 
 
 # NOTE: /current must be declared before /{lc_id} so the literal path wins.
-@lens_correction_api.get("/lens-corrections/current")
+@lens_correction_api.get("/lens-corrections/current", response_model=LensCorrectionResponse)
 async def get_current_lens_correction(
     microscope_id: uuid.UUID = Query(...),
     magnification: int = Query(...),
@@ -113,15 +98,15 @@ async def get_current_lens_correction(
             status_code=404,
             detail=f"No lens correction for microscope '{microscope_id}' at magnification {magnification}",
         )
-    return _lens_correction_payload(lc)
+    return lc
 
 
-@lens_correction_api.get("/lens-corrections/{lc_id}")
+@lens_correction_api.get("/lens-corrections/{lc_id}", response_model=LensCorrectionResponse)
 async def get_lens_correction(lc_id: str, session: AsyncSession = Depends(get_async_session)):
-    return _lens_correction_payload(await _get_by_id(session, lc_id))
+    return await _get_by_id(session, lc_id)
 
 
-@lens_correction_api.patch("/lens-corrections/{lc_id}")
+@lens_correction_api.patch("/lens-corrections/{lc_id}", response_model=LensCorrectionResponse)
 async def update_lens_correction(
     lc_id: str,
     updated: LensCorrectionUpdate = Body(...),
@@ -137,4 +122,4 @@ async def update_lens_correction(
     session.add(lc)
     await session.commit()
     await session.refresh(lc)
-    return _lens_correction_payload(lc)
+    return lc
