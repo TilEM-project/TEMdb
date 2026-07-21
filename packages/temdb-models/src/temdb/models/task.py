@@ -67,6 +67,7 @@ class AcquisitionTaskResponse(AcquisitionTaskBase):
     kind: str = Field(..., description="Task kind: montage or lens_correction")
     status: str | None = Field(None, description="Task state derived from runs (ADR 0011)")
     superseded_by: str | None = Field(None, description="task_id of the replacement task, if superseded")
+    dataset_id: uuid.UUID | None = Field(None, description="Dataset this task belongs to (UUIDv7)")
     metadata: dict[str, Any] | None = Field(
         None,
         description="Additional metadata",
