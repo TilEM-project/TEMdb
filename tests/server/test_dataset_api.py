@@ -22,7 +22,7 @@ async def test_dataset_row_round_trips(init_db, test_db_manager, test_specimen):
         session.add(ds)
         await session.commit()
         fetched = (
-            await session.exec(select(DatasetSQLModel).where(DatasetSQLModel.name == "mouse42_left_hemi"))
+            await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == "mouse42_left_hemi"))
         ).one()
         assert isinstance(fetched.dataset_id, uuid.UUID)
         assert fetched.status == "collecting"
@@ -98,6 +98,6 @@ async def test_acquisition_carries_dataset_id(
         session.add(acq)
         await session.commit()
         fetched = (
-            await session.exec(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == "ACQ_DS_001"))
+            await session.scalars(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == "ACQ_DS_001"))
         ).one()
         assert fetched.dataset_id == ds_id

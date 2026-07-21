@@ -331,7 +331,7 @@ class TestDataIntegration:
 
         async with self.db_manager.async_session_factory() as session:
             fetched_tile = (
-                await session.exec(
+                await session.scalars(
                     select(TileSQLModel).where(
                         TileSQLModel.dataset_id == acquisition.dataset_id,
                         TileSQLModel.run_id == acquisition.run_id,
@@ -361,7 +361,7 @@ class TestDataIntegration:
 
         async with self.db_manager.async_session_factory() as session:
             fetched_tiles = (
-                await session.exec(
+                await session.scalars(
                     select(TileSQLModel)
                     .where(
                         TileSQLModel.dataset_id == acquisition.dataset_id,
