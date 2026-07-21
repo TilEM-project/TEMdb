@@ -3,7 +3,14 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_roi_list(mock_client):
-    mock_response = [{"roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001", "section_id": "SECTION001"}]
+    mock_response = [
+        {
+            "id": 1,
+            "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001",
+            "section_id": "SECTION001",
+            "roi_payload": {},
+        }
+    ]
     mock_client.roi.list.return_value = mock_response
 
     result = await mock_client.roi.list("SECTION001")
@@ -13,9 +20,11 @@ async def test_roi_list(mock_client):
 
 @pytest.mark.asyncio
 async def test_roi_create(mock_client):
-    roi_data = {"section_id": "SECTION001", "coordinates": [[0, 0], [100, 100]]}
+    roi_data = {"section_id": "SECTION001", "payload": {"vertices": [[0, 0], [100, 100]]}}
     mock_response = roi_data.copy()
+    mock_response["id"] = 1
     mock_response["roi_id"] = "SPEC001.BLK001.SEC001.SUB001.ROI001"
+    mock_response["roi_payload"] = roi_data["payload"]
     mock_client.roi.create.return_value = mock_response
 
     result = await mock_client.roi.create(roi_data)
@@ -25,7 +34,12 @@ async def test_roi_create(mock_client):
 
 @pytest.mark.asyncio
 async def test_roi_get(mock_client):
-    mock_response = {"roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001", "section_id": "SECTION001"}
+    mock_response = {
+        "id": 1,
+        "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001",
+        "section_id": "SECTION001",
+        "roi_payload": {},
+    }
     mock_client.roi.get.return_value = mock_response
 
     result = await mock_client.roi.get("SPEC001.BLK001.SEC001.SUB001.ROI001")
@@ -35,11 +49,12 @@ async def test_roi_get(mock_client):
 
 @pytest.mark.asyncio
 async def test_roi_update(mock_client):
-    update_data = {"coordinates": [[0, 0], [200, 200]]}
+    update_data = {"payload": {"vertices": [[0, 0], [200, 200]]}}
     mock_response = {
+        "id": 1,
         "roi_id": "SPEC001.BLK001.SEC001.SUB001.ROI001",
         "section_id": "SECTION001",
-        "coordinates": [[0, 0], [200, 200]],
+        "roi_payload": {"vertices": [[0, 0], [200, 200]]},
     }
     mock_client.roi.update.return_value = mock_response
 

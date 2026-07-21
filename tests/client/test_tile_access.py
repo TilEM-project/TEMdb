@@ -46,6 +46,7 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
     res = ROIResource(request, API)
     request.return_value = {
         "acquisitions": [{
+            "id": 1,
             "acquisition_id": "ACQ1", "montage_id": "M", "specimen_id": "S", "roi_id": "R",
             "acquisition_task_id": "T",
             "run_id": "0190a6b2-7c3e-7000-8000-000000000001",
