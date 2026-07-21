@@ -97,6 +97,7 @@ class TestAcquisitionTaskUpdate:
 class TestAcquisitionTaskResponse:
     def test_valid_response(self):
         response = AcquisitionTaskResponse(
+            id=1,
             task_id="TASK001",
             specimen_id="SPEC001",
             block_id="BLOCK001",
@@ -112,6 +113,7 @@ class TestAcquisitionTaskResponse:
 
     def test_lens_correction_response_without_lineage(self):
         response = AcquisitionTaskResponse(
+            id=1,
             task_id="TASK_LC_001",
             kind="lens_correction",
             status="pending",

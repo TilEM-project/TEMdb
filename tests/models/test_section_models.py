@@ -82,6 +82,7 @@ class TestSectionUpdate:
 class TestSectionResponse:
     def test_valid_response(self):
         response = SectionResponse(
+            id=1,
             section_id="MEDIA001_S00001",
             cutting_session_id="CUT001",
             section_number=1,

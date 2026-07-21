@@ -55,6 +55,7 @@ class TestCuttingSessionUpdate:
 class TestCuttingSessionResponse:
     def test_valid_response(self):
         response = CuttingSessionResponse(
+            id=1,
             cutting_session_id="CUT001",
             block_id="BLOCK001",
             specimen_id="SPEC001",
