@@ -36,4 +36,4 @@ class LensCorrectionResponse(LensCorrectionBase):
 
     lc_id: uuid.UUID
     created_at: datetime
-    updated_at: datetime
+    updated_at: datetime | None = None

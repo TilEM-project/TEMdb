@@ -32,4 +32,4 @@ class MicroscopeResponse(MicroscopeBase):
     microscope_id: uuid.UUID
     label: str = Field(..., description="Unique human handle, e.g. 'TEM-01'")
     created_at: datetime
-    updated_at: datetime
+    updated_at: datetime | None = None
