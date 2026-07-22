@@ -52,8 +52,11 @@ class GzipRequestMiddleware:
                 if not message.get("more_body", False):
                     break
 
-            compressed_body = b"".join(body_parts)
-            decompressed_body = gzip.decompress(compressed_body)
+            raw_body = b"".join(body_parts)
+            try:
+                decompressed_body = gzip.decompress(raw_body)
+            except gzip.BadGzipFile:
+                decompressed_body = raw_body
 
             body_sent = False
 

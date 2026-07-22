@@ -65,7 +65,9 @@ class DatabaseManager:
             LensCorrectionSQLModel,
         )
 
-    async def initialize(self):
+    async def initialize(self, create_schema: bool = True):
+        if not create_schema:
+            return
         async with self.sql_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
