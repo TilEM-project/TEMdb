@@ -33,16 +33,16 @@ class TestHardwareParams:
         with pytest.raises(ValidationError):
             HardwareParams()
 
-    def test_extra_fields_forbidden(self):
-        with pytest.raises(ValidationError):
-            HardwareParams(
-                scope_id="SCOPE001",
-                camera_model="Test Camera",
-                camera_serial="12345",
-                camera_bit_depth=16,
-                media_type="tape",
-                custom_field="value",
-            )
+    def test_extra_fields_allowed(self):
+        params = HardwareParams(
+            scope_id="SCOPE001",
+            camera_model="Test Camera",
+            camera_serial="12345",
+            camera_bit_depth=16,
+            media_type="tape",
+            custom_field="value",
+        )
+        assert params.model_extra == {"custom_field": "value"}
 
 
 class TestAcquisitionParams:

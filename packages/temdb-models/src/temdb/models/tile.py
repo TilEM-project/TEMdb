@@ -63,7 +63,7 @@ class TileUpdate(TileBase):
 
 
 class TileResponse(TileBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     tile_id: str = Field(..., description="Unique tile identifier")
     acquisition_id: str = Field(..., description="Parent acquisition ID")

@@ -32,7 +32,7 @@ class DatasetUpdate(TEMDBModel):
 
 
 class DatasetResponse(DatasetBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     dataset_id: uuid.UUID = Field(..., description="UUIDv7 primary key")
     name: str = Field(..., description="Unique human-readable dataset name")

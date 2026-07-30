@@ -12,9 +12,7 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 
 class DatasetSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "datasets"
-    __table_args__ = (
-        CheckConstraint("status IN ('collecting', 'collected', 'archived')", name="status_vocab"),
-    )
+    __table_args__ = (CheckConstraint("status IN ('collecting', 'collected', 'archived')", name="status_vocab"),)
 
     dataset_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, server_default=func.uuidv7(monotonic=True)

@@ -32,7 +32,7 @@ class LensCorrectionUpdate(TEMDBModel):
 
 
 class LensCorrectionResponse(LensCorrectionBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     lc_id: uuid.UUID
     created_at: datetime

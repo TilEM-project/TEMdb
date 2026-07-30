@@ -22,7 +22,7 @@ class BlockUpdate(BlockBase):
 
 
 class BlockResponse(BlockBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     block_id: str = Field(..., description="Unique block identifier")

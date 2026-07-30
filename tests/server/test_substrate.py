@@ -110,6 +110,43 @@ async def test_update_substrate(async_client: AsyncClient, test_substrate):
 
 
 @pytest.mark.asyncio
+async def test_substrate_extra_fields_round_trip(async_client: AsyncClient):
+    media_id_hr = f"TEST_SUB_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/substrates",
+        json={
+            "media_id": media_id_hr,
+            "media_type": "grid",
+            "status": "new",
+            "unknown_create_key": {"origin": "create"},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["unknown_create_key"] == {"origin": "create"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/substrates/{media_id_hr}",
+        json={
+            "status": "used",
+            "unknown_patch_key": ["persisted", "patch"],
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["unknown_patch_key"] == ["persisted", "patch"]
+
+    get_response = await async_client.get(f"/api/v2/substrates/{media_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["unknown_create_key"] == {"origin": "create"}
+    assert get_response.json()["unknown_patch_key"] == ["persisted", "patch"]
+
+    list_response = await async_client.get("/api/v2/substrates?media_type=grid")
+    assert list_response.status_code == 200
+    listed = next(sub for sub in list_response.json() if sub["media_id"] == media_id_hr)
+    assert listed["unknown_create_key"] == {"origin": "create"}
+    assert listed["unknown_patch_key"] == ["persisted", "patch"]
+
+
+@pytest.mark.asyncio
 async def test_delete_substrate(async_client: AsyncClient):
     """Test deleting a substrate successfully (when it has no dependencies)."""
     media_id_hr = f"TEST_SUB_DELETE_{int(datetime.now(timezone.utc).timestamp())}"

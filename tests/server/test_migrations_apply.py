@@ -23,13 +23,7 @@ async def test_upgrade_head_from_empty(fresh_database_url):
     engine = create_async_engine(fresh_database_url)
     async with engine.connect() as conn:
         tables = set(
-            (
-                await conn.execute(
-                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-                )
-            )
-            .scalars()
-            .all()
+            (await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars().all()
         )
     await engine.dispose()
     assert {"specimens", "tiles", "lens_corrections", "microscopes", "alembic_version"} <= tables

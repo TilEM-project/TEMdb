@@ -37,7 +37,7 @@ class CuttingSessionUpdate(CuttingSessionBase):
 class CuttingSessionResponse(CuttingSessionBase):
     """Schema for cutting session API responses."""
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     cutting_session_id: str = Field(..., description="Unique cutting session identifier")

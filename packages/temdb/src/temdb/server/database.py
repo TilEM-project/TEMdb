@@ -35,7 +35,7 @@ class DatabaseManager:
                 database_url,
                 echo=False,
                 pool_pre_ping=True,
-                pool_recycle=1800, 
+                pool_recycle=1800,
                 connect_args={
                     "server_settings": {"application_name": "temdb"},  # attributable pg_stat_activity / slow-query logs
                     "command_timeout": 30,  # backstop against a hung query pinning a pool slot
@@ -45,9 +45,7 @@ class DatabaseManager:
             else None
         )
         self.async_session_factory: async_sessionmaker[AsyncSession] | None = (
-            async_sessionmaker(bind=self.sql_engine, expire_on_commit=False)
-            if self.sql_engine
-            else None
+            async_sessionmaker(bind=self.sql_engine, expire_on_commit=False) if self.sql_engine else None
         )
         # Ensure metadata for ORM entities is registered.
         self._sql_models = (

@@ -77,6 +77,43 @@ async def test_update_block(async_client: AsyncClient, test_specimen, test_block
 
 
 @pytest.mark.asyncio
+async def test_block_extra_fields_round_trip(async_client: AsyncClient, test_specimen):
+    block_id_hr = "TEST_BLOCK_EXTRA_001"
+    create_response = await async_client.post(
+        "/api/v2/blocks",
+        json={
+            "block_id": block_id_hr,
+            "specimen_id": test_specimen.specimen_id,
+            "microCT_info": {"resolution": 1.5},
+            "unknown_create_key": "create-extra",
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["unknown_create_key"] == "create-extra"
+
+    patch_response = await async_client.patch(
+        f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}",
+        json={
+            "description": "Updated block with patch extra",
+            "unknown_patch_key": {"patched": True},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["unknown_patch_key"] == {"patched": True}
+
+    get_response = await async_client.get(f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["unknown_create_key"] == "create-extra"
+    assert get_response.json()["unknown_patch_key"] == {"patched": True}
+
+    list_response = await async_client.get(f"/api/v2/blocks?specimen_id={test_specimen.specimen_id}")
+    assert list_response.status_code == 200
+    listed = next(block for block in list_response.json() if block["block_id"] == block_id_hr)
+    assert listed["unknown_create_key"] == "create-extra"
+    assert listed["unknown_patch_key"] == {"patched": True}
+
+
+@pytest.mark.asyncio
 async def test_delete_block(async_client: AsyncClient, test_specimen):
     """Test deleting a block successfully (when it has no dependencies)."""
     block_id_hr = "TEST_BLOCK_DELETE_001"

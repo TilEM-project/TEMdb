@@ -23,9 +23,9 @@ class TestSpecimenBase:
         assert "image1.png" in specimen.specimen_images
         assert specimen.functional_imaging_metadata == {"key": "value"}
 
-    def test_extra_fields_forbidden(self):
-        with pytest.raises(ValidationError):
-            SpecimenBase(custom_field="custom_value")
+    def test_extra_fields_allowed(self):
+        specimen = SpecimenBase(custom_field="custom_value")
+        assert specimen.model_extra == {"custom_field": "custom_value"}
 
 
 class TestSpecimenCreate:

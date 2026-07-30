@@ -8,12 +8,15 @@ from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSe
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SectionSQLModel
 
+from ..utils import include_extra
+
 cutting_session_api = APIRouter(
     tags=["Cutting Sessions"],
 )
 
 
 @cutting_session_api.get("/cutting-sessions", response_model=list[CuttingSessionResponse])
+@include_extra
 async def list_cutting_sessions(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -38,6 +41,7 @@ async def list_cutting_sessions(
     "/cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions/{cutting_session_id}/sections",
     response_model=list[SectionResponse],
 )
+@include_extra
 async def get_cutting_session_sections(
     specimen_id: str,
     block_id: str,
@@ -74,6 +78,7 @@ async def get_cutting_session_sections(
     status_code=status.HTTP_201_CREATED,
     response_model=CuttingSessionResponse,
 )
+@include_extra
 async def create_cutting_session(
     session_data: CuttingSessionCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -108,6 +113,7 @@ async def create_cutting_session(
         media_type=session_data.media_type,
         knife_id=session_data.knife_id,
         created_at=session_data.created_at or datetime.now(timezone.utc),
+        extra=session_data.model_extra,
     )
     session.add(new_session)
     await session.commit()
@@ -119,6 +125,7 @@ async def create_cutting_session(
     "/cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions/{cutting_session_id}",
     response_model=CuttingSessionResponse,
 )
+@include_extra
 async def get_cutting_session(
     specimen_id: str,
     block_id: str,
@@ -144,6 +151,7 @@ async def get_cutting_session(
 
 
 @cutting_session_api.patch("/cutting-sessions/{cutting_session_id}", response_model=CuttingSessionResponse)
+@include_extra
 async def update_cutting_session(
     cutting_session_id: str,
     updated_fields: CuttingSessionUpdate = Body(...),
@@ -159,11 +167,16 @@ async def update_cutting_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{cutting_session_id}' not found",
         )
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+        extra=False,
+    )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     for field, value in update_data.items():
         setattr(cutting_session_obj, field, value)
+    if updated_fields.model_extra:
+        cutting_session_obj.extra = {**(cutting_session_obj.extra or {}), **updated_fields.model_extra}
     cutting_session_obj.updated_at = datetime.now(timezone.utc)
     session.add(cutting_session_obj)
     await session.commit()
@@ -203,6 +216,7 @@ async def delete_cutting_session(
     "/cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions",
     response_model=list[CuttingSessionResponse],
 )
+@include_extra
 async def list_block_cutting_sessions(
     specimen_id: str,
     block_id: str,
