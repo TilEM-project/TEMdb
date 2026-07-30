@@ -66,7 +66,7 @@ class SectionBase(TEMDBModel):
 
     section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
-    optical_image: dict[str, Any] | None = Field(
+    optical_image: dict[str, OpticalImage] | None = Field(
         None,
         description="Optical image collected before imaging",
     )
