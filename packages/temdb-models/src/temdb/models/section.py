@@ -11,6 +11,7 @@ from .utils.uri import URI
 class SectioningRunParameters(TEMDBModel):
     """Parameters from a sectioning run."""
 
+    cutting_thickness_um: float | None = Field(None, description="Cutting thickness in micrometers")
     cutting_speed_mms: float | None = Field(None, description="Cutting speed in mm/s")
     retract_speed_mms: float | None = Field(None, description="Retract speed in mm/s")
     water_level_mm: float | None = Field(None, description="Water level in boat in mm")
