@@ -15,7 +15,7 @@ class SectioningRunParameters(TEMDBModel):
     cutting_speed_mms: float | None = Field(None, description="Cutting speed in mm/s")
     retract_speed_mms: float | None = Field(None, description="Retract speed in mm/s")
     water_level_mm: float | None = Field(None, description="Water level in boat in mm")
-    wafer_set_level: float | None = Field(None, description="Wafer set level value")
+    water_set_level: float | None = Field(None, description="Water set level value")
     tape_speed: float | None = Field(None, description="Main tape speed value")
     new_tape_speed: float | None = Field(None, description="Temporary tape speed during timePhi")
     tape_cycle: float | None = Field(None, description="Tape cycle duration/value")
@@ -42,7 +42,14 @@ class SectionMetric(TEMDBModel):
 class SectionMetrics(TEMDBModel):
     """Metrics and parameters of a section."""
 
+    segmentation: SectionMetric | None = Field(None, description="Segmentation quality of the section")
+    capture_overlap: SectionMetric | None = Field(
+        None, description="Overlap between the section segmentation and the loop segmentation"
+    )
     quality: SectionQuality | None = Field(None, description="Qualitative state of the section (e.g., Good, Broken)")
+    qc_summary: SectionMetric | None = Field(
+        None, description="Summary of the quality control assessment for this section"
+    )
     thickness_um: SectionMetric | None = Field(None, description="Measured section thickness in micrometers")
     thickness_consistency: SectionMetric | None = Field(None, description="Measured section thischness consistency")
     knife_marks: SectionMetric | None = Field(
