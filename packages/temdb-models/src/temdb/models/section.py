@@ -57,9 +57,6 @@ class SectionMetrics(TEMDBModel):
     )
     coverage: SectionMetric | None = Field(None, description="")
     shape: SectionMetric | None = Field(None, description="")
-    run_parameters: SectioningRunParameters | None = Field(
-        None, description="Detailed parameters from the sectioning run"
-    )
 
 
 class OpticalImage(TEMDBModel):
@@ -88,6 +85,9 @@ class SectionBase(TEMDBModel):
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
+    run_parameters: SectioningRunParameters | None = Field(
+        None, description="Detailed parameters from the sectioning run"
+    )
 
 
 class SectionCreate(SectionBase):

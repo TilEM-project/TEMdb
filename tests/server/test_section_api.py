@@ -71,6 +71,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
         "media_id": substrate_id_hr,
         "optical_image": {"url": "http://example.com/image.png"},
         "barcode": "BC123456789",
+        "run_parameters": {"cutting_thickness_um": 45.5, "water_added": True},
     }
     response = await async_client.post("/api/v2/sections", json=section_data)
     assert response.status_code == 201
@@ -81,6 +82,8 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
     assert response_data["specimen_id"] == test_cutting_session.specimen_id
     assert response_data["section_number"] == 99
     assert response_data["barcode"] == "BC123456789"
+    assert response_data["run_parameters"]["cutting_thickness_um"] == 45.5
+    assert response_data["run_parameters"]["water_added"] is True
 
 
 @pytest.mark.asyncio
@@ -255,13 +258,17 @@ async def test_get_section_not_found(async_client: AsyncClient, test_cutting_ses
 @pytest.mark.asyncio
 async def test_update_section(async_client: AsyncClient, test_cutting_session, test_section):
     """Test updating a section's quality."""
-    update_data = {"section_metrics": {"quality": SectionQuality.BROKEN}}
+    update_data = {
+        "section_metrics": {"quality": SectionQuality.BROKEN},
+        "run_parameters": {"cut_cycle": 0.6},
+    }
     path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}"
     response = await async_client.patch(path, json=update_data)
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["section_id"] == test_section.section_id
     assert response_data["section_metrics"]["quality"] == SectionQuality.BROKEN.value
+    assert response_data["run_parameters"]["cut_cycle"] == 0.6
 
 
 @pytest.mark.asyncio

@@ -229,6 +229,9 @@ async def create_section(
         section_metrics=(
             section_data.section_metrics.model_dump(mode="json") if section_data.section_metrics is not None else None
         ),
+        run_parameters=(
+            section_data.run_parameters.model_dump(mode="json") if section_data.run_parameters is not None else None
+        ),
         media_id=section_data.media_id,
         aperture_uid=section_data.aperture_uid,
         aperture_index=section_data.aperture_index,
@@ -319,6 +322,11 @@ async def create_sections_batch(
                 if section_create.section_metrics is not None
                 else None
             ),
+            run_parameters=(
+                section_create.run_parameters.model_dump(mode="json")
+                if section_create.run_parameters is not None
+                else None
+            ),
             created_at=section_create.created_at or datetime.now(timezone.utc),
         )
         sections_to_insert.append(section_doc)
@@ -360,6 +368,9 @@ async def update_section(
     metrics = update_data.pop("section_metrics", None)
     if metrics is not None:
         section_obj.section_metrics = jsonable_encoder(metrics)
+    run_parameters = update_data.pop("run_parameters", None)
+    if run_parameters is not None:
+        section_obj.run_parameters = jsonable_encoder(run_parameters)
     for field, value in update_data.items():
         setattr(section_obj, field, value)
     section_obj.updated_at = datetime.now(timezone.utc)
