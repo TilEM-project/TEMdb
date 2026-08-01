@@ -61,8 +61,10 @@ class TestSectionCreate:
             media_id="MEDIA001",
             barcode="BC123456",
             optical_image={
-                "image_path": "http://example.com/image.png",
-                "metadata": {"this": "that", "those": "these", "one": 2},
+                "inspection": {
+                    "image_path": "http://example.com/image.png",
+                    "metadata": {"this": "that", "those": "these", "one": 2},
+                },
             },
             section_metrics=SectionMetrics(quality=SectionQuality.GOOD),
             run_parameters=SectioningRunParameters(cutting_thickness_um=50.0, water_added=True),
