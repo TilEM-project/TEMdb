@@ -1,15 +1,26 @@
 import os
+import shutil
 import subprocess
+import sys
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-ALEMBIC_INI = "packages/temdb/alembic.ini"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ALEMBIC_INI = REPO_ROOT / "packages/temdb/alembic.ini"
 
 
 def _run_alembic(database_url: str, *args: str) -> subprocess.CompletedProcess:
+    uv_bin = shutil.which("uv")
+    command = (
+        [uv_bin, "run", "alembic", "-c", str(ALEMBIC_INI), *args]
+        if uv_bin
+        else [sys.executable, "-m", "alembic", "-c", str(ALEMBIC_INI), *args]
+    )
     return subprocess.run(
-        ["uv", "run", "alembic", "-c", ALEMBIC_INI, *args],
+        command,
+        cwd=str(REPO_ROOT),
         env={**os.environ, "TEMDB_MIGRATION_URL": database_url},
         capture_output=True,
         text=True,
@@ -23,13 +34,7 @@ async def test_upgrade_head_from_empty(fresh_database_url):
     engine = create_async_engine(fresh_database_url)
     async with engine.connect() as conn:
         tables = set(
-            (
-                await conn.execute(
-                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-                )
-            )
-            .scalars()
-            .all()
+            (await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars().all()
         )
     await engine.dispose()
     assert {"specimens", "tiles", "lens_corrections", "microscopes", "alembic_version"} <= tables
