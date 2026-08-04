@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from temdb.models import (
     SectionCreate,
+    SectioningRunParameters,
     SectionMetric,
     SectionMetrics,
     SectionQuality,
@@ -60,13 +61,18 @@ class TestSectionCreate:
             media_id="MEDIA001",
             barcode="BC123456",
             optical_image={
-                "image_path": "http://example.com/image.png",
-                "metadata": {"this": "that", "those": "these", "one": 2},
+                "inspection": {
+                    "image_path": "http://example.com/image.png",
+                    "metadata": {"this": "that", "those": "these", "one": 2},
+                },
             },
             section_metrics=SectionMetrics(quality=SectionQuality.GOOD),
+            run_parameters=SectioningRunParameters(cutting_thickness_um=50.0, water_added=True),
         )
         assert section.barcode == "BC123456"
         assert section.section_metrics.quality == SectionQuality.GOOD
+        assert section.run_parameters.cutting_thickness_um == 50.0
+        assert section.run_parameters.water_added is True
 
 
 class TestSectionUpdate:
@@ -77,6 +83,10 @@ class TestSectionUpdate:
     def test_update_quality(self):
         update = SectionUpdate(section_metrics=SectionMetrics(quality=SectionQuality.BROKEN))
         assert update.section_metrics.quality == SectionQuality.BROKEN
+
+    def test_update_run_parameters(self):
+        update = SectionUpdate(run_parameters=SectioningRunParameters(cut_cycle=2.3))
+        assert update.run_parameters.cut_cycle == 2.3
 
 
 class TestSectionResponse:

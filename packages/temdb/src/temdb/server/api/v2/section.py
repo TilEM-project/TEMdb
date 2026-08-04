@@ -25,6 +25,10 @@ section_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
+def _dump_images(data):
+    return {key: val.model_dump(mode="json") for key, val in data.items()}
+
+
 @section_api.get("/sections", response_model=list[SectionResponse])
 @include_extra
 async def list_sections(
@@ -233,9 +237,12 @@ async def create_section(
         timestamp=section_data.timestamp or datetime.now(timezone.utc),
         block_id=cut_obj.block_id,
         specimen_id=cut_obj.specimen_id,
-        optical_image=section_data.optical_image,
+        optical_image=(_dump_images(section_data.optical_image) if section_data.optical_image is not None else None),
         section_metrics=(
             section_data.section_metrics.model_dump(mode="json") if section_data.section_metrics is not None else None
+        ),
+        run_parameters=(
+            section_data.run_parameters.model_dump(mode="json") if section_data.run_parameters is not None else None
         ),
         media_id=section_data.media_id,
         aperture_uid=section_data.aperture_uid,
@@ -320,13 +327,20 @@ async def create_sections_batch(
             block_id=cut_session.block_id,
             specimen_id=cut_session.specimen_id,
             media_id=media_id,
-            optical_image=section_create.optical_image,
+            optical_image=(
+                _dump_images(section_create.optical_image) if section_create.optical_image is not None else None
+            ),
             aperture_uid=section_create.aperture_uid,
             aperture_index=section_create.aperture_index,
             barcode=section_create.barcode,
             section_metrics=(
                 section_create.section_metrics.model_dump(mode="json")
                 if section_create.section_metrics is not None
+                else None
+            ),
+            run_parameters=(
+                section_create.run_parameters.model_dump(mode="json")
+                if section_create.run_parameters is not None
                 else None
             ),
             created_at=section_create.created_at or datetime.now(timezone.utc),
@@ -375,6 +389,12 @@ async def update_section(
     metrics = update_data.pop("section_metrics", None)
     if metrics is not None:
         section_obj.section_metrics = jsonable_encoder(metrics)
+    run_parameters = update_data.pop("run_parameters", None)
+    if run_parameters is not None:
+        section_obj.run_parameters = jsonable_encoder(run_parameters)
+    optical_image = update_data.pop("optical_image", None)
+    if optical_image is not None:
+        section_obj.optical_image = jsonable_encoder(optical_image)
     for field, value in update_data.items():
         setattr(section_obj, field, value)
     if updated_fields.model_extra:
