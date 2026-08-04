@@ -8,7 +8,7 @@ from temdb.models import (
     SubstrateUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class SubstrateResource(BaseResource):
@@ -38,6 +38,7 @@ class SubstrateResource(BaseResource):
             else []
         )
 
+    @kwargs2model(SubstrateCreate)
     async def create(self, substrate_data: SubstrateCreate) -> SubstrateResponse:
         """Create a new substrate."""
         response_data = await self._post("substrates", data=substrate_data.model_dump(exclude_unset=True))
@@ -48,6 +49,7 @@ class SubstrateResource(BaseResource):
         response_data = await self._get(f"substrates/{media_id}")
         return SubstrateResponse.model_validate(response_data)
 
+    @kwargs2model(SubstrateUpdate)
     async def update(self, media_id: str, substrate_data: SubstrateUpdate) -> SubstrateResponse:
         """Update an existing substrate."""
         update_payload = substrate_data.model_dump(exclude_unset=True)

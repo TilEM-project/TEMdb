@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 # size_class -> hash subpartition modulus. Target ~25-50M rows per leaf
 # partition across the plausible dataset-size range. See the design spec.
 SIZE_CLASS_MODULUS: dict[str, int] = {
-    "small": 4,      # <= ~100M tiles
-    "medium": 32,    # <= ~1B tiles
-    "large": 256,    # <= ~10B tiles
+    "small": 4,  # <= ~100M tiles
+    "medium": 32,  # <= ~1B tiles
+    "large": 256,  # <= ~10B tiles
     "xlarge": 1024,  # <= ~50B tiles
 }
 
@@ -16,9 +16,9 @@ SIZE_CLASS_MODULUS: dict[str, int] = {
 # Upper tile-count bound per size_class; resolve_size_class picks the smallest
 # class whose ceiling is not exceeded. Anything above 'large' -> 'xlarge'.
 SIZE_CLASS_CEILING: dict[str, int] = {
-    "small": 100_000_000,        # <= 100M
-    "medium": 1_000_000_000,     # <= 1B
-    "large": 10_000_000_000,     # <= 10B
+    "small": 100_000_000,  # <= 100M
+    "medium": 1_000_000_000,  # <= 1B
+    "large": 10_000_000_000,  # <= 10B
 }
 
 
@@ -37,9 +37,7 @@ def resolve_modulus(size_class: str) -> int:
     try:
         return SIZE_CLASS_MODULUS[size_class]
     except KeyError:
-        raise ValueError(
-            f"Unknown size_class {size_class!r}; expected one of {sorted(SIZE_CLASS_MODULUS)}"
-        )
+        raise ValueError(f"Unknown size_class {size_class!r}; expected one of {sorted(SIZE_CLASS_MODULUS)}")
 
 
 def partition_name(dataset_id: uuid.UUID) -> str:
@@ -85,9 +83,7 @@ async def partition_exists(session: AsyncSession, dataset_id: uuid.UUID) -> bool
     Uses Postgres `to_regclass`, which returns the relation's OID or NULL
     (and does NOT raise) when the table is absent — the cheap existence check.
     """
-    oid = (await session.execute(
-        text("SELECT to_regclass(:n)"), {"n": partition_name(dataset_id)}
-    )).scalar()
+    oid = (await session.execute(text("SELECT to_regclass(:n)"), {"n": partition_name(dataset_id)})).scalar()
     return oid is not None
 
 
@@ -103,15 +99,19 @@ async def ensure_tile_partition(session: AsyncSession, dataset_id: uuid.UUID) ->
     await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key(dataset_id)})
     modulus = await _resolve_and_freeze_modulus(session, dataset_id)
     name = partition_name(dataset_id)
-    await session.execute(text(
-        f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF tiles "
-        f"FOR VALUES IN ('{dataset_id}') PARTITION BY HASH (run_id)"
-    ))
+    await session.execute(
+        text(
+            f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF tiles "
+            f"FOR VALUES IN ('{dataset_id}') PARTITION BY HASH (run_id)"
+        )
+    )
     for i in range(modulus):
-        await session.execute(text(
-            f"CREATE TABLE IF NOT EXISTS {name}_h{i} PARTITION OF {name} "
-            f"FOR VALUES WITH (MODULUS {modulus}, REMAINDER {i})"
-        ))
+        await session.execute(
+            text(
+                f"CREATE TABLE IF NOT EXISTS {name}_h{i} PARTITION OF {name} "
+                f"FOR VALUES WITH (MODULUS {modulus}, REMAINDER {i})"
+            )
+        )
 
 
 async def drop_tile_partition(engine: AsyncEngine, dataset_id: uuid.UUID) -> None:
@@ -135,9 +135,11 @@ async def drop_tile_partition(engine: AsyncEngine, dataset_id: uuid.UUID) -> Non
         exists = (await ac.execute(text("SELECT to_regclass(:n)"), {"n": name})).scalar()
         if exists is None:
             return
-        pending = (await ac.execute(text(
-            "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = to_regclass(:n)"
-        ), {"n": name})).scalar()  # None = no longer attached to the parent
+        pending = (
+            await ac.execute(
+                text("SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = to_regclass(:n)"), {"n": name}
+            )
+        ).scalar()  # None = no longer attached to the parent
         if pending is True:
             await ac.execute(text(f"ALTER TABLE tiles DETACH PARTITION {name} FINALIZE"))
         elif pending is False:

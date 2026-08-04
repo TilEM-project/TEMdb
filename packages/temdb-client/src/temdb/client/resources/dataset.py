@@ -2,12 +2,13 @@ from typing import Any
 
 from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class DatasetResource(BaseResource):
     """Resource class for interacting with Dataset endpoints."""
 
+    @kwargs2model(DatasetCreate)
     async def create(self, dataset_data: DatasetCreate) -> DatasetResponse:
         """Create a new dataset."""
         response_data = await self._post("datasets", data=dataset_data.model_dump(exclude_unset=True))
@@ -37,11 +38,10 @@ class DatasetResource(BaseResource):
         params.update(kwargs)
         response_data = await self._get("datasets", params=params)
         return (
-            [DatasetResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
+            [DatasetResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
         )
 
+    @kwargs2model(DatasetUpdate)
     async def update(self, dataset_id: str, dataset_data: DatasetUpdate) -> DatasetResponse:
         """Update a dataset (e.g. status, description)."""
         response_data = await self._patch(f"datasets/{dataset_id}", data=dataset_data.model_dump(exclude_unset=True))
@@ -66,7 +66,5 @@ class DatasetResource(BaseResource):
         elif estimated_roi_count is not None and tiles_per_roi is not None:
             total = estimated_roi_count * tiles_per_roi
         else:
-            raise ValueError(
-                "Provide estimated_tile_count, or both estimated_roi_count and tiles_per_roi"
-            )
+            raise ValueError("Provide estimated_tile_count, or both estimated_roi_count and tiles_per_roi")
         return await self.create(DatasetCreate(name=name, estimated_tile_count=total, **fields))

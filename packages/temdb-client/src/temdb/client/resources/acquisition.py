@@ -16,7 +16,7 @@ from temdb.models import (
     TileResponse,
 )
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class PaginatedAcquisitionResponse(BaseModel):
@@ -70,6 +70,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get("acquisitions", params=params)
         return PaginatedAcquisitionResponse.model_validate(response_data)
 
+    @kwargs2model(AcquisitionCreate)
     async def create(self, acquisition_data: AcquisitionCreate) -> AcquisitionResponse:
         response_data = await self._post("acquisitions", data=acquisition_data.model_dump(exclude_unset=True))
         return AcquisitionResponse.model_validate(response_data)
@@ -78,6 +79,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(f"acquisitions/{acquisition_id}")
         return AcquisitionResponse.model_validate(response_data)
 
+    @kwargs2model(AcquisitionUpdate)
     async def update(self, acquisition_id: str, acquisition_data: AcquisitionUpdate) -> AcquisitionResponse:
         update_payload = acquisition_data.model_dump(exclude_unset=True)
         response_data = await self._patch(f"acquisitions/{acquisition_id}", data=update_payload)
@@ -86,6 +88,7 @@ class AcquisitionResource(BaseResource):
     async def delete(self, acquisition_id: str) -> None:
         await self._delete(f"acquisitions/{acquisition_id}")
 
+    @kwargs2model(TileCreate)
     async def add_tile(self, acquisition_id: str, tile_data: TileCreate) -> TileResponse:
         response_data = await self._post(
             f"acquisitions/{acquisition_id}/tiles",
@@ -127,6 +130,7 @@ class AcquisitionResource(BaseResource):
         endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
         await self._delete(endpoint)
 
+    @kwargs2model(StorageLocationCreate)
     async def add_storage_location(
         self, acquisition_id: str, location_data: StorageLocationCreate
     ) -> AcquisitionResponse:

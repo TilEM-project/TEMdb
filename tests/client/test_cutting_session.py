@@ -1,47 +1,112 @@
-import datetime
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 
+from temdb.client.resources.cutting_session import CuttingSessionResource
+from temdb.models import CuttingSessionCreate, CuttingSessionUpdate
 
-@pytest.mark.asyncio
-async def test_cutting_session_list(mock_client):
-    mock_client.cutting_session.list.return_value = [{"session_id": "CUT001"}]
-    result = await mock_client.cutting_session.list("SPEC001", "BLOCK001")
-    assert result == [{"session_id": "CUT001"}]
-    mock_client.cutting_session.list.assert_called_once_with("SPEC001", "BLOCK001")
+API = "http://test/api/v2"
+NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 
 
-@pytest.mark.asyncio
-async def test_cutting_session_create(mock_client):
-    session_data = {"cutting_session_id": "CUT002", "block_id": "BLOCK001"}
-    mock_client.cutting_session.create.return_value = session_data
-    result = await mock_client.cutting_session.create(session_data)
-    assert result == session_data
-    mock_client.cutting_session.create.assert_called_once_with(session_data)
+def _resource():
+    request = AsyncMock()
+    return CuttingSessionResource(request, API), request
 
 
-@pytest.mark.asyncio
-async def test_cutting_session_get(mock_client):
-    session_data = {"cutting_session_id": "CUT002", "block_id": "BLOCK001"}
-
-    mock_client.cutting_session.get.return_value = session_data
-    result = await mock_client.cutting_session.get("SPEC001", "BLOCK001", "CUT002")
-    assert result == session_data
-    mock_client.cutting_session.get.assert_called_once_with("SPEC001", "BLOCK001", "CUT002")
+def _session_payload(**extra) -> dict:
+    return {
+        "id": 1,
+        "cutting_session_id": "CUT001",
+        "specimen_id": "SPEC001",
+        "block_id": "BLOCK001",
+        "start_time": NOW.isoformat(),
+        "sectioning_device": "Leica",
+        "media_type": "wafer",
+        **extra,
+    }
 
 
 @pytest.mark.asyncio
-async def test_cutting_session_update(mock_client):
-    session_data = {"cutting_session_id": "CUT002", "block_id": "BLOCK001"}
-
-    update_data = {"end_time": datetime.datetime.now().isoformat()}
-    mock_client.cutting_session.update.return_value = {**session_data, **update_data}
-    result = await mock_client.cutting_session.update("CUT002", update_data)
-    assert result == {**session_data, **update_data}
-    mock_client.cutting_session.update.assert_called_once_with("CUT002", update_data)
+async def test_create_posts_session():
+    res, request = _resource()
+    request.return_value = _session_payload()
+    out = await res.create(
+        CuttingSessionCreate(
+            cutting_session_id="CUT001",
+            block_id="BLOCK001",
+            start_time=NOW,
+            sectioning_device="Leica",
+            media_type="wafer",
+        )
+    )
+    assert request.await_args.args[:2] == ("POST", "cutting-sessions")
+    assert request.await_args.kwargs["json"]["cutting_session_id"] == "CUT001"
+    assert out.cutting_session_id == "CUT001"
 
 
 @pytest.mark.asyncio
-async def test_cutting_session_delete(mock_client):
-    await mock_client.cutting_session.delete("CUT002")
-    mock_client.cutting_session.delete.assert_called_once_with("CUT002")
+async def test_create_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    request.return_value = _session_payload(cutting_session_id="CUT002")
+    out = await res.create(
+        cutting_session_id="CUT002",
+        block_id="BLOCK001",
+        start_time=NOW,
+        sectioning_device="Leica",
+        media_type="wafer",
+    )
+    assert request.await_args.kwargs["json"]["cutting_session_id"] == "CUT002"
+    assert out.cutting_session_id == "CUT002"
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_model_plus_kwargs():
+    res, _ = _resource()
+    with pytest.raises(AssertionError):
+        await res.create(
+            CuttingSessionCreate(
+                cutting_session_id="CUT001",
+                block_id="BLOCK001",
+                start_time=NOW,
+                sectioning_device="Leica",
+                media_type="wafer",
+            ),
+            operator="conflict",
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_by_block_uses_nested_path():
+    res, request = _resource()
+    request.return_value = [_session_payload(), _session_payload(cutting_session_id="CUT002")]
+    out = await res.list_by_block("SPEC001", "BLOCK001", limit=2)
+    assert request.await_args.args[:2] == ("GET", "cutting-sessions/specimens/SPEC001/blocks/BLOCK001/sessions")
+    assert request.await_args.kwargs["params"] == {"skip": 0, "limit": 2}
+    assert [s.cutting_session_id for s in out] == ["CUT001", "CUT002"]
+
+
+@pytest.mark.asyncio
+async def test_update_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    request.return_value = _session_payload(operator="cam")
+    out = await res.update("CUT001", operator="cam")
+    assert request.await_args.args[:2] == ("PATCH", "cutting-sessions/CUT001")
+    assert request.await_args.kwargs["json"] == {"operator": "cam"}
+    assert out.operator == "cam"
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_model_plus_kwargs():
+    res, _ = _resource()
+    with pytest.raises(AssertionError):
+        await res.update("CUT001", CuttingSessionUpdate(operator="cam"), end_time=NOW)
+
+
+@pytest.mark.asyncio
+async def test_delete_uses_delete_method():
+    res, request = _resource()
+    request.return_value = None
+    await res.delete("CUT001")
+    assert request.await_args.args[:2] == ("DELETE", "cutting-sessions/CUT001")

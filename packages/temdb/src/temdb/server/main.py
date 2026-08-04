@@ -92,9 +92,7 @@ class DebugTracebackMiddleware:
             if not self.enabled:
                 raise
 
-            traceback_text = "".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
-            )
+            traceback_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             response = JSONResponse(
                 status_code=500,
                 content={
@@ -110,9 +108,7 @@ class DebugTracebackMiddleware:
 async def lifespan(app: FastAPI):
     database_url = app.state.database_url
 
-    logger.info(
-        f"Connecting to SQL database: {database_url if database_url else 'disabled'}"
-    )
+    logger.info(f"Connecting to SQL database: {database_url if database_url else 'disabled'}")
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     await db_manager.initialize()

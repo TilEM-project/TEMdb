@@ -18,8 +18,12 @@ def _resource():
 async def test_create_posts_dataset():
     res, request = _resource()
     request.return_value = {
-        "dataset_id": str(uuid.uuid4()), "name": "d1", "status": "collecting",
-        "size_class": "small", "tile_hash_modulus": None, "estimated_tile_count": None,
+        "dataset_id": str(uuid.uuid4()),
+        "name": "d1",
+        "status": "collecting",
+        "size_class": "small",
+        "tile_hash_modulus": None,
+        "estimated_tile_count": None,
     }
     out = await res.create(DatasetCreate(name="d1", size_class="small"))
     method, endpoint = request.await_args.args[0], request.await_args.args[1]
@@ -28,10 +32,34 @@ async def test_create_posts_dataset():
 
 
 @pytest.mark.asyncio
+async def test_create_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    request.return_value = {
+        "dataset_id": str(uuid.uuid4()),
+        "name": "d2",
+        "status": "collecting",
+        "size_class": "small",
+    }
+    out = await res.create(name="d2", size_class="small")
+    assert request.await_args.kwargs["json"] == {"name": "d2", "size_class": "small"}
+    assert out.name == "d2"
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_model_plus_kwargs():
+    res, _ = _resource()
+    with pytest.raises(AssertionError):
+        await res.create(DatasetCreate(name="d1", size_class="small"), status="collecting")
+
+
+@pytest.mark.asyncio
 async def test_get_by_name_uses_by_name_path():
     res, request = _resource()
     request.return_value = {
-        "dataset_id": str(uuid.uuid4()), "name": "d1", "status": "collecting", "size_class": "small"
+        "dataset_id": str(uuid.uuid4()),
+        "name": "d1",
+        "status": "collecting",
+        "size_class": "small",
     }
     await res.get_by_name("d1")
     assert request.await_args.args[1] == "datasets/by-name/d1"
@@ -60,11 +88,24 @@ async def test_update_patches():
 
 
 @pytest.mark.asyncio
+async def test_update_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    dataset_id = str(uuid.uuid4())
+    request.return_value = {"dataset_id": dataset_id, "name": "a", "status": "archived", "size_class": "small"}
+    out = await res.update("1", status="archived")
+    assert request.await_args.kwargs["json"] == {"status": "archived"}
+    assert out.status == "archived"
+
+
+@pytest.mark.asyncio
 async def test_create_with_estimate_total_count():
     res, request = _resource()
     request.return_value = {
-        "dataset_id": str(uuid.uuid4()), "name": "d", "status": "collecting",
-        "size_class": "medium", "estimated_tile_count": 2_000_000_000,
+        "dataset_id": str(uuid.uuid4()),
+        "name": "d",
+        "status": "collecting",
+        "size_class": "medium",
+        "estimated_tile_count": 2_000_000_000,
     }
     await res.create_with_estimate("d", estimated_tile_count=2_000_000_000)
     sent = request.await_args.kwargs["json"]  # BaseResource._post forwards body as json=
@@ -76,8 +117,11 @@ async def test_create_with_estimate_total_count():
 async def test_create_with_estimate_roi_product():
     res, request = _resource()
     request.return_value = {
-        "dataset_id": str(uuid.uuid4()), "name": "d", "status": "collecting",
-        "size_class": "medium", "estimated_tile_count": 50_000,
+        "dataset_id": str(uuid.uuid4()),
+        "name": "d",
+        "status": "collecting",
+        "size_class": "medium",
+        "estimated_tile_count": 50_000,
     }
     await res.create_with_estimate("d", estimated_roi_count=500, tiles_per_roi=100)
     assert request.await_args.kwargs["json"]["estimated_tile_count"] == 50_000
