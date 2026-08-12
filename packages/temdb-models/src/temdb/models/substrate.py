@@ -106,7 +106,7 @@ class SubstrateUpdate(SubstrateBase):
 class SubstrateResponse(SubstrateBase):
     """Schema for substrate API responses."""
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     metadata: SubstrateMetadata | None = Field(

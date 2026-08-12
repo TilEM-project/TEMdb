@@ -45,6 +45,8 @@ from temdb.server.sqlmodels import (
 )
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
+from ..utils import include_extra, model_dump_with_extra
+
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
 )
@@ -82,6 +84,7 @@ def _tile_payload(
         "supertile_raster_position": tile.supertile_raster_position,
         "created_at": tile.created_at,
     }
+    payload.update(tile.extra or {})
     if acquisition_internal_id is not None:
         payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
     return payload
@@ -113,10 +116,12 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
         "supertile_id": tile_data.supertile_id,
         "supertile_raster_position": tile_data.supertile_raster_position,
+        "extra": tile_data.model_extra,
     }
 
 
 @acquisition_api.get("/acquisitions", response_model=dict[str, Any])
+@include_extra
 async def list_acquisitions(
     response: Response,
     cursor: str | None = Query(
@@ -240,6 +245,7 @@ async def list_acquisitions(
     payloads = []
     for acq, _specimen_ref, _roi_ref, _task_ref in rows:
         payload = AcquisitionResponse.model_validate(acq).model_dump(mode="json")
+        payload.update(acq.extra or {})
         if fields:
             kept = {field: payload.get(field) for field in fields}
             kept["id"] = payload["id"]
@@ -260,6 +266,7 @@ async def list_acquisitions(
 
 
 @acquisition_api.post("/acquisitions", response_model=AcquisitionResponse, status_code=status.HTTP_201_CREATED)
+@include_extra
 async def create_acquisition(
     acq_data: AcquisitionCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -363,6 +370,7 @@ async def create_acquisition(
         montage_set_name=acq_data.montage_set_name,
         sub_region=acq_data.sub_region.model_dump(mode="json") if acq_data.sub_region else None,
         replaces_acquisition_id=replacement_id,
+        extra=acq_data.model_extra,
     )
     session.add(acquisition)
     await session.commit()
@@ -371,6 +379,7 @@ async def create_acquisition(
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}", response_model=AcquisitionResponse)
+@include_extra
 async def get_acquisition(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -407,6 +416,7 @@ async def get_acquisition(
 
 
 @acquisition_api.patch("/acquisitions/{acquisition_id}", response_model=AcquisitionResponse)
+@include_extra
 async def update_acquisition(
     acquisition_id: str,
     updated_fields: AcquisitionUpdate = Body(...),
@@ -440,7 +450,10 @@ async def update_acquisition(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
     acq_obj, _specimen_ref, _roi_ref, _task_ref = row
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+        extra=False,
+    )
     if not update_data:
         raise HTTPException(400, "No update data provided")
     updated_by = update_data.pop("updated_by", None)
@@ -461,6 +474,9 @@ async def update_acquisition(
         values = {
             field: _column_value(value) for field, value in update_data.items() if hasattr(AcquisitionSQLModel, field)
         }
+        if updated_fields.model_extra:
+            acq_obj.extra = {**(acq_obj.extra or {}), **updated_fields.model_extra}
+            values["extra"] = acq_obj.extra
         result = await session.execute(
             update(AcquisitionSQLModel)
             .where(
@@ -488,6 +504,8 @@ async def update_acquisition(
     for field, value in update_data.items():
         if hasattr(acq_obj, field):
             setattr(acq_obj, field, _column_value(value))
+    if updated_fields.model_extra:
+        acq_obj.extra = {**(acq_obj.extra or {}), **updated_fields.model_extra}
     session.add(acq_obj)
     await session.commit()
     await session.refresh(acq_obj)
@@ -543,6 +561,7 @@ async def _ensure_leaf_dataset(session: AsyncSession, dataset_id: uuid.UUID) -> 
     response_model=dict[str, Any],
     status_code=status.HTTP_201_CREATED,
 )
+@include_extra
 async def add_tile_to_acquisition(
     acquisition_id: str,
     tile_data: TileCreate,
@@ -579,6 +598,7 @@ async def add_tile_to_acquisition(
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles/bulk", response_model=dict)
+@include_extra
 async def add_tiles_to_acquisition(
     acquisition_id: str,
     tiles: list[TileCreate],
@@ -638,6 +658,7 @@ async def add_tiles_to_acquisition(
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=dict[str, Any])
+@include_extra
 async def get_tiles_from_acquisition(
     response: Response,
     acquisition_id: str,
@@ -697,6 +718,7 @@ def _tile_uuid_or_404(tile_id: str) -> uuid.UUID:
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=TileResponse)
+@include_extra
 async def get_tile_from_acquisition(
     acquisition_id: str,
     tile_id: str,
@@ -730,6 +752,7 @@ def _current_storage_location(storage_locations: list[dict[str, Any]] | None) ->
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=AcquisitionResponse)
+@include_extra
 async def add_storage_location(
     acquisition_id: str,
     storage_location: StorageLocationCreate,
@@ -788,6 +811,7 @@ async def add_storage_location(
     "/acquisitions/{acquisition_id}/current-storage",
     response_model=StorageLocation | None,
 )
+@include_extra
 async def get_current_storage_location(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -806,6 +830,7 @@ async def get_current_storage_location(
     "/acquisitions/{acquisition_id}/minimap-uri",
     response_model=dict[str, str | None],
 )
+@include_extra
 async def get_minimap_uri(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -823,6 +848,7 @@ async def get_minimap_uri(
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tile-count", response_model=dict[str, int])
+@include_extra
 async def get_tile_count(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -882,6 +908,7 @@ async def delete_tile_from_acquisition(
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/metadata", response_model=AcquisitionFullMetadata)
+@include_extra
 async def get_acquisition_with_full_metadata(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -952,19 +979,24 @@ async def get_acquisition_with_full_metadata(
         _roi_ref,
         _task_ref,
     ) = row
+    acquisition_payload = model_dump_with_extra(
+        AcquisitionResponse.model_validate(acq_obj),
+        extra_source=acq_obj,
+    )
     return AcquisitionFullMetadata(
-        acquisition=AcquisitionResponse.model_validate(acq_obj),
-        task=task_obj.model_dump() if task_obj else None,
-        roi=roi_obj.model_dump() if roi_obj else None,
-        section=section_obj.model_dump() if section_obj else None,
-        cutting_session=cutting_session_obj.model_dump() if cutting_session_obj else None,
-        block=block_obj.model_dump() if block_obj else None,
-        specimen=specimen_obj.model_dump() if specimen_obj else None,
-        substrate=substrate_obj.model_dump() if substrate_obj else None,
+        acquisition=AcquisitionResponse.model_validate(acquisition_payload),
+        task=model_dump_with_extra(task_obj),
+        roi=model_dump_with_extra(roi_obj),
+        section=model_dump_with_extra(section_obj),
+        cutting_session=model_dump_with_extra(cutting_session_obj),
+        block=model_dump_with_extra(block_obj),
+        specimen=model_dump_with_extra(specimen_obj),
+        substrate=model_dump_with_extra(substrate_obj),
     )
 
 
 @acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])
+@include_extra
 async def list_acquisitions_with_hierarchy(
     response: Response,
     cursor: str | None = Query(
@@ -1066,16 +1098,20 @@ async def list_acquisitions_with_hierarchy(
         _roi_ref_value,
         _task_ref,
     ) in rows:
+        acq_payload = model_dump_with_extra(
+            AcquisitionResponse.model_validate(acq),
+            extra_source=acq,
+        )
         formatted_results.append(
             AcquisitionFullMetadata(
-                acquisition=AcquisitionResponse.model_validate(acq),
-                task=task_obj.model_dump() if task_obj else None,
-                roi=roi_obj.model_dump() if roi_obj else None,
-                section=section_obj.model_dump() if section_obj else None,
-                substrate=substrate_obj.model_dump() if substrate_obj else None,
-                cutting_session=cutting_obj.model_dump() if cutting_obj else None,
-                block=block_obj.model_dump() if block_obj else None,
-                specimen=specimen_obj.model_dump() if specimen_obj else None,
+                acquisition=AcquisitionResponse.model_validate(acq_payload),
+                task=model_dump_with_extra(task_obj),
+                roi=model_dump_with_extra(roi_obj),
+                section=model_dump_with_extra(section_obj),
+                substrate=model_dump_with_extra(substrate_obj),
+                cutting_session=model_dump_with_extra(cutting_obj),
+                block=model_dump_with_extra(block_obj),
+                specimen=model_dump_with_extra(specimen_obj),
             ).model_dump(mode="json", by_alias=True)
         )
     total_count = len(formatted_results)

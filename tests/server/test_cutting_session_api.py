@@ -100,6 +100,50 @@ async def test_update_cutting_session(async_client: AsyncClient, test_cutting_se
 
 
 @pytest.mark.asyncio
+async def test_cutting_session_extra_fields_round_trip(async_client: AsyncClient, test_block):
+    cutting_session_id = f"TEST_CUT_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/cutting-sessions",
+        json={
+            "cutting_session_id": cutting_session_id,
+            "start_time": datetime.now(timezone.utc).isoformat(),
+            "operator": "Extra Create Operator",
+            "sectioning_device": "Extra Device",
+            "media_type": "tape",
+            "block_id": test_block.block_id,
+            "unknown_create_key": {"roundtrip": "create"},
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["unknown_create_key"] == {"roundtrip": "create"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/cutting-sessions/{cutting_session_id}",
+        json={
+            "operator": "Extra Patch Operator",
+            "unknown_patch_key": "patch-roundtrip",
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["unknown_patch_key"] == "patch-roundtrip"
+
+    get_response = await async_client.get(
+        f"/api/v2/cutting-sessions/specimens/{created['specimen_id']}"
+        f"/blocks/{created['block_id']}/sessions/{cutting_session_id}"
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["unknown_create_key"] == {"roundtrip": "create"}
+    assert get_response.json()["unknown_patch_key"] == "patch-roundtrip"
+
+    list_response = await async_client.get(f"/api/v2/cutting-sessions?block_id={test_block.block_id}")
+    assert list_response.status_code == 200
+    listed = next(session for session in list_response.json() if session["cutting_session_id"] == cutting_session_id)
+    assert listed["unknown_create_key"] == {"roundtrip": "create"}
+    assert listed["unknown_patch_key"] == "patch-roundtrip"
+
+
+@pytest.mark.asyncio
 async def test_delete_cutting_session(async_client: AsyncClient, test_block):
     """Test deleting a cutting session successfully (when it has no dependencies)."""
     session_id_hr = f"TEST_CUT_DELETE_{int(datetime.now(timezone.utc).timestamp())}"

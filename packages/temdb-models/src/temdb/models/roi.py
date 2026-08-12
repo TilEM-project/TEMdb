@@ -9,7 +9,7 @@ from .utils.uri import URI
 
 
 class ROIPayload(TEMDBModel):
-    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     aperture_width_height: list[float] | None = Field(
         None,
@@ -75,7 +75,7 @@ class ROIUpdate(TEMDBModel):
 
 
 class ROIResponse(TEMDBModel):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     roi_id: str = Field(..., description="Hierarchical ID of ROI")
@@ -99,6 +99,6 @@ class ROIResponse(TEMDBModel):
 class ROIChildrenResponse(TEMDBModel):
     """Response model for ROI children query."""
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     children: list[ROIResponse]

@@ -37,9 +37,7 @@ class DatasetResource(BaseResource):
         params.update(kwargs)
         response_data = await self._get("datasets", params=params)
         return (
-            [DatasetResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
+            [DatasetResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
         )
 
     async def update(self, dataset_id: str, dataset_data: DatasetUpdate) -> DatasetResponse:
@@ -66,7 +64,5 @@ class DatasetResource(BaseResource):
         elif estimated_roi_count is not None and tiles_per_roi is not None:
             total = estimated_roi_count * tiles_per_roi
         else:
-            raise ValueError(
-                "Provide estimated_tile_count, or both estimated_roi_count and tiles_per_roi"
-            )
+            raise ValueError("Provide estimated_tile_count, or both estimated_roi_count and tiles_per_roi")
         return await self.create(DatasetCreate(name=name, estimated_tile_count=total, **fields))

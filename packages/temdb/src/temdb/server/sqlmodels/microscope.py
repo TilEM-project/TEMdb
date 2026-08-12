@@ -11,7 +11,9 @@ class MicroscopeSQLModel(ModelDumpMixin, TimestampMixin, Base):
     __tablename__ = "microscopes"
 
     microscope_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, server_default=func.uuidv7(monotonic=True),
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.uuidv7(monotonic=True),
     )
     label: Mapped[str] = mapped_column(String, unique=True)
     microscope_type: Mapped[str] = mapped_column(String, server_default=text("'TEM'"))

@@ -11,6 +11,8 @@ from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
 
+from ..utils import include_extra
+
 dataset_api = APIRouter(tags=["Datasets"])
 
 
@@ -26,6 +28,7 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
 
 
 @dataset_api.post("/datasets", status_code=status.HTTP_201_CREATED, response_model=DatasetResponse)
+@include_extra
 async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
     if existing is not None:
@@ -57,6 +60,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
         estimated_tile_count=data.estimated_tile_count,
         metadata_json=data.metadata_json,
         created_at=data.created_at or datetime.now(timezone.utc),
+        extra=data.model_extra,
     )
     session.add(ds)
     await session.commit()
@@ -65,6 +69,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
 
 
 @dataset_api.get("/datasets", response_model=list[DatasetResponse])
+@include_extra
 async def list_datasets(
     specimen_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
@@ -85,6 +90,7 @@ async def list_datasets(
 
 
 @dataset_api.get("/datasets/by-name/{name}", response_model=DatasetResponse)
+@include_extra
 async def get_dataset_by_name(name: str, session: AsyncSession = Depends(get_async_session)):
     ds = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == name))).one_or_none()
     if ds is None:
@@ -93,11 +99,13 @@ async def get_dataset_by_name(name: str, session: AsyncSession = Depends(get_asy
 
 
 @dataset_api.get("/datasets/{dataset_id}", response_model=DatasetResponse)
+@include_extra
 async def get_dataset(dataset_id: str, session: AsyncSession = Depends(get_async_session)):
     return await _get_by_id(session, dataset_id)
 
 
 @dataset_api.get("/datasets/{dataset_id}/children", response_model=list[DatasetResponse])
+@include_extra
 async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends(get_async_session)):
     parent = await _get_by_id(session, dataset_id)
     rows = (
@@ -111,13 +119,17 @@ async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends
 
 
 @dataset_api.patch("/datasets/{dataset_id}", response_model=DatasetResponse)
+@include_extra
 async def update_dataset(
     dataset_id: str,
     updated: DatasetUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
     ds = await _get_by_id(session, dataset_id)
-    data = updated.model_dump(exclude_unset=True)
+    data = updated.model_dump(
+        exclude_unset=True,
+        extra=False,
+    )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
     now = datetime.now(timezone.utc)
@@ -132,6 +144,8 @@ async def update_dataset(
             ds.collected_at = now
         if ds.status == "archived" and ds.archived_at is None:
             ds.archived_at = now
+    if updated.model_extra:
+        ds.extra = {**(ds.extra or {}), **updated.model_extra}
     ds.updated_at = now
     session.add(ds)
     await session.commit()

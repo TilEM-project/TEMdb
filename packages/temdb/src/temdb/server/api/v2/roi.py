@@ -17,6 +17,8 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
+from ..utils import include_extra, model_dump_with_extra
+
 roi_api = APIRouter(
     tags=["ROIs"],
 )
@@ -42,12 +44,17 @@ async def _parents_with_children(session: AsyncSession, roi_ids: Iterable[str]) 
 
 
 def _to_response(roi: ROISQLModel, is_parent: bool = False) -> ROIResponse:
-    response = ROIResponse.model_validate(roi)
-    response.is_parent = is_parent
-    return response
+    payload = model_dump_with_extra(
+        ROIResponse.model_validate(roi),
+        mode="json",
+        extra_source=roi,
+    )
+    payload["is_parent"] = is_parent
+    return ROIResponse.model_validate(payload)
 
 
 @roi_api.get("/rois", response_model=list[ROIResponse])
+@include_extra
 async def list_rois(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -83,6 +90,7 @@ async def list_rois(
 
 
 @roi_api.post("/rois", response_model=ROIResponse, status_code=status.HTTP_201_CREATED)
+@include_extra
 async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_async_session)):
     """Create a new ROI with hierarchical ID generation."""
     section = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.section_id == roi_data.section_id))
@@ -136,6 +144,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         roi_payload=roi_data.payload.model_dump(mode="json"),
         created_at=roi_data.created_at or datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
+        extra=roi_data.model_extra,
     )
     session.add(new_roi)
     await session.commit()
@@ -155,6 +164,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": APIErrorResponse, "description": "Internal server error"},
     },
 )
+@include_extra
 async def create_rois_batch(
     rois_data: list[ROICreate],
     session: AsyncSession = Depends(get_async_session),
@@ -215,6 +225,7 @@ async def create_rois_batch(
                 roi_payload=roi_create.payload.model_dump(mode="json"),
                 created_at=roi_create.created_at or datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
+                extra=roi_create.model_extra,
             )
         )
 
@@ -234,6 +245,7 @@ async def create_rois_batch(
 
 
 @roi_api.get("/rois/{roi_id}", response_model=ROIResponse)
+@include_extra
 async def get_roi(roi_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific ROI by its human-readable integer ID."""
     roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
@@ -245,6 +257,7 @@ async def get_roi(roi_id: str, session: AsyncSession = Depends(get_async_session
 
 
 @roi_api.get("/rois/{roi_id}/hierarchy", response_model=dict)
+@include_extra
 async def get_roi_hierarchy(roi_id: str, session: AsyncSession = Depends(get_async_session)):
     """Get the full hierarchy path for an ROI."""
     roi_result = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
@@ -268,6 +281,7 @@ async def get_roi_hierarchy(roi_id: str, session: AsyncSession = Depends(get_asy
 
 
 @roi_api.patch("/rois/{roi_id}", response_model=ROIResponse)
+@include_extra
 async def update_roi(
     roi_id: str,
     updated_fields: ROIUpdate = Body(...),
@@ -284,6 +298,8 @@ async def update_roi(
     payload = dict(roi_obj.roi_payload or {})
     payload.update(update_data)
     roi_obj.roi_payload = payload
+    if updated_fields.model_extra:
+        roi_obj.extra = {**(roi_obj.extra or {}), **updated_fields.model_extra}
     roi_obj.updated_at = datetime.now(timezone.utc)
     session.add(roi_obj)
     await session.commit()
@@ -320,6 +336,7 @@ async def delete_roi(roi_id: str, session: AsyncSession = Depends(get_async_sess
 
 
 @roi_api.get("/sections/{section_id}/rois", response_model=list[ROIResponse])
+@include_extra
 async def list_section_rois(
     section_id: str,
     skip: int = Query(0, ge=0),
@@ -344,6 +361,7 @@ async def list_section_rois(
 
 
 @roi_api.get("/rois/{roi_id}/children", response_model=dict)
+@include_extra
 async def get_child_rois(
     roi_id: str,
     skip: int = Query(0, ge=0),

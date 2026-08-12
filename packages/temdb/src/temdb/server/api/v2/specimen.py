@@ -9,12 +9,15 @@ from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, Specim
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
+from ..utils import include_extra
+
 specimen_api = APIRouter(
     tags=["Specimens"],
 )
 
 
 @specimen_api.get("/specimens", response_model=list[SpecimenResponse])
+@include_extra
 async def list_specimens(
     search: str | None = Query(None, description="Search term for specimen ID or description"),
     skip: int = Query(0, ge=0),
@@ -51,6 +54,7 @@ async def count_specimens(
 
 
 @specimen_api.get("/specimens/{specimen_id}/blocks", response_model=list[BlockResponse])
+@include_extra
 async def get_specimen_blocks(
     specimen_id: str,
     skip: int = Query(0, ge=0),
@@ -76,6 +80,7 @@ async def get_specimen_blocks(
 
 
 @specimen_api.post("/specimens", status_code=status.HTTP_201_CREATED, response_model=SpecimenResponse)
+@include_extra
 async def create_specimen(
     specimen_data: SpecimenCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -95,6 +100,7 @@ async def create_specimen(
         specimen_images=sorted(specimen_data.specimen_images or []),
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=specimen_data.created_at or datetime.now(timezone.utc),
+        extra=specimen_data.model_extra,
     )
     session.add(specimen)
     await session.commit()
@@ -103,6 +109,7 @@ async def create_specimen(
 
 
 @specimen_api.get("/specimens/{specimen_id}", response_model=SpecimenResponse)
+@include_extra
 async def get_specimen(specimen_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific specimen by its human-readable ID."""
     specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
@@ -116,6 +123,7 @@ async def get_specimen(specimen_id: str, session: AsyncSession = Depends(get_asy
 
 
 @specimen_api.patch("/specimens/{specimen_id}", response_model=SpecimenResponse)
+@include_extra
 async def update_specimen(
     specimen_id: str,
     updated_fields: SpecimenUpdate = Body(...),
@@ -149,6 +157,13 @@ async def update_specimen(
     ):
         specimen.functional_imaging_metadata = update_data["functional_imaging_metadata"]
         needs_save = True
+
+    if updated_fields.model_extra:
+        old = specimen.extra.copy()
+        merged_extra = {**(specimen.extra or {}), **updated_fields.model_extra}
+        if merged_extra != old:
+            specimen.extra = merged_extra
+            needs_save = True
 
     if needs_save:
         specimen.updated_at = datetime.now(timezone.utc)
@@ -187,6 +202,7 @@ async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_
     status_code=status.HTTP_200_OK,
     response_model=SpecimenResponse,
 )
+@include_extra
 async def add_specimen_image(
     specimen_id: str,
     image_url: AnyHttpUrl = Body(..., embed=True),
@@ -217,6 +233,7 @@ async def add_specimen_image(
     status_code=status.HTTP_200_OK,
     response_model=SpecimenResponse,
 )
+@include_extra
 async def remove_specimen_image(
     specimen_id: str,
     image_url: AnyHttpUrl = Query(..., description="The URL of the image to remove"),

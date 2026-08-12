@@ -27,7 +27,7 @@ class MicroscopeUpdate(TEMDBModel):
 
 
 class MicroscopeResponse(MicroscopeBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     microscope_id: uuid.UUID
     label: str = Field(..., description="Unique human handle, e.g. 'TEM-01'")

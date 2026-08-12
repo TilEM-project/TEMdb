@@ -28,7 +28,7 @@ class SpecimenUpdate(SpecimenBase):
 
 
 class SpecimenResponse(SpecimenBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     specimen_id: str = Field(..., description="Unique specimen identifier")

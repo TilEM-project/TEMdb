@@ -84,21 +84,21 @@ class TestTileCreate:
         )
         assert tile.tile_id is None
 
-    def test_tile_create_extra_fields_forbidden(self):
-        with pytest.raises(ValidationError):
-            TileCreate(
-                tile_id=str(TILE_UUID),
-                raster_index=0,
-                stage_position={"x": 100.0, "y": 200.0},
-                raster_position={"row": 0, "col": 0},
-                focus_score=0.95,
-                min_value=0.0,
-                max_value=255.0,
-                mean_value=128.0,
-                std_value=25.0,
-                image_path="/data/tiles/TILE_001.tif",
-                custom_field="extra_data",
-            )
+    def test_tile_create_extra_fields_allowed(self):
+        tile = TileCreate(
+            tile_id=str(TILE_UUID),
+            raster_index=0,
+            stage_position={"x": 100.0, "y": 200.0},
+            raster_position={"row": 0, "col": 0},
+            focus_score=0.95,
+            min_value=0.0,
+            max_value=255.0,
+            mean_value=128.0,
+            std_value=25.0,
+            image_path="/data/tiles/TILE_001.tif",
+            custom_field="extra_data",
+        )
+        assert tile.model_extra == {"custom_field": "extra_data"}
 
 
 class TestTileResponse:

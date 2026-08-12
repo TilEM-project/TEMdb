@@ -126,7 +126,7 @@ class SectionUpdate(SectionBase):
 class SectionResponse(SectionBase):
     """Schema for section API responses."""
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     section_id: str = Field(..., description="Unique, system-generated ID for the section")

@@ -132,7 +132,7 @@ class AcquisitionUpdate(AcquisitionBase):
 
 
 class AcquisitionResponse(AcquisitionBase):
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Internal database ID")
     acquisition_id: str = Field(..., description="Unique acquisition identifier")
@@ -172,7 +172,7 @@ class AcquisitionResponse(AcquisitionBase):
 class AcquisitionFullMetadata(TEMDBModel):
     """Acquisition with complete hierarchy metadata."""
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     acquisition: AcquisitionResponse
     task: dict[str, Any] | None = Field(None, alias="acquisition_task")

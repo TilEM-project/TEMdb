@@ -14,10 +14,13 @@ class LensCorrectionSQLModel(ModelDumpMixin, TimestampMixin, Base):
     __tablename__ = "lens_corrections"
 
     lc_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, server_default=func.uuidv7(monotonic=True),
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.uuidv7(monotonic=True),
     )
     microscope_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("microscopes.microscope_id"),
+        PG_UUID(as_uuid=True),
+        ForeignKey("microscopes.microscope_id"),
     )
     magnification: Mapped[int] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -29,6 +32,5 @@ class LensCorrectionSQLModel(ModelDumpMixin, TimestampMixin, Base):
     solver_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (
-        Index("ix_lens_corrections_microscope_mag",
-              "microscope_id", "magnification", desc("started_at")),
+        Index("ix_lens_corrections_microscope_mag", "microscope_id", "magnification", desc("started_at")),
     )

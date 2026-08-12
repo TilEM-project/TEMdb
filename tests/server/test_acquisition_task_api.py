@@ -301,9 +301,45 @@ async def test_update_acquisition_task(async_client: AsyncClient, test_acquisiti
 
 
 @pytest.mark.asyncio
-async def test_update_acquisition_task_invalid_kind_rejected(
-    async_client: AsyncClient, test_acquisition_task
-):
+async def test_acquisition_task_extra_fields_round_trip(async_client: AsyncClient, test_specimen, test_block, test_roi):
+    task_id_hr = f"TASK_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/acquisition-tasks",
+        json={
+            "task_id": task_id_hr,
+            "specimen_id": test_specimen.specimen_id,
+            "block_id": test_block.block_id,
+            "roi_id": test_roi.roi_id,
+            "unknown_create_key": {"create": "task"},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["unknown_create_key"] == {"create": "task"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/acquisition-tasks/{task_id_hr}",
+        json={
+            "metadata": {"patched": True},
+            "unknown_patch_key": "task-patch",
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["unknown_patch_key"] == "task-patch"
+
+    get_response = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["unknown_create_key"] == {"create": "task"}
+    assert get_response.json()["unknown_patch_key"] == "task-patch"
+
+    list_response = await async_client.get(f"/api/v2/acquisition-tasks?roi_id={test_roi.roi_id}")
+    assert list_response.status_code == 200
+    listed = next(task for task in list_response.json() if task["task_id"] == task_id_hr)
+    assert listed["unknown_create_key"] == {"create": "task"}
+    assert listed["unknown_patch_key"] == "task-patch"
+
+
+@pytest.mark.asyncio
+async def test_update_acquisition_task_invalid_kind_rejected(async_client: AsyncClient, test_acquisition_task):
     response = await async_client.patch(
         f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}",
         json={"kind": "bogus"},

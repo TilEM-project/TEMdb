@@ -23,6 +23,8 @@ from temdb.server.sqlmodels import (
     SpecimenSQLModel,
 )
 
+from ..utils import include_extra, model_dump_with_extra
+
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
 )
@@ -51,9 +53,13 @@ def derive_task_state(runs: list[AcquisitionSQLModel]) -> str:
 
 def _task_response(task: AcquisitionTaskSQLModel, derived_status: str) -> AcquisitionTaskResponse:
     """Build the response model, filling in the derived (non-column) status field."""
-    response = AcquisitionTaskResponse.model_validate(task)
-    response.status = derived_status
-    return response
+    payload = model_dump_with_extra(
+        AcquisitionTaskResponse.model_validate(task),
+        mode="json",
+        extra_source=task,
+    )
+    payload["status"] = derived_status
+    return AcquisitionTaskResponse.model_validate(payload)
 
 
 async def _runs_by_task(session: AsyncSession, task_ids: list[str]) -> dict[str, list[AcquisitionSQLModel]]:
@@ -131,10 +137,12 @@ def _task_from_create(
         tags=task_data.tags,
         metadata_json=task_data.metadata,
         created_at=task_data.created_at or datetime.now(timezone.utc),
+        extra=task_data.model_extra,
     )
 
 
 @acquisition_task_api.get("/acquisition-tasks", response_model=list[AcquisitionTaskResponse])
+@include_extra
 async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -246,6 +254,7 @@ async def list_tasks(
 @acquisition_task_api.post(
     "/acquisition-tasks", status_code=status.HTTP_201_CREATED, response_model=AcquisitionTaskResponse
 )
+@include_extra
 async def create_task(
     task_data: AcquisitionTaskCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -265,6 +274,7 @@ async def create_task(
 
 
 @acquisition_task_api.get("/acquisition-tasks/{task_id}", response_model=AcquisitionTaskResponse)
+@include_extra
 async def get_task(
     task_id: str,
     session: AsyncSession = Depends(get_async_session),
@@ -304,6 +314,7 @@ async def get_task(
 
 
 @acquisition_task_api.patch("/acquisition-tasks/{task_id}", response_model=AcquisitionTaskResponse)
+@include_extra
 async def update_task(
     task_id: str,
     updated_fields: AcquisitionTaskUpdate = Body(...),
@@ -336,13 +347,19 @@ async def update_task(
     if row is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     task_obj, _specimen_ref, _block_ref, _roi_ref = row
-    update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        mode="json",
+        exclude_unset=True,
+        extra=False,
+    )
     if not update_data:
         raise HTTPException(400, "No update fields provided")
     if "metadata" in update_data:
         task_obj.metadata_json = update_data.pop("metadata")
     for field, value in update_data.items():
         setattr(task_obj, field, value)
+    if updated_fields.model_extra:
+        task_obj.extra = {**(task_obj.extra or {}), **updated_fields.model_extra}
     task_obj.updated_at = datetime.now(timezone.utc)
     session.add(task_obj)
     await session.commit()
@@ -379,6 +396,7 @@ async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_se
 
 
 @acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=list[AcquisitionResponse])
+@include_extra
 async def get_task_acquisitions(
     task_id: str,
     skip: int = Query(0, ge=0),
@@ -407,6 +425,7 @@ async def get_task_acquisitions(
     status_code=status.HTTP_201_CREATED,
     response_model=AcquisitionTaskResponse,
 )
+@include_extra
 async def supersede_task(
     task_id: str,
     task_data: AcquisitionTaskCreate,
@@ -444,6 +463,7 @@ async def supersede_task(
 @acquisition_task_api.post(
     "/acquisition-tasks/batch", status_code=status.HTTP_201_CREATED, response_model=list[AcquisitionTaskResponse]
 )
+@include_extra
 async def create_tasks_batch(
     tasks: list[AcquisitionTaskCreate] = Body(...),
     group: bool = Body(False),

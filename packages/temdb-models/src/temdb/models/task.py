@@ -57,7 +57,7 @@ class AcquisitionTaskUpdate(AcquisitionTaskBase):
 class AcquisitionTaskResponse(AcquisitionTaskBase):
     """Schema for acquisition task API responses."""
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Internal integer primary key")
     task_id: str = Field(..., description="Unique identifier for this task")

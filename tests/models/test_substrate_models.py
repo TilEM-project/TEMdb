@@ -39,9 +39,9 @@ class TestReferencePoints:
         assert ref.end == (100.0, 0.0, 0.0)
         assert ref.ref == (0.0, 100.0, 0.0)
 
-    def test_extra_fields_forbidden(self):
-        with pytest.raises(ValidationError):
-            ReferencePoints(fiducial_1=[0.0, 0.0])
+    def test_extra_fields_allowed(self):
+        ref = ReferencePoints(fiducial_1=[0.0, 0.0])
+        assert ref.model_extra == {"fiducial_1": [0.0, 0.0]}
 
 
 class TestSubstrateCreate:

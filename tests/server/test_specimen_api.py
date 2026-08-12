@@ -58,6 +58,42 @@ async def test_update_specimen(async_client: AsyncClient, test_specimen):
 
 
 @pytest.mark.asyncio
+async def test_specimen_extra_fields_round_trip(async_client: AsyncClient):
+    specimen_id_hr = "TEST_EXTRA_SPEC_001"
+    create_response = await async_client.post(
+        "/api/v2/specimens",
+        json={
+            "specimen_id": specimen_id_hr,
+            "description": "Specimen with extra fields",
+            "unknown_create_key": {"source": "create"},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["unknown_create_key"] == {"source": "create"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/specimens/{specimen_id_hr}",
+        json={
+            "description": "Specimen patched with extra fields",
+            "unknown_patch_key": ["from", "patch"],
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["unknown_patch_key"] == ["from", "patch"]
+
+    get_response = await async_client.get(f"/api/v2/specimens/{specimen_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["unknown_create_key"] == {"source": "create"}
+    assert get_response.json()["unknown_patch_key"] == ["from", "patch"]
+
+    list_response = await async_client.get(f"/api/v2/specimens?search={specimen_id_hr}")
+    assert list_response.status_code == 200
+    listed = next(spec for spec in list_response.json() if spec["specimen_id"] == specimen_id_hr)
+    assert listed["unknown_create_key"] == {"source": "create"}
+    assert listed["unknown_patch_key"] == ["from", "patch"]
+
+
+@pytest.mark.asyncio
 async def test_delete_specimen_with_blocks(async_client: AsyncClient, test_specimen, test_block):
     """Test that deleting a specimen fails if it has associated blocks."""
     response = await async_client.delete(f"/api/v2/specimens/{test_specimen.specimen_id}")

@@ -61,14 +61,10 @@ async def test_lc_current_picks_most_recent(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-02")
     base = {"microscope_id": scope["microscope_id"], "magnification": 4000}
     old = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"})
     ).json()
     new = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"})
     ).json()
     assert old["lc_id"] != new["lc_id"]
     current = (await async_client.get("/api/v2/lens-corrections/current", params=base)).json()
@@ -142,14 +138,10 @@ async def test_lc_list_filters_and_get_and_patch(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-07")
     base = {"microscope_id": scope["microscope_id"], "magnification": 8000}
     first = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"})
     ).json()
     second = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"})
     ).json()
     await async_client.post(
         "/api/v2/lens-corrections",
@@ -195,6 +187,47 @@ async def test_lc_create_honors_client_lc_id(async_client: AsyncClient):
     )
     assert created.status_code == 201
     assert created.json()["lc_id"] == lc_id
+
+
+@pytest.mark.asyncio
+async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-09")
+    create_response = await async_client.post(
+        "/api/v2/lens-corrections",
+        json={
+            "microscope_id": scope["microscope_id"],
+            "magnification": 12000,
+            "started_at": "2026-06-11T00:00:00Z",
+            "unknown_create_key": {"create": "ok"},
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["unknown_create_key"] == {"create": "ok"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/lens-corrections/{created['lc_id']}",
+        json={
+            "correction_x_uri": "s3://bucket/lc/extra-x.tiff",
+            "unknown_patch_key": "patch-ok",
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["unknown_patch_key"] == "patch-ok"
+
+    get_response = await async_client.get(f"/api/v2/lens-corrections/{created['lc_id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["unknown_create_key"] == {"create": "ok"}
+    assert get_response.json()["unknown_patch_key"] == "patch-ok"
+
+    list_response = await async_client.get(
+        "/api/v2/lens-corrections",
+        params={"microscope_id": scope["microscope_id"], "magnification": 12000},
+    )
+    assert list_response.status_code == 200
+    listed = next(lc for lc in list_response.json() if lc["lc_id"] == created["lc_id"])
+    assert listed["unknown_create_key"] == {"create": "ok"}
+    assert listed["unknown_patch_key"] == "patch-ok"
 
 
 @pytest.mark.asyncio
