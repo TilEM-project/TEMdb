@@ -133,3 +133,23 @@ class TestTileBase:
         )
         assert tile.focus_score == 0.9
         assert tile.image_path == "/path/to/image.tif"
+
+    def test_tile_base_with_stage_and_raster_positions(self):
+        tile = TileBase(
+            stage_position={"x": 100, "y": 200},
+            raster_position={"row": 1, "col": 2},
+        )
+        assert tile.stage_position is not None
+        assert tile.raster_position is not None
+        assert tile.stage_position.x == 100
+        assert tile.stage_position.y == 200
+        assert tile.raster_position.row == 1
+        assert tile.raster_position.col == 2
+
+    def test_tile_base_stage_position_rejects_extra_fields(self):
+        with pytest.raises(ValidationError):
+            TileBase(stage_position={"x": 100, "y": 200, "z": 300})
+
+    def test_tile_base_stage_position_rejects_non_integer_values(self):
+        with pytest.raises(ValidationError):
+            TileBase(stage_position={"x": 100.5, "y": 200})
