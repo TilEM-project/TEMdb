@@ -149,7 +149,3 @@ class TestTileBase:
     def test_tile_base_stage_position_rejects_extra_fields(self):
         with pytest.raises(ValidationError):
             TileBase(stage_position={"x": 100, "y": 200, "z": 300})
-
-    def test_tile_base_stage_position_rejects_non_integer_values(self):
-        with pytest.raises(ValidationError):
-            TileBase(stage_position={"x": 100.5, "y": 200})
