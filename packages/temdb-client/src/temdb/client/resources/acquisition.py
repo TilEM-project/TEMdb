@@ -8,7 +8,7 @@ from temdb.models import (
     AcquisitionCreate,
     AcquisitionFullMetadata,
     AcquisitionResponse,
-    AcquisitionStatus,
+    AcquisitionStatusFilter,
     AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
@@ -41,7 +41,8 @@ class AcquisitionResource(BaseResource):
         acquisition_task_id: str | None = None,
         montage_set_name: str | None = None,
         magnification: int | None = None,
-        status: AcquisitionStatus | None = None,
+        status: AcquisitionStatusFilter | None = None,
+        qc_state: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         fields: list[str] | None = None,
@@ -58,7 +59,8 @@ class AcquisitionResource(BaseResource):
             "acquisition_task_id": acquisition_task_id,
             "montage_set_name": montage_set_name,
             "magnification": magnification,
-            "status": status.value if status else None,
+            "status": status,
+            "qc_state": qc_state,
             "start_date": start_date.isoformat() if start_date else None,
             "end_date": end_date.isoformat() if end_date else None,
             "fields": fields,
@@ -139,6 +141,20 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(endpoint)
         return StorageLocation.model_validate(response_data) if response_data else None
 
+    async def get_all_tiles(self, acquisition_id: str, *, page_limit: int = 1000) -> builtins.list[TileResponse]:
+        """Fetch every tile for an acquisition, auto-following cursor pagination."""
+        all_tiles: builtins.list[TileResponse] = []
+        cursor: int | None = None
+        while True:
+            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit)
+            all_tiles.extend(page.tiles)
+            if not page.metadata.get("has_more"):
+                break
+            cursor = page.metadata.get("next_cursor")
+            if cursor is None:
+                break
+        return all_tiles
+
     async def get_minimap_uri(self, acquisition_id: str) -> dict[str, str | None]:
         """Get the calculated URI for the acquisition's minimap."""
         endpoint = f"acquisitions/{acquisition_id}/minimap-uri"
@@ -167,12 +183,12 @@ class AcquisitionResource(BaseResource):
         acquisition_task_id: str | None = None,
         montage_set_name: str | None = None,
         magnification: int | None = None,
-        status: AcquisitionStatus | None = None,
+        status: AcquisitionStatusFilter | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """List acquisitions with complete hierarchy metadata using MongoDB aggregation."""
+        """List acquisitions with complete hierarchy metadata."""
         params = {
             "cursor": cursor,
             "limit": limit,
@@ -183,7 +199,7 @@ class AcquisitionResource(BaseResource):
             "acquisition_task_id": acquisition_task_id,
             "montage_set_name": montage_set_name,
             "magnification": magnification,
-            "status": status.value if status else None,
+            "status": status,
             "start_date": start_date.isoformat() if start_date else None,
             "end_date": end_date.isoformat() if end_date else None,
         }

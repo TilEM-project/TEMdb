@@ -9,10 +9,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from temdb.server.api.v1.grids import grid_api
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
+from temdb.server.api.v2.dataset import dataset_api
+from temdb.server.api.v2.lens_correction import lens_correction_api
+from temdb.server.api.v2.microscope import microscope_api
 from temdb.server.api.v2.quality_control import qc_api
 from temdb.server.api.v2.roi import roi_api
 from temdb.server.api.v2.section import section_api
@@ -50,8 +52,11 @@ class GzipRequestMiddleware:
                 if not message.get("more_body", False):
                     break
 
-            compressed_body = b"".join(body_parts)
-            decompressed_body = gzip.decompress(compressed_body)
+            raw_body = b"".join(body_parts)
+            try:
+                decompressed_body = gzip.decompress(raw_body)
+            except gzip.BadGzipFile:
+                decompressed_body = raw_body
 
             body_sent = False
 
@@ -59,7 +64,11 @@ class GzipRequestMiddleware:
                 nonlocal body_sent
                 if not body_sent:
                     body_sent = True
-                    return {"type": "http.request", "body": decompressed_body, "more_body": False}
+                    return {
+                        "type": "http.request",
+                        "body": decompressed_body,
+                        "more_body": False,
+                    }
                 return {"type": "http.request", "body": b"", "more_body": False}
 
             await self.app(scope, new_receive, send)
@@ -83,7 +92,9 @@ class DebugTracebackMiddleware:
             if not self.enabled:
                 raise
 
-            traceback_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            traceback_text = "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )
             response = JSONResponse(
                 status_code=500,
                 content={
@@ -97,14 +108,18 @@ class DebugTracebackMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongodb_uri = app.state.mongodb_uri
-    mongodb_name = app.state.mongodb_name
+    database_url = app.state.database_url
 
-    logger.info(f"Connecting to database: {mongodb_uri}, database name: {mongodb_name}")
-    db_manager = DatabaseManager(mongodb_uri, mongodb_name)
+    logger.info(
+        f"Connecting to SQL database: {database_url if database_url else 'disabled'}"
+    )
+    db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     await db_manager.initialize()
-    yield
+    try:
+        yield
+    finally:
+        await db_manager.dispose()
 
 
 def create_app():
@@ -117,10 +132,8 @@ def create_app():
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(DebugTracebackMiddleware, enabled=is_debug_traceback_enabled())
     app.config = config
-    logging.info(f"Mongo URI: {app.config.mongodb_uri}")
-    logging.info(f"Database name: {app.config.mongodb_name}")
-    app.state.mongodb_uri = app.config.mongodb_uri
-    app.state.mongodb_name = app.config.mongodb_name
+    logging.info(f"SQL database URL configured: {bool(app.config.database_url)}")
+    app.state.database_url = app.config.database_url
 
     origins = [
         "http://localhost:5173",
@@ -136,14 +149,11 @@ def create_app():
 
     register_exception_handlers(app)
 
-    # V1 API routes (legacy)
-    v1_prefix = "/api/v1"
-    app.include_router(grid_api, prefix=v1_prefix)
-
     # V2 API routes
     v2_prefix = "/api/v2"
 
     app.include_router(specimen_api, prefix=v2_prefix)
+    app.include_router(dataset_api, prefix=v2_prefix)
     app.include_router(block_api, prefix=v2_prefix)
     app.include_router(cutting_session_api, prefix=v2_prefix)
     app.include_router(section_api, prefix=v2_prefix)
@@ -152,6 +162,8 @@ def create_app():
     app.include_router(acquisition_task_api, prefix=v2_prefix)
     app.include_router(acquisition_api, prefix=v2_prefix)
     app.include_router(qc_api, prefix=v2_prefix)
+    app.include_router(microscope_api, prefix=v2_prefix)
+    app.include_router(lens_correction_api, prefix=v2_prefix)
 
     @app.get("/")
     async def root():

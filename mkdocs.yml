@@ -1,14 +1,11 @@
 site_name: TEMdb Documentation
-# site_url: https://example.com/ # Optional: Replace with your site's URL if deployed
 site_description: Documentation for the TEMdb Microscopy Pipeline Database.
 repo_url: https://github.com/AllenInstitute/TEMdb
 
 
-# Theme configuration (using mkdocs-material)
 theme:
   name: material
   palette:
-    # Palette toggle for light/dark mode
     - scheme: default
       toggle:
         icon: material/brightness-7
@@ -49,12 +46,13 @@ plugins:
   - search # Built-in search plugin
   - mermaid2: # Enable the mermaid plugin
       arguments: # Arguments passed to mermaid.initialize
-        theme: 'dark' # Use 'dark', 'forest', 'neutral', or 'default'
+        theme: 'dark'
 
 # Navigation structure
 nav:
   - Home: index.md
   - Schema:
+        - Full Schema: schema_erd.md
         - Preparation Workflow: schema_Preparation_erd.md
         - Imaging Workflow: schema_Imaging_erd.md
   - Models: # Create a section for individual models
@@ -63,6 +61,10 @@ nav:
       - CuttingSession: models/CuttingSession.md
       - Section: models/Section.md
       - ROI: models/ROI.md
+      - Dataset: models/Dataset.md
       - AcquisitionTask: models/AcquisitionTask.md
       - Acquisition: models/Acquisition.md
+      - Microscope: models/Microscope.md
+      - LensCorrection: models/LensCorrection.md
       - Tile: models/Tile.md
+      - Substrate: models/Substrate.md

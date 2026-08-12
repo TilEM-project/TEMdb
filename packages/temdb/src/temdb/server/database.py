@@ -1,86 +1,77 @@
 import logging
-from copy import deepcopy
-from typing import TypeVar
 
-from beanie import Document, init_beanie
-from beanie.odm.utils.encoder import DEFAULT_CUSTOM_ENCODERS
-from pymongo import AsyncMongoClient
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from temdb.models.utils.uri import URI
-from temdb.server.documents import (
-    AcquisitionDocument,
-    AcquisitionTaskDocument,
-    BlockDocument,
-    CuttingSessionDocument,
-    GridDocument,
-    ROIDocument,
-    SectionDocument,
-    SpecimenDocument,
-    SubstrateDocument,
-    TileDocument,
+from temdb.server.sqlmodels import (
+    AcquisitionSQLModel,
+    AcquisitionTaskSQLModel,
+    Base,
+    BlockSQLModel,
+    CuttingSessionSQLModel,
+    DatasetSQLModel,
+    LensCorrectionSQLModel,
+    MicroscopeSQLModel,
+    ROISQLModel,
+    SectionSQLModel,
+    SpecimenSQLModel,
+    SubstrateSQLModel,
+    TileSQLModel,
 )
-
-# Register URI encoder with Beanie
-DEFAULT_CUSTOM_ENCODERS[URI] = URI.serialize
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TDocument = TypeVar("TDocument", bound=Document)
-
 
 class DatabaseManager:
-    """Manages database connections and Beanie document initialization."""
+    """Manages SQLAlchemy database connections and schema initialization."""
 
-    def __init__(self, mongodb_uri: str, mongodb_name: str):
-        self.mongo_url = mongodb_uri
-        self.db_name = mongodb_name
-        self.client = AsyncMongoClient(mongodb_uri)
-        self.db = self.client[mongodb_name]
-        self._static_models: list[type[Document]] = [
-            SpecimenDocument,
-            BlockDocument,
-            CuttingSessionDocument,
-            SubstrateDocument,
-            SectionDocument,
-            ROIDocument,
-            AcquisitionTaskDocument,
-            AcquisitionDocument,
-            TileDocument,
-            GridDocument,
-        ]
+    def __init__(
+        self,
+        database_url: str | None = None,
+    ):
+        self.database_url = database_url
+        self.sql_engine: AsyncEngine | None = (
+            create_async_engine(
+                database_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_recycle=1800, 
+                connect_args={
+                    "server_settings": {"application_name": "temdb"},  # attributable pg_stat_activity / slow-query logs
+                    "command_timeout": 30,  # backstop against a hung query pinning a pool slot
+                },
+            )
+            if database_url
+            else None
+        )
+        self.async_session_factory: async_sessionmaker[AsyncSession] | None = (
+            async_sessionmaker(bind=self.sql_engine, expire_on_commit=False)
+            if self.sql_engine
+            else None
+        )
+        # Ensure metadata for ORM entities is registered.
+        self._sql_models = (
+            SpecimenSQLModel,
+            DatasetSQLModel,
+            BlockSQLModel,
+            CuttingSessionSQLModel,
+            SubstrateSQLModel,
+            SectionSQLModel,
+            ROISQLModel,
+            AcquisitionTaskSQLModel,
+            AcquisitionSQLModel,
+            TileSQLModel,
+            MicroscopeSQLModel,
+            LensCorrectionSQLModel,
+        )
 
-        self._dynamic_models: dict[str, type[Document]] = {}
+    async def initialize(self, create_schema: bool = True):
+        if not create_schema:
+            return
+        async with self.sql_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    async def initialize(self):
-        await init_beanie(database=self.db, document_models=self._static_models)
-
-    async def get_dynamic_model(self, document_class: type[TDocument], collection_name: str) -> type[TDocument]:
-        # check if model is already initialized in dict
-        if self._dynamic_models.get(collection_name):
-            return self._dynamic_models[collection_name]
-        DynamicDocument = deepcopy(document_class)
-
-        # Modify the Settings inner class
-        if hasattr(DynamicDocument, "Settings"):
-            DynamicDocument.Settings.name = collection_name
-        else:
-
-            class Settings:
-                name = collection_name
-
-            setattr(DynamicDocument, "Settings", Settings)
-
-        DynamicDocument.__name__ = f"{document_class.__name__}_{collection_name}"
-
-        await init_beanie(database=self.db, document_models=[DynamicDocument])
-
-        # add model to dict of initialized models
-        self._dynamic_models[collection_name] = DynamicDocument
-
-        return DynamicDocument
-
-    async def set_database(self, db_name: str):
-        self.db = self.client[db_name]
-        await self.initialize()
-        return self.db
+    async def dispose(self):
+        """Dispose the engine and its connection pool (call on app shutdown)."""
+        if self.sql_engine is not None:
+            await self.sql_engine.dispose()

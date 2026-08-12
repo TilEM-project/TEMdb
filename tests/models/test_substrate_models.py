@@ -31,11 +31,17 @@ class TestAperture:
 class TestReferencePoints:
     def test_valid_reference_points(self):
         ref = ReferencePoints(
-            fiducial_1=[0.0, 0.0],
-            fiducial_2=[100.0, 0.0],
-            fiducial_3=[0.0, 100.0],
+            origin=(0.0, 0.0, 0.0),
+            end=(100.0, 0.0, 0.0),
+            ref=(0.0, 100.0, 0.0),
         )
-        assert ref.fiducial_1 == [0.0, 0.0]
+        assert ref.origin == (0.0, 0.0, 0.0)
+        assert ref.end == (100.0, 0.0, 0.0)
+        assert ref.ref == (0.0, 100.0, 0.0)
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            ReferencePoints(fiducial_1=[0.0, 0.0])
 
 
 class TestSubstrateCreate:
@@ -76,6 +82,7 @@ class TestSubstrateUpdate:
 class TestSubstrateResponse:
     def test_valid_response(self):
         response = SubstrateResponse(
+            id=1,
             media_id="MEDIA001",
             media_type="tape",
             status="new",

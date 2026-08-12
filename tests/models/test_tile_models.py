@@ -1,7 +1,11 @@
+import uuid
+
 import pytest
 from pydantic import ValidationError
 
 from temdb.models import Matcher, TileBase, TileCreate, TileResponse
+
+TILE_UUID = uuid.UUID("0190a6b2-7c3e-7000-8000-000000000001")
 
 
 class TestMatcher:
@@ -30,7 +34,7 @@ class TestMatcher:
 class TestTileCreate:
     def test_valid_tile_create(self):
         tile = TileCreate(
-            tile_id="TILE_001",
+            tile_id=str(TILE_UUID),
             raster_index=0,
             stage_position={"x": 100.0, "y": 200.0},
             raster_position={"row": 0, "col": 0},
@@ -41,19 +45,33 @@ class TestTileCreate:
             std_value=25.0,
             image_path="/data/tiles/TILE_001.tif",
         )
-        assert tile.tile_id == "TILE_001"
+        assert tile.tile_id == TILE_UUID
         assert tile.raster_index == 0
         assert tile.focus_score == 0.95
 
     def test_tile_create_missing_required_field(self):
         with pytest.raises(ValidationError):
             TileCreate(
-                tile_id="TILE_001",
+                tile_id=str(TILE_UUID),
             )
 
-    def test_tile_create_extra_fields_allowed(self):
+    def test_tile_create_non_uuid_tile_id_rejected(self):
+        with pytest.raises(ValidationError):
+            TileCreate(
+                tile_id="TILE_OLD_STYLE_123",
+                raster_index=0,
+                stage_position={"x": 100.0, "y": 200.0},
+                raster_position={"row": 0, "col": 0},
+                focus_score=0.95,
+                min_value=0.0,
+                max_value=255.0,
+                mean_value=128.0,
+                std_value=25.0,
+                image_path="/data/tiles/TILE_001.tif",
+            )
+
+    def test_tile_create_tile_id_optional(self):
         tile = TileCreate(
-            tile_id="TILE_001",
             raster_index=0,
             stage_position={"x": 100.0, "y": 200.0},
             raster_position={"row": 0, "col": 0},
@@ -63,9 +81,24 @@ class TestTileCreate:
             mean_value=128.0,
             std_value=25.0,
             image_path="/data/tiles/TILE_001.tif",
-            custom_field="extra_data",
         )
-        assert tile.model_extra.get("custom_field") == "extra_data"
+        assert tile.tile_id is None
+
+    def test_tile_create_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            TileCreate(
+                tile_id=str(TILE_UUID),
+                raster_index=0,
+                stage_position={"x": 100.0, "y": 200.0},
+                raster_position={"row": 0, "col": 0},
+                focus_score=0.95,
+                min_value=0.0,
+                max_value=255.0,
+                mean_value=128.0,
+                std_value=25.0,
+                image_path="/data/tiles/TILE_001.tif",
+                custom_field="extra_data",
+            )
 
 
 class TestTileResponse:

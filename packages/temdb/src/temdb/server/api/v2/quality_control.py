@@ -2,20 +2,18 @@ import logging
 import statistics
 from enum import Enum
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
     AcquisitionFocusScoresResponse,
     APIErrorResponse,
     TileFocusScore,
 )
-from temdb.server.documents import (
-    AcquisitionDocument as Acquisition,
-)
-from temdb.server.documents import (
-    TileDocument as Tile,
-)
+from temdb.server.dependencies import get_async_session
+from temdb.server.sqlmodels import AcquisitionSQLModel, TileSQLModel
 
 qc_api = APIRouter(
     prefix="/qc",
@@ -94,27 +92,47 @@ async def get_heatmap(acquisition_id: str, heatmap_type: HeatmapType):
         },
     },
 )
-async def get_acquisition_focus_scores(acquisition_id: str):
+async def get_acquisition_focus_scores(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """
     Retrieves the focus score for every tile associated with the
     specified `acquisition_id`. Includes summary statistics.
     """
     logger.info(f"Fetching focus scores for acquisition_id: {acquisition_id}")
 
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         logger.warning(f"Acquisition not found: {acquisition_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Acquisition with id '{acquisition_id}' not found.",
         )
-
-    tile_cursor = Tile.find(
-        Tile.acquisition_id == acquisition_id,
-        projection_model=TileFocusScore,
-    ).sort(Tile.raster_index)
-
-    tiles_data = await tile_cursor.to_list()
+    if acq_obj.dataset_id is None:
+        tiles = []
+    else:
+        tiles = (
+            await session.scalars(
+                select(TileSQLModel)
+                .where(
+                    TileSQLModel.dataset_id == acq_obj.dataset_id,
+                    TileSQLModel.run_id == acq_obj.run_id,
+                )
+                .order_by(TileSQLModel.raster_index)
+            )
+        ).all()
+    tiles_data = [
+        TileFocusScore(
+            tile_id=tile.tile_id,
+            raster_index=tile.raster_index,
+            focus_score=tile.focus_score,
+        )
+        for tile in tiles
+    ]
 
     if not tiles_data:
         logger.info(f"No tiles found for acquisition {acquisition_id}")

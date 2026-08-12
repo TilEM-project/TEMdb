@@ -1,8 +1,8 @@
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from bson import DBRef, ObjectId
 from fastapi import (
     APIRouter,
     Body,
@@ -12,61 +12,38 @@ from fastapi import (
     Response,
     status,
 )
-from pydantic import BaseModel
-from pymongo import ASCENDING
+from sqlalchemy import and_, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
+    RUN_STATUSES,
     AcquisitionCreate,
-    AcquisitionStatus,
+    AcquisitionFullMetadata,
+    AcquisitionResponse,
     AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
     TileCreate,
+    TileResponse,
 )
-from temdb.server.database import DatabaseManager
-from temdb.server.dependencies import get_db_manager
-from temdb.server.documents import (
-    AcquisitionDocument as Acquisition,
+from temdb.server.dependencies import get_async_session
+from temdb.server.ids import uuid7
+from temdb.server.sqlmodels import (
+    AcquisitionSQLModel,
+    AcquisitionTaskSQLModel,
+    BlockSQLModel,
+    CuttingSessionSQLModel,
+    DatasetSQLModel,
+    LensCorrectionSQLModel,
+    MicroscopeSQLModel,
+    ROISQLModel,
+    SectionSQLModel,
+    SpecimenSQLModel,
+    SubstrateSQLModel,
+    TileSQLModel,
 )
-from temdb.server.documents import (
-    AcquisitionTaskDocument as AcquisitionTask,
-)
-from temdb.server.documents import (
-    BlockDocument as Block,
-)
-from temdb.server.documents import (
-    CuttingSessionDocument as CuttingSession,
-)
-from temdb.server.documents import (
-    ROIDocument as ROI,
-)
-from temdb.server.documents import (
-    SectionDocument as Section,
-)
-from temdb.server.documents import (
-    SpecimenDocument as Specimen,
-)
-from temdb.server.documents import (
-    SubstrateDocument as Substrate,
-)
-from temdb.server.documents import (
-    TileDocument as Tile,
-)
-
-
-def serialize_mongo_doc(doc: Any) -> Any:
-    if isinstance(doc, ObjectId):
-        return str(doc)
-    elif isinstance(doc, DBRef):
-        return {"collection": doc.collection, "id": str(doc.id)}
-    elif isinstance(doc, dict):
-        return {k: serialize_mongo_doc(v) for k, v in doc.items()}
-    elif isinstance(doc, list):
-        return [serialize_mongo_doc(item) for item in doc]
-    elif isinstance(doc, datetime):
-        return doc.isoformat()
-    return doc
-
+from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
@@ -75,11 +52,68 @@ acquisition_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-class TileAcquisitionRefView(BaseModel):
-    acquisition_ref: Any | None = None
+def _status_condition(acq_status: str):
+    """Axis-1 filter; the literal 'in_flight' selects runs without a terminal status."""
+    if acq_status == "in_flight":
+        return AcquisitionSQLModel.status.is_(None)
+    if acq_status in RUN_STATUSES:
+        return AcquisitionSQLModel.status == acq_status
+    raise HTTPException(422, f"status filter must be 'in_flight' or one of {RUN_STATUSES}")
 
-    class Settings:
-        projection = {"acquisition_ref": 1, "_id": 0}
+
+def _tile_payload(
+    tile: TileSQLModel, acquisition_id: str, acquisition_internal_id: int | None = None
+) -> dict[str, Any]:
+    payload = {
+        "tile_id": str(tile.tile_id),
+        "dataset_id": str(tile.dataset_id),
+        "acquisition_id": acquisition_id,
+        "raster_index": tile.raster_index,
+        "stage_position": {"x": tile.stage_x_nm, "y": tile.stage_y_nm},
+        "raster_position": {"row": tile.montage_row, "col": tile.montage_col},
+        "focus_score": tile.focus_score,
+        "min_value": tile.min_value,
+        "max_value": tile.max_value,
+        "mean_value": tile.mean_value,
+        "std_value": tile.std_value,
+        "image_path": tile.image_path,
+        "matcher": tile.matcher,
+        "supertile_id": tile.supertile_id,
+        "supertile_raster_position": tile.supertile_raster_position,
+        "created_at": tile.created_at,
+    }
+    if acquisition_internal_id is not None:
+        payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
+    return payload
+
+
+def _column_value(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    return value.value if hasattr(value, "value") else value
+
+
+def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, Any]:
+    """Translate the dict-shaped wire model into flattened tile columns."""
+    return {
+        "dataset_id": dataset_id,
+        "run_id": run_id,
+        "raster_index": tile_data.raster_index,
+        "tile_id": tile_data.tile_id if tile_data.tile_id is not None else uuid7(),
+        "stage_x_nm": tile_data.stage_position["x"],
+        "stage_y_nm": tile_data.stage_position["y"],
+        "montage_row": tile_data.raster_position["row"],
+        "montage_col": tile_data.raster_position["col"],
+        "focus_score": tile_data.focus_score,
+        "min_value": tile_data.min_value,
+        "max_value": tile_data.max_value,
+        "mean_value": tile_data.mean_value,
+        "std_value": tile_data.std_value,
+        "image_path": str(tile_data.image_path),
+        "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
+        "supertile_id": tile_data.supertile_id,
+        "supertile_raster_position": tile_data.supertile_raster_position,
+    }
 
 
 @acquisition_api.get("/acquisitions", response_model=dict[str, Any])
@@ -97,12 +131,18 @@ async def list_acquisitions(
     acquisition_task_id: str | None = Query(None, description="Filter by human-readable Acquisition Task ID"),
     montage_set_name: str | None = Query(None),
     magnification: int | None = Query(None, ge=1),
-    acq_status: AcquisitionStatus | None = Query(None, alias="status"),
+    acq_status: str | None = Query(
+        None,
+        alias="status",
+        description="Terminal status (complete, aborted, failed) or the literal 'in_flight'",
+    ),
+    qc_state: str | None = Query(None, description="Filter by QC axis state"),
+    kind: str | None = Query(None, description="Filter by run kind (montage, lens_correction)"),
     start_date: datetime | None = Query(None),
     end_date: datetime | None = Query(None),
     param_tile_focus_lt: float | None = Query(
         None,
-        description="Filter acquisitions where tile focus score is less than this value",
+        description="Filter acquisitions where the avg_focus_score rollup is less than this value",
     ),
     param_tile_match_quality_lt: float | None = Query(
         None,
@@ -115,342 +155,485 @@ async def list_acquisitions(
         None, description="Filter acquisitions where tile dy is greater than this value"
     ),
     fields: list[str] | None = Query(None, description="Fields to return (e.g., ['acquisition_id', 'status'])"),
+    session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
-    """Retrieve a list of acquisitions with filtering, sorting, and pagination."""
-    try:
-        main_filters = []
+    """Retrieve a list of acquisitions with filtering, sorting, and pagination.
 
-        if specimen_id:
-            main_filters.append(Acquisition.specimen_id == specimen_id)
-        if roi_id:
-            main_filters.append(Acquisition.roi_id == roi_id)
-        if acquisition_task_id:
-            main_filters.append(Acquisition.acquisition_task_id == acquisition_task_id)
-        if montage_set_name:
-            main_filters.append(Acquisition.montage_set_name == montage_set_name)
-        if magnification is not None:
-            main_filters.append(Acquisition.acquisition_settings.magnification == magnification)
-        if acq_status:
-            main_filters.append(Acquisition.status == acq_status)
+    Rollup filters (avg_focus_score) read columns written by ingest/QC services — out of repo.
+    """
+    conditions = []
+    if specimen_id:
+        conditions.append(AcquisitionSQLModel.specimen_id == specimen_id)
+    if roi_id:
+        conditions.append(AcquisitionSQLModel.roi_id == roi_id)
+    if acquisition_task_id:
+        conditions.append(AcquisitionSQLModel.acquisition_task_id == acquisition_task_id)
+    if montage_set_name:
+        conditions.append(AcquisitionSQLModel.montage_set_name == montage_set_name)
+    if acq_status:
+        conditions.append(_status_condition(acq_status))
+    if qc_state:
+        conditions.append(AcquisitionSQLModel.qc_state == qc_state)
+    if kind:
+        conditions.append(AcquisitionSQLModel.kind == kind)
+    if start_date:
+        conditions.append(AcquisitionSQLModel.start_time >= start_date)
+    if end_date:
+        conditions.append(AcquisitionSQLModel.start_time <= end_date)
+    if param_tile_focus_lt is not None:
+        conditions.append(AcquisitionSQLModel.avg_focus_score < param_tile_focus_lt)
 
-        if start_date and end_date:
-            main_filters.append(Acquisition.start_time >= start_date)
-            main_filters.append(Acquisition.start_time <= end_date)
-        elif start_date:
-            main_filters.append(Acquisition.start_time >= start_date)
-        elif end_date:
-            main_filters.append(Acquisition.start_time <= end_date)
+    if param_tile_match_quality_lt is not None:
+        logger.warning(
+            "API parameter 'param_tile_match_quality_lt' (%s) is accepted but not yet implemented.",
+            param_tile_match_quality_lt,
+        )
+    if param_tile_dx_gt is not None:
+        logger.warning(
+            "API parameter 'param_tile_dx_gt' (%s) is accepted but not yet implemented.",
+            param_tile_dx_gt,
+        )
+    if param_tile_dy_gt is not None:
+        logger.warning(
+            "API parameter 'param_tile_dy_gt' (%s) is accepted but not yet implemented.",
+            param_tile_dy_gt,
+        )
 
-        acq_ids_from_tile_filters = None
-        tile_filter_active_and_processed = False
-
-        if param_tile_focus_lt is not None:
-            tile_filter_active_and_processed = True
-
-            tiles_with_matching_focus_docs = (
-                await Tile.find(Tile.focus_score < param_tile_focus_lt).project(TileAcquisitionRefView).to_list()
+    sort_column = getattr(AcquisitionSQLModel, sort_by, AcquisitionSQLModel.start_time)
+    order_column = sort_column.asc() if sort_order == 1 else sort_column.desc()
+    rows = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
             )
-
-            current_focus_acq_ids = {
-                doc.acquisition_ref.id
-                for doc in tiles_with_matching_focus_docs
-                if hasattr(doc, "acquisition_ref") and doc.acquisition_ref
-            }
-
-            if acq_ids_from_tile_filters is None:
-                acq_ids_from_tile_filters = current_focus_acq_ids
-            else:
-                acq_ids_from_tile_filters.intersection_update(current_focus_acq_ids)
-
-        if param_tile_match_quality_lt is not None:
-            tile_filter_active_and_processed = True
-            logger.warning(
-                f"API parameter 'param_tile_match_quality_lt' ({param_tile_match_quality_lt}) "
-                "is accepted but not yet implemented for filtering acquisitions."
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
             )
-
-        if param_tile_dx_gt is not None:
-            tile_filter_active_and_processed = True
-            logger.warning(
-                f"API parameter 'param_tile_dx_gt' ({param_tile_dx_gt}) "
-                "is accepted but not yet implemented for filtering acquisitions."
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
             )
-
-        if param_tile_dy_gt is not None:
-            tile_filter_active_and_processed = True
-            logger.warning(
-                f"API parameter 'param_tile_dy_gt' ({param_tile_dy_gt}) "
-                "is accepted but not yet implemented for filtering acquisitions."
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
             )
-
-        if tile_filter_active_and_processed and acq_ids_from_tile_filters is not None and not acq_ids_from_tile_filters:
-            metadata = {
-                "total_count": 0,
-                "returned_count": 0,
-                "limit": limit,
-                "sort_by": sort_by,
-                "sort_order": sort_order,
-                "next_cursor": None,
-            }
-            return {"acquisitions": [], "metadata": metadata}
-
-        if acq_ids_from_tile_filters is not None:
-            main_filters.append(Acquisition.id.in_(list(acq_ids_from_tile_filters)))
-
-        find_query = Acquisition.find(*main_filters, fetch_links=False)
-
-        projection = None
+            .where(*conditions)
+            .order_by(order_column)
+        )
+    ).all()
+    acquisitions = [row[0] for row in rows]
+    if magnification is not None:
+        rows = [
+            row
+            for row in rows
+            if isinstance(row[0].acquisition_settings, dict)
+            and row[0].acquisition_settings.get("magnification") == magnification
+        ]
+        acquisitions = [row[0] for row in rows]
+    total_count = len(acquisitions)
+    rows = rows[:limit]
+    payloads = []
+    for acq, _specimen_ref, _roi_ref, _task_ref in rows:
+        payload = AcquisitionResponse.model_validate(acq).model_dump(mode="json")
         if fields:
-            projection = {field: 1 for field in fields}
-            if "_id" not in fields:
-                projection["_id"] = 1
-
-        if projection:
-            find_query = find_query.project(projection_model=None, projection=projection)
-
-        sort_key = sort_by if sort_by else "start_time"
-        sort_direction = sort_order if sort_order in [-1, 1] else -1
-        find_query_for_list = find_query.sort([(sort_key, sort_direction)])
-
-        total_count = await Acquisition.find(*main_filters).count()
-
-        acquisitions_list = await find_query_for_list.limit(limit).to_list()
-
-        next_cursor = str(acquisitions_list[-1].id) if acquisitions_list else None
-
-        metadata = {
-            "total_count": total_count,
-            "returned_count": len(acquisitions_list),
-            "limit": limit,
-            "sort_by": sort_key,
-            "sort_order": sort_direction,
-            "next_cursor": next_cursor,
-        }
-
-        response.headers["Cache-Control"] = "private, max-age=300"
-        response.headers["X-Total-Count"] = str(total_count)
-
-        return {"acquisitions": acquisitions_list, "metadata": metadata}
-
-    except Exception as e:
-        logger.error(f"Error listing acquisitions: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error retrieving acquisitions")
+            kept = {field: payload.get(field) for field in fields}
+            kept["id"] = payload["id"]
+            payload = kept
+        payloads.append(payload)
+    next_cursor = str(rows[-1][0].id) if rows else None
+    metadata = {
+        "total_count": total_count,
+        "returned_count": len(payloads),
+        "limit": limit,
+        "sort_by": sort_by,
+        "sort_order": sort_order if sort_order in [-1, 1] else -1,
+        "next_cursor": next_cursor,
+    }
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["X-Total-Count"] = str(total_count)
+    return {"acquisitions": payloads, "metadata": metadata}
 
 
-@acquisition_api.post("/acquisitions", response_model=Acquisition, status_code=status.HTTP_201_CREATED)
-async def create_acquisition(acq_data: AcquisitionCreate, db_manager: DatabaseManager = Depends(get_db_manager)):
-    """Create a new acquisition with validation but without transactions."""
-    new_acq_id_internal = None
+@acquisition_api.post("/acquisitions", response_model=AcquisitionResponse, status_code=status.HTTP_201_CREATED)
+async def create_acquisition(
+    acq_data: AcquisitionCreate,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Create a new acquisition with validation but without transactions.
 
-    try:
-        if await Acquisition.find_one({"acquisition_id": acq_data.acquisition_id}):
+    Runs start in flight (status NULL, end_time NULL); the terminal status is written
+    once via PATCH. Montage runs require ROI/specimen lineage; lens_correction runs
+    are exempt and reference their correction via lc_id (never via calibration_info).
+    """
+    if acq_data.kind == "montage" and acq_data.roi_id is None:
+        raise HTTPException(
+            422,
+            "roi_id is required for kind='montage' acquisitions; only lens_correction runs may omit lineage.",
+        )
+    existing = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
+    )
+    if existing.first() is not None:
+        raise HTTPException(400, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
+    microscope = await session.scalars(
+        select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
+    )
+    if microscope.first() is None:
+        raise HTTPException(404, f"Microscope '{acq_data.microscope_id}' not found.")
+    if acq_data.lc_id is not None:
+        lens_correction = await session.scalars(
+            select(LensCorrectionSQLModel).where(LensCorrectionSQLModel.lc_id == acq_data.lc_id)
+        )
+        if lens_correction.first() is None:
+            raise HTTPException(404, f"Lens correction '{acq_data.lc_id}' not found.")
+    task_row = (
+        await session.execute(
+            select(AcquisitionTaskSQLModel, SpecimenSQLModel.id)
+            .select_from(AcquisitionTaskSQLModel)
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
+            )
+            .where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
+        )
+    ).first()
+    if task_row is None:
+        raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
+    task_obj, _specimen_ref = task_row
+    roi_obj = None
+    if acq_data.roi_id is not None:
+        roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
+        roi_obj = roi.first()
+        if roi_obj is None:
+            raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
+        if task_obj.roi_id != roi_obj.roi_id:
             raise HTTPException(
                 400,
-                f"Acquisition ID '{acq_data.acquisition_id}' already exists.",
+                f"ROI ID '{roi_obj.roi_id}' does not match ROI reference in Task '{task_obj.task_id}'.",
             )
-
-        roi = await ROI.find_one(ROI.roi_id == acq_data.roi_id, fetch_links=True)
-        if not roi:
-            raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
-
-        task = await AcquisitionTask.find_one(
-            AcquisitionTask.task_id == acq_data.acquisition_task_id,
-            fetch_links=True,
+    if acq_data.kind == "montage" and task_obj.specimen_id is None:
+        raise HTTPException(
+            422,
+            f"Task '{task_obj.task_id}' has no specimen lineage; kind='montage' acquisitions require it.",
         )
-        if not task:
+    replacement_id = None
+    if acq_data.replaces_acquisition_id:
+        replacement = await session.scalars(
+            select(AcquisitionSQLModel).where(
+                AcquisitionSQLModel.acquisition_id == str(acq_data.replaces_acquisition_id)
+            )
+        )
+        replacement_obj = replacement.first()
+        if replacement_obj is None:
             raise HTTPException(
                 404,
-                f"Acquisition Task '{acq_data.acquisition_task_id}' not found.",
+                f"Acquisition to replace ID '{acq_data.replaces_acquisition_id}' not found.",
             )
-
-        if task.roi_ref.id != roi.id:
-            raise HTTPException(
-                400,
-                f"ROI ID '{roi.roi_id}' does not match ROI reference in Task '{task.task_id}'.",
-            )
-
-        specimen_ref_id = task.specimen_ref.id
-        specimen_id_hr = task.specimen_id
-
-        replaces_acq_ref_id = None
-        if acq_data.replaces_acquisition_id:
-            prev_acq = await Acquisition.find_one(
-                {"acquisition_id": acq_data.replaces_acquisition_id},
-            )
-            if not prev_acq:
-                raise HTTPException(
-                    404,
-                    f"Acquisition to replace ID '{acq_data.replaces_acquisition_id}' not found.",
-                )
-            replaces_acq_ref_id = prev_acq.id
-
-        new_acquisition = Acquisition(
-            acquisition_id=acq_data.acquisition_id,
-            montage_id=acq_data.montage_id,
-            specimen_id=specimen_id_hr,
-            roi_id=roi.roi_id,
-            acquisition_task_id=task.task_id,
-            specimen_ref=specimen_ref_id,
-            roi_ref=roi.id,
-            acquisition_task_ref=task.id,
-            hardware_settings=acq_data.hardware_settings,
-            acquisition_settings=acq_data.acquisition_settings,
-            calibration_info=acq_data.calibration_info,
-            status=acq_data.status,
-            tilt_angle=acq_data.tilt_angle,
-            lens_correction=acq_data.lens_correction,
-            start_time=acq_data.start_time or datetime.now(timezone.utc),
-            end_time=acq_data.end_time,
-            montage_set_name=acq_data.montage_set_name,
-            sub_region=acq_data.sub_region,
-            replaces_acquisition_id=replaces_acq_ref_id,
-        )
-        insert_result = await new_acquisition.insert()
-        new_acq_id_internal = insert_result.id
-
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        else:
-            logger.error(
-                f"Error during acquisition creation: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(500, "Failed to create acquisition.")
-
-    if new_acq_id_internal:
-        created_acq = await Acquisition.get(new_acq_id_internal, fetch_links=True)
-        if created_acq:
-            return created_acq
-    raise HTTPException(500, "Failed to retrieve created acquisition after creation.")
-
-
-@acquisition_api.get("/acquisitions/{acquisition_id}", response_model=Acquisition)
-async def get_acquisition(acquisition_id: str):
-    """Retrieve a specific acquisition by its human-readable ID."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id, fetch_links=True)
-    if not acquisition:
-        raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+        replacement_id = replacement_obj.acquisition_id
+    dataset_uuid = None
+    if acq_data.dataset_id is not None:
+        try:
+            dataset_uuid = uuid.UUID(acq_data.dataset_id)
+        except ValueError:
+            raise HTTPException(400, f"Invalid dataset_id '{acq_data.dataset_id}'")
+    acquisition = AcquisitionSQLModel(
+        acquisition_id=acq_data.acquisition_id,
+        montage_id=acq_data.montage_id,
+        specimen_id=task_obj.specimen_id if roi_obj is not None else None,
+        roi_id=roi_obj.roi_id if roi_obj is not None else None,
+        acquisition_task_id=task_obj.task_id,
+        microscope_id=acq_data.microscope_id,
+        dataset_id=dataset_uuid,
+        kind=acq_data.kind,
+        lc_id=acq_data.lc_id,
+        hardware_settings=acq_data.hardware_settings.model_dump(),
+        acquisition_settings=acq_data.acquisition_settings.model_dump(),
+        calibration_info=acq_data.calibration_info.model_dump() if acq_data.calibration_info else None,
+        tilt_angle_deg=acq_data.tilt_angle_deg,
+        created_at=acq_data.created_at or datetime.now(timezone.utc),
+        start_time=acq_data.start_time or datetime.now(timezone.utc),
+        storage_locations=(
+            [loc.model_dump(mode="json") for loc in acq_data.storage_locations] if acq_data.storage_locations else None
+        ),
+        montage_set_name=acq_data.montage_set_name,
+        sub_region=acq_data.sub_region.model_dump(mode="json") if acq_data.sub_region else None,
+        replaces_acquisition_id=replacement_id,
+    )
+    session.add(acquisition)
+    await session.commit()
+    await session.refresh(acquisition)
     return acquisition
 
 
-@acquisition_api.patch("/acquisitions/{acquisition_id}", response_model=Acquisition)
-async def update_acquisition(acquisition_id: str, updated_fields: AcquisitionUpdate = Body(...)):
-    """Update details of a specific acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+@acquisition_api.get("/acquisitions/{acquisition_id}", response_model=AcquisitionResponse)
+async def get_acquisition(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Retrieve a specific acquisition by its human-readable ID."""
+    row = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
+            )
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+            )
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+            )
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+            )
+            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+        )
+    ).first()
+    if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
+    return acq_obj
 
+
+@acquisition_api.patch("/acquisitions/{acquisition_id}", response_model=AcquisitionResponse)
+async def update_acquisition(
+    acquisition_id: str,
+    updated_fields: AcquisitionUpdate = Body(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Update details of a specific acquisition."""
+    row = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
+            )
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+            )
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+            )
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+            )
+            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(400, "No update data provided")
-
-    needs_save = False
+    updated_by = update_data.pop("updated_by", None)
+    now = datetime.now(timezone.utc)
+    if "end_time" in update_data and "status" not in update_data:
+        raise HTTPException(422, "end_time can only be set together with a terminal status")
+    if "qc_state" in update_data:
+        update_data["qc_state_updated_at"] = now
+        update_data["qc_state_updated_by"] = updated_by
+    if "transfer_state" in update_data:
+        update_data["transfer_state_updated_at"] = now
+        update_data["transfer_state_updated_by"] = updated_by
+    if "status" in update_data:
+        # Terminal status is write-once: compare-and-swap on status IS NULL so a
+        # concurrent terminal PATCH cannot rewrite the first writer's result.
+        if update_data.get("end_time") is None:
+            update_data["end_time"] = now
+        values = {
+            field: _column_value(value) for field, value in update_data.items() if hasattr(AcquisitionSQLModel, field)
+        }
+        result = await session.execute(
+            update(AcquisitionSQLModel)
+            .where(
+                AcquisitionSQLModel.acquisition_id == acquisition_id,
+                AcquisitionSQLModel.status.is_(None),
+            )
+            .values(**values)
+        )
+        if result.rowcount == 0:
+            await session.rollback()
+            current = (
+                await session.execute(
+                    select(AcquisitionSQLModel.status).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+                )
+            ).first()
+            if current is None:
+                raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+            raise HTTPException(
+                409,
+                f"Acquisition '{acquisition_id}' already has terminal status '{current[0]}'.",
+            )
+        await session.commit()
+        await session.refresh(acq_obj)
+        return acq_obj
     for field, value in update_data.items():
-        if hasattr(acquisition, field) and getattr(acquisition, field) != value:
-            setattr(acquisition, field, value)
-            needs_save = True
-
-    if needs_save:
-        await acquisition.save()
-
-    updated_acq = await Acquisition.get(acquisition.id, fetch_links=True)
-    return updated_acq
+        if hasattr(acq_obj, field):
+            setattr(acq_obj, field, _column_value(value))
+    session.add(acq_obj)
+    await session.commit()
+    await session.refresh(acq_obj)
+    return acq_obj
 
 
 @acquisition_api.delete("/acquisitions/{acquisition_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_acquisition(acquisition_id: str):
+async def delete_acquisition(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Delete a specific acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-
-    tile_count = await Tile.find(Tile.acquisition_ref.id == acquisition.id).count()
+    tile_count = 0
+    if acq_obj.dataset_id is not None:
+        tile_count = (
+            await session.scalars(
+                select(func.count())
+                .select_from(TileSQLModel)
+                .where(
+                    TileSQLModel.dataset_id == acq_obj.dataset_id,
+                    TileSQLModel.run_id == acq_obj.run_id,
+                )
+            )
+        ).one()
     if tile_count > 0:
         raise HTTPException(
             400,
             f"Cannot delete acquisition '{acquisition_id}': {tile_count} tiles exist.",
         )
-
-    await acquisition.delete()
+    await session.delete(acq_obj)
+    await session.commit()
     return None
+
+
+async def _ensure_leaf_dataset(session: AsyncSession, dataset_id: uuid.UUID) -> None:
+    has_children = (
+        await session.scalars(
+            select(DatasetSQLModel.dataset_id).where(DatasetSQLModel.parent_dataset_id == dataset_id).limit(1)
+        )
+    ).first()
+    if has_children is not None:
+        raise HTTPException(status_code=400, detail="parent datasets hold no tiles")
 
 
 @acquisition_api.post(
     "/acquisitions/{acquisition_id}/tiles",
-    response_model=Tile,
+    response_model=dict[str, Any],
     status_code=status.HTTP_201_CREATED,
 )
-async def add_tile_to_acquisition(acquisition_id: str, tile_data: TileCreate):
+async def add_tile_to_acquisition(
+    acquisition_id: str,
+    tile_data: TileCreate,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Add a single tile to an acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
-        raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-
-    if await Tile.find_one(Tile.tile_id == tile_data.tile_id):
-        raise HTTPException(400, f"Tile ID '{tile_data.tile_id}' already exists.")
-
-    new_tile = Tile(
-        **tile_data.model_dump(),
-        acquisition_id=acquisition.acquisition_id,
-        acquisition_ref=acquisition.id,
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
-    await new_tile.insert()
-    return new_tile
+    acq_obj = acquisition.first()
+    if acq_obj is None:
+        raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
+    if acq_obj.dataset_id is None:
+        raise HTTPException(
+            status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles"
+        )
+    await _ensure_leaf_dataset(session, acq_obj.dataset_id)
+    await ensure_tile_partition(session, acq_obj.dataset_id)
+    stmt = (
+        pg_insert(TileSQLModel)
+        .values(_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
+        .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
+        .returning(TileSQLModel)
+    )
+    tile = (await session.execute(stmt)).scalars().first()
+    if tile is None:
+        raise HTTPException(
+            409,
+            f"Tile with raster_index {tile_data.raster_index} already exists for acquisition '{acquisition_id}'",
+        )
+    payload = _tile_payload(tile, acq_obj.acquisition_id, acq_obj.id)
+    await session.commit()
+    return payload
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles/bulk", response_model=dict)
 async def add_tiles_to_acquisition(
     acquisition_id: str,
     tiles: list[TileCreate],
-    db_manager: DatabaseManager = Depends(get_db_manager),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Add multiple tiles to an acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-
-    total_tiles = len(tiles)
-    collection = db_manager.db["tiles"]
-    logger.info(f"Received {total_tiles} tiles for acquisition {acquisition_id}")
-
-    incoming_tile_ids = [t.tile_id for t in tiles]
-    existing_cursor = collection.find({"tile_id": {"$in": incoming_tile_ids}}, {"tile_id": 1})
-    existing_ids = {doc["tile_id"] async for doc in existing_cursor}
-
-    acquisition_ref = DBRef("acquisitions", acquisition.id)
-
-    docs_to_insert = [
-        {
-            "_id": ObjectId(),
-            **tile.model_dump(),
-            "acquisition_id": acquisition.acquisition_id,
-            "acquisition_ref": acquisition_ref,
-        }
-        for tile in tiles
-        if tile.tile_id not in existing_ids
-    ]
-
-    inserted_count = 0
-    skipped_count = len(existing_ids)
-
-    if docs_to_insert:
-        try:
-            result = await collection.insert_many(docs_to_insert, ordered=False)
-            inserted_count = len(result.inserted_ids)
-            logger.info(f"Inserted {inserted_count} tiles for acquisition {acquisition_id}")
-        except Exception as e:
-            logger.error(
-                f"Error inserting tiles for acquisition {acquisition_id}: {e}",
-                exc_info=True,
+    row = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
             )
-            raise HTTPException(500, f"Error inserting tiles: {e}")
-
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+            )
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+            )
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+            )
+            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    acq_obj, specimen_ref, roi_ref, task_ref = row
+    if acq_obj.dataset_id is None:
+        raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
+    await _ensure_leaf_dataset(session, acq_obj.dataset_id)
+    await ensure_tile_partition(session, acq_obj.dataset_id)
+    total_tiles = len(tiles)
+    inserted = 0
+    if tiles:
+        # Retried batches are expected (at-least-once ingest): ON CONFLICT DO
+        # NOTHING keeps the write-once rows and reports duplicates as skipped.
+        rows = [_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.run_id) for tile in tiles]
+        result = await session.execute(
+            pg_insert(TileSQLModel)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
+        )
+        await session.commit()
+        inserted = result.rowcount
     return {
         "acquisition_id": acquisition_id,
         "total_received": total_tiles,
-        "inserted": inserted_count,
-        "skipped_existing": skipped_count,
+        "inserted": inserted,
+        "skipped_existing": total_tiles - inserted,
     }
 
 
@@ -461,47 +644,42 @@ async def get_tiles_from_acquisition(
     cursor: int | None = Query(None, description="Last raster_index seen"),
     limit: int = Query(100, ge=1, le=1000),
     fields: list[str] | None = Query(None),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve tiles associated with a specific acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-
-    filters = [Tile.acquisition_ref.id == acquisition.id]
-    if cursor is not None:
-        filters.append(Tile.raster_index > cursor)
-
-    projection = None
-    if fields:
-        projection = {field: 1 for field in fields}
-        if "raster_index" not in fields:
-            projection["raster_index"] = 1
-        projection["_id"] = 0
-
-    find_query = Tile.find(*filters, fetch_links=False)
-
-    if projection:
-        find_query = find_query.project(projection_model=None, projection=projection)
-
-    find_query = find_query.sort([("raster_index", ASCENDING)])
-
-    tiles_list = await find_query.limit(limit).to_list()
-    if tiles_list:
-        last_tile = tiles_list[-1]
-        next_cursor = last_tile["raster_index"] if isinstance(last_tile, dict) else last_tile.raster_index
+    if acq_obj.dataset_id is None:
+        rows = []
     else:
-        next_cursor = None
-
-    has_more = await Tile.find(*filters).sort(("raster_index", ASCENDING)).skip(limit).limit(1).to_list()
-
-    has_more = len(has_more) > 0
-
+        query = select(TileSQLModel).where(
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+        if cursor is not None:
+            query = query.where(TileSQLModel.raster_index > cursor)
+        query = query.order_by(TileSQLModel.raster_index).limit(limit + 1)
+        rows = (await session.scalars(query)).all()
+    has_more = len(rows) > limit
+    tiles = rows[:limit]
+    payloads = [_tile_payload(tile, acq_obj.acquisition_id, acq_obj.id) for tile in tiles]
+    if fields:
+        trimmed = []
+        for payload in payloads:
+            entry = {field: payload.get(field) for field in fields}
+            entry["raster_index"] = payload.get("raster_index")
+            trimmed.append(entry)
+        payloads = trimmed
+    next_cursor = tiles[-1].raster_index if tiles else None
     response.headers["Cache-Control"] = "private, max-age=300"
-
     return {
-        "tiles": tiles_list,
+        "tiles": payloads,
         "metadata": {
-            "returned_count": len(tiles_list),
+            "returned_count": len(payloads),
             "limit": limit,
             "current_cursor": cursor,
             "next_cursor": next_cursor,
@@ -510,82 +688,164 @@ async def get_tiles_from_acquisition(
     }
 
 
-@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=Tile)
-async def get_tile_from_acquisition(acquisition_id: str, tile_id: str):
-    """Retrieve a specific tile by its human-readable ID, verifying acquisition parent."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+def _tile_uuid_or_404(tile_id: str) -> uuid.UUID:
+    """Parse a tile_id path parameter to a UUID; a malformed id cannot exist."""
+    try:
+        return uuid.UUID(tile_id)
+    except ValueError:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found")
 
-    tile = await Tile.find_one(
-        {"tile_id": tile_id, "acquisition_id": acquisition.acquisition_id},
-        fetch_links=True,
+
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=TileResponse)
+async def get_tile_from_acquisition(
+    acquisition_id: str,
+    tile_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Retrieve a specific tile by its tile_id (UUID), verifying acquisition parent."""
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
-
-    if not tile:
+    acq_obj = acquisition.first()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_key = _tile_uuid_or_404(tile_id)
+    tile = await session.scalars(
+        select(TileSQLModel).where(
+            TileSQLModel.tile_id == tile_key,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+    )
+    tile_obj = tile.first()
+    if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
-    return tile
+    return _tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id)
 
 
-acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=Acquisition)
+def _current_storage_location(storage_locations: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    if not storage_locations:
+        return None
+    return next((loc for loc in storage_locations if loc.get("is_current")), None)
 
 
-async def add_storage_location(acquisition_id: str, storage_location: StorageLocationCreate):
+@acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=AcquisitionResponse)
+async def add_storage_location(
+    acquisition_id: str,
+    storage_location: StorageLocationCreate,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Add a storage location entry to an acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    row = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
+            )
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+            )
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+            )
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+            )
+            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+        )
+    ).first()
+    if row is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
 
-    new_location_data = storage_location.model_dump()
-    make_current = new_location_data.pop("is_current", True)
+    new_location = storage_location.model_dump(mode="json")
+    make_current = new_location.get("is_current", True)
+    new_location["is_current"] = make_current
+    if not new_location.get("date_added"):
+        new_location["date_added"] = datetime.now(timezone.utc).isoformat()
 
-    new_location = StorageLocation(
-        **new_location_data,
-        is_current=make_current,
-        date_added=datetime.now(timezone.utc),
-    )
-
+    existing_locations = list(acq_obj.storage_locations or [])
     if make_current:
-        for loc in acquisition.storage_locations:
-            loc.is_current = False
+        for loc in existing_locations:
+            if isinstance(loc, dict):
+                loc["is_current"] = False
+    existing_locations.append(new_location)
 
-    acquisition.storage_locations.append(new_location)
-    await acquisition.save()
-    updated_acq = await Acquisition.get(acquisition.id, fetch_links=True)
-    return updated_acq
+    acq_obj.storage_locations = existing_locations
+    session.add(acq_obj)
+    await session.commit()
+    await session.refresh(acq_obj)
+    return acq_obj
 
 
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/current-storage",
     response_model=StorageLocation | None,
 )
-async def get_current_storage_location(acquisition_id: str):
+async def get_current_storage_location(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Get the current storage location for an acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    return acquisition.get_current_storage_location()
+    return _current_storage_location(acq_obj.storage_locations)
 
 
 @acquisition_api.get(
     "/acquisitions/{acquisition_id}/minimap-uri",
     response_model=dict[str, str | None],
 )
-async def get_minimap_uri(acquisition_id: str):
+async def get_minimap_uri(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Get the calculated URI for the acquisition's minimap image."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    return {"minimap_uri": acquisition.get_minimap_uri()}
+    current_location = _current_storage_location(acq_obj.storage_locations)
+    base_path = current_location.get("base_path") if current_location else None
+    return {"minimap_uri": f"{base_path}/minimap.png" if base_path else None}
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tile-count", response_model=dict[str, int])
-async def get_tile_count(acquisition_id: str):
+async def get_tile_count(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Get the total count of tiles associated with an acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    tile_count = await Tile.find({"acquisition_id": acquisition_id}).count()
+    if acq_obj.dataset_id is None:
+        return {"tile_count": 0}
+    tile_count = (
+        await session.scalars(
+            select(func.count())
+            .select_from(TileSQLModel)
+            .where(
+                TileSQLModel.dataset_id == acq_obj.dataset_id,
+                TileSQLModel.run_id == acq_obj.run_id,
+            )
+        )
+    ).one()
     return {"tile_count": tile_count}
 
 
@@ -593,72 +853,115 @@ async def get_tile_count(acquisition_id: str):
     "/acquisitions/{acquisition_id}/tiles/{tile_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_tile_from_acquisition(acquisition_id: str, tile_id: str):
+async def delete_tile_from_acquisition(
+    acquisition_id: str,
+    tile_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Delete a specific tile, ensuring it belongs to the specified acquisition."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id)
-    if not acquisition:
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-
-    tile = await Tile.find_one({"tile_id": tile_id, "acquisition_id": acquisition_id})
-
-    if not tile:
+    tile_key = _tile_uuid_or_404(tile_id)
+    tile = await session.scalars(
+        select(TileSQLModel).where(
+            TileSQLModel.tile_id == tile_key,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+    )
+    tile_obj = tile.first()
+    if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
-
-    await tile.delete()
+    await session.delete(tile_obj)
+    await session.commit()
     return None
 
 
-class AcquisitionFullMetadata(BaseModel):
-    """Acquisition with complete hierarchy metadata"""
-
-    acquisition: Acquisition
-    acquisition_task: AcquisitionTask | None = None
-    roi: ROI | None = None
-    section: Section | None = None
-    cutting_session: CuttingSession | None = None
-    block: Block | None = None
-    specimen: Specimen | None = None
-    substrate: Substrate | None = None
-
-
 @acquisition_api.get("/acquisitions/{acquisition_id}/metadata", response_model=AcquisitionFullMetadata)
-async def get_acquisition_with_full_metadata(acquisition_id: str):
+async def get_acquisition_with_full_metadata(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Retrieve an acquisition with its complete metadata."""
-    acquisition = await Acquisition.find_one(Acquisition.acquisition_id == acquisition_id, fetch_links=True)
-    if not acquisition:
+    row = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                AcquisitionTaskSQLModel,
+                ROISQLModel,
+                SectionSQLModel,
+                CuttingSessionSQLModel,
+                BlockSQLModel,
+                SpecimenSQLModel,
+                SubstrateSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
+            )
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+            )
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+            )
+            .outerjoin(
+                SectionSQLModel,
+                SectionSQLModel.section_id == ROISQLModel.section_id,
+            )
+            .outerjoin(
+                CuttingSessionSQLModel,
+                CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
+            )
+            .outerjoin(
+                BlockSQLModel,
+                and_(
+                    BlockSQLModel.block_id == CuttingSessionSQLModel.block_id,
+                    BlockSQLModel.specimen_id == CuttingSessionSQLModel.specimen_id,
+                ),
+            )
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+            )
+            .outerjoin(
+                SubstrateSQLModel,
+                SubstrateSQLModel.media_id == ROISQLModel.substrate_media_id,
+            )
+            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+        )
+    ).first()
+    if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-
-    result = AcquisitionFullMetadata(acquisition=acquisition)
-
-    if acquisition.acquisition_task_ref:
-        task = await AcquisitionTask.get(acquisition.acquisition_task_ref.id, fetch_links=True)
-        result.acquisition_task = task
-
-        if task and task.roi_ref:
-            roi = await ROI.get(task.roi_ref.id, fetch_links=True)
-            result.roi = roi
-
-            if roi and roi.section_ref:
-                section = await Section.get(roi.section_ref.id, fetch_links=True)
-                result.section = section
-
-                if roi.substrate_media_id:
-                    substrate = await Substrate.find_one(Substrate.media_id == roi.substrate_media_id, fetch_links=True)
-                    result.substrate = substrate
-
-                if section and section.cutting_session_ref:
-                    cutting_session = await CuttingSession.get(section.cutting_session_ref.id, fetch_links=True)
-                    result.cutting_session = cutting_session
-
-                    if cutting_session and cutting_session.block_ref:
-                        block = await Block.get(cutting_session.block_ref.id, fetch_links=True)
-                        result.block = block
-
-                        if block and block.specimen_ref:
-                            specimen = await Specimen.get(block.specimen_ref.id, fetch_links=True)
-                            result.specimen = specimen
-
-    return result
+    (
+        acq_obj,
+        task_obj,
+        roi_obj,
+        section_obj,
+        cutting_session_obj,
+        block_obj,
+        specimen_obj,
+        substrate_obj,
+        _specimen_ref,
+        _roi_ref,
+        _task_ref,
+    ) = row
+    return AcquisitionFullMetadata(
+        acquisition=AcquisitionResponse.model_validate(acq_obj),
+        task=task_obj.model_dump() if task_obj else None,
+        roi=roi_obj.model_dump() if roi_obj else None,
+        section=section_obj.model_dump() if section_obj else None,
+        cutting_session=cutting_session_obj.model_dump() if cutting_session_obj else None,
+        block=block_obj.model_dump() if block_obj else None,
+        specimen=specimen_obj.model_dump() if specimen_obj else None,
+        substrate=substrate_obj.model_dump() if substrate_obj else None,
+    )
 
 
 @acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])
@@ -675,214 +978,117 @@ async def list_acquisitions_with_hierarchy(
     roi_id: str | None = Query(None, description="Filter by hierarchical ROI ID"),
     acquisition_task_id: str | None = Query(None, description="Filter by human-readable Acquisition Task ID"),
     substrate_media_id: str | None = Query(None, description="Filter by substrate media ID"),
-    acq_status: AcquisitionStatus | None = Query(None, alias="status"),
+    acq_status: str | None = Query(
+        None,
+        alias="status",
+        description="Terminal status (complete, aborted, failed) or the literal 'in_flight'",
+    ),
+    session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
-    """Retrieve acquisitions with complete hierarchy metadata using MongoDB aggregation."""
-    try:
-        match_filters = {}
+    """Retrieve acquisitions with complete hierarchy metadata."""
+    conditions = []
+    if specimen_id:
+        conditions.append(AcquisitionSQLModel.specimen_id == specimen_id)
+    if roi_id:
+        conditions.append(AcquisitionSQLModel.roi_id == roi_id)
+    if acquisition_task_id:
+        conditions.append(AcquisitionSQLModel.acquisition_task_id == acquisition_task_id)
+    if acq_status:
+        conditions.append(_status_condition(acq_status))
+    if substrate_media_id:
+        conditions.append(SubstrateSQLModel.media_id == substrate_media_id)
 
-        if specimen_id:
-            match_filters["specimen_id"] = specimen_id
-        if acquisition_task_id:
-            match_filters["acquisition_task_id"] = acquisition_task_id
-        if acq_status:
-            match_filters["status"] = acq_status.value
-
-        pipeline = []
-
-        if match_filters:
-            pipeline.append({"$match": match_filters})
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "acquisition_tasks",
-                        "localField": "acquisition_task_ref.$id",
-                        "foreignField": "_id",
-                        "as": "task_info",
-                    }
-                },
-                {"$unwind": {"path": "$task_info", "preserveNullAndEmptyArrays": True}},
-            ]
-        )
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "rois",
-                        "localField": "roi_ref.$id",
-                        "foreignField": "_id",
-                        "as": "roi_info",
-                    }
-                },
-                {"$unwind": {"path": "$roi_info", "preserveNullAndEmptyArrays": True}},
-            ]
-        )
-
-        if roi_id:
-            pipeline.append({"$match": {"roi_info.roi_id": roi_id}})
-        if substrate_media_id:
-            pipeline.append({"$match": {"roi_info.substrate_media_id": substrate_media_id}})
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "sections",
-                        "localField": "roi_info.section_ref.$id",
-                        "foreignField": "_id",
-                        "as": "section_info",
-                    }
-                },
-                {
-                    "$unwind": {
-                        "path": "$section_info",
-                        "preserveNullAndEmptyArrays": True,
-                    }
-                },
-            ]
-        )
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "substrates",
-                        "localField": "roi_info.substrate_media_id",
-                        "foreignField": "media_id",
-                        "as": "substrate_info",
-                    }
-                },
-                {
-                    "$unwind": {
-                        "path": "$substrate_info",
-                        "preserveNullAndEmptyArrays": True,
-                    }
-                },
-            ]
-        )
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "cutting_sessions",
-                        "localField": "section_info.cutting_session_ref.$id",
-                        "foreignField": "_id",
-                        "as": "cutting_session_info",
-                    }
-                },
-                {
-                    "$unwind": {
-                        "path": "$cutting_session_info",
-                        "preserveNullAndEmptyArrays": True,
-                    }
-                },
-            ]
-        )
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "blocks",
-                        "localField": "cutting_session_info.block_ref.$id",
-                        "foreignField": "_id",
-                        "as": "block_info",
-                    }
-                },
-                {
-                    "$unwind": {
-                        "path": "$block_info",
-                        "preserveNullAndEmptyArrays": True,
-                    }
-                },
-            ]
-        )
-
-        pipeline.extend(
-            [
-                {
-                    "$lookup": {
-                        "from": "specimens",
-                        "localField": "block_info.specimen_ref.$id",
-                        "foreignField": "_id",
-                        "as": "specimen_info",
-                    }
-                },
-                {
-                    "$unwind": {
-                        "path": "$specimen_info",
-                        "preserveNullAndEmptyArrays": True,
-                    }
-                },
-            ]
-        )
-
-        sort_key = sort_by if sort_by else "start_time"
-        sort_direction = sort_order if sort_order in [-1, 1] else -1
-        pipeline.append({"$sort": {sort_key: sort_direction}})
-
-        if cursor:
-            pass
-
-        pipeline.append({"$limit": limit})
-
-        results = await Acquisition.aggregate(aggregation_pipeline=pipeline, projection_model=None).to_list()
-
-        count_pipeline = pipeline[:-1]
-        count_pipeline.append({"$count": "total"})
-        count_result = await Acquisition.aggregate(aggregation_pipeline=count_pipeline, projection_model=None).to_list()
-
-        total_count = count_result[0]["total"] if count_result else 0
-
-        formatted_results = []
-        for result in results:
-            formatted_result = {
-                "acquisition": serialize_mongo_doc(
-                    {
-                        k: v
-                        for k, v in result.items()
-                        if k
-                        not in [
-                            "task_info",
-                            "roi_info",
-                            "section_info",
-                            "substrate_info",
-                            "cutting_session_info",
-                            "block_info",
-                            "specimen_info",
-                        ]
-                    }
+    sort_column = getattr(AcquisitionSQLModel, sort_by, AcquisitionSQLModel.start_time)
+    order_column = sort_column.asc() if sort_order == 1 else sort_column.desc()
+    rows = (
+        await session.execute(
+            select(
+                AcquisitionSQLModel,
+                AcquisitionTaskSQLModel,
+                ROISQLModel,
+                SectionSQLModel,
+                SubstrateSQLModel,
+                CuttingSessionSQLModel,
+                BlockSQLModel,
+                SpecimenSQLModel,
+                SpecimenSQLModel.id,
+                ROISQLModel.id,
+                AcquisitionTaskSQLModel.id,
+            )
+            .select_from(AcquisitionSQLModel)
+            .outerjoin(
+                AcquisitionTaskSQLModel,
+                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+            )
+            .outerjoin(
+                ROISQLModel,
+                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+            )
+            .outerjoin(
+                SectionSQLModel,
+                SectionSQLModel.section_id == ROISQLModel.section_id,
+            )
+            .outerjoin(
+                SubstrateSQLModel,
+                SubstrateSQLModel.media_id == ROISQLModel.substrate_media_id,
+            )
+            .outerjoin(
+                CuttingSessionSQLModel,
+                CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
+            )
+            .outerjoin(
+                BlockSQLModel,
+                and_(
+                    BlockSQLModel.block_id == CuttingSessionSQLModel.block_id,
+                    BlockSQLModel.specimen_id == CuttingSessionSQLModel.specimen_id,
                 ),
-                "acquisition_task": serialize_mongo_doc(result.get("task_info")),
-                "roi": serialize_mongo_doc(result.get("roi_info")),
-                "section": serialize_mongo_doc(result.get("section_info")),
-                "substrate": serialize_mongo_doc(result.get("substrate_info")),
-                "cutting_session": serialize_mongo_doc(result.get("cutting_session_info")),
-                "block": serialize_mongo_doc(result.get("block_info")),
-                "specimen": serialize_mongo_doc(result.get("specimen_info")),
-            }
-            formatted_results.append(formatted_result)
+            )
+            .outerjoin(
+                SpecimenSQLModel,
+                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+            )
+            .where(*conditions)
+            .order_by(order_column)
+        )
+    ).all()
 
-        next_cursor = str(results[-1]["_id"]) if results else None
-
-        metadata = {
-            "total_count": total_count,
-            "returned_count": len(formatted_results),
-            "limit": limit,
-            "sort_by": sort_key,
-            "sort_order": sort_direction,
-            "next_cursor": next_cursor,
-        }
-
-        response.headers["Cache-Control"] = "private, max-age=300"
-        response.headers["X-Total-Count"] = str(total_count)
-
-        return {"acquisitions": formatted_results, "metadata": metadata}
-
-    except Exception as e:
-        logger.error(f"Error in aggregated acquisitions query: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error retrieving aggregated acquisitions")
+    formatted_results = []
+    for (
+        acq,
+        task_obj,
+        roi_obj,
+        section_obj,
+        substrate_obj,
+        cutting_obj,
+        block_obj,
+        specimen_obj,
+        _specimen_ref,
+        _roi_ref_value,
+        _task_ref,
+    ) in rows:
+        formatted_results.append(
+            AcquisitionFullMetadata(
+                acquisition=AcquisitionResponse.model_validate(acq),
+                task=task_obj.model_dump() if task_obj else None,
+                roi=roi_obj.model_dump() if roi_obj else None,
+                section=section_obj.model_dump() if section_obj else None,
+                substrate=substrate_obj.model_dump() if substrate_obj else None,
+                cutting_session=cutting_obj.model_dump() if cutting_obj else None,
+                block=block_obj.model_dump() if block_obj else None,
+                specimen=specimen_obj.model_dump() if specimen_obj else None,
+            ).model_dump(mode="json", by_alias=True)
+        )
+    total_count = len(formatted_results)
+    formatted_results = formatted_results[:limit]
+    next_cursor = str(formatted_results[-1]["acquisition"]["id"]) if formatted_results else None
+    metadata = {
+        "total_count": total_count,
+        "returned_count": len(formatted_results),
+        "limit": limit,
+        "sort_by": sort_by,
+        "sort_order": sort_order if sort_order in [-1, 1] else -1,
+        "next_cursor": next_cursor,
+    }
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["X-Total-Count"] = str(total_count)
+    return {"acquisitions": formatted_results, "metadata": metadata}

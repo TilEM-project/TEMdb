@@ -1,64 +1,45 @@
 import logging
 
 import pytest
-from beanie import init_beanie
-from pymongo import AsyncMongoClient
-from testcontainers.mongodb import MongoDbContainer
+from testcontainers.postgres import PostgresContainer
 
-from temdb.server.documents import (
-    AcquisitionDocument,
-    AcquisitionTaskDocument,
-    BlockDocument,
-    CuttingSessionDocument,
-    ROIDocument,
-    SectionDocument,
-    SpecimenDocument,
-    SubstrateDocument,
-    TileDocument,
-)
+from temdb.server.database import DatabaseManager
+from temdb.server.sqlmodels import Base
 
 logging.basicConfig(level=logging.INFO)
 
-TEST_DB_NAME = "testdb"
 
-DOCUMENT_MODELS = [
-    AcquisitionDocument,
-    TileDocument,
-    ROIDocument,
-    AcquisitionTaskDocument,
-    SpecimenDocument,
-    BlockDocument,
-    CuttingSessionDocument,
-    SectionDocument,
-    SubstrateDocument,
-]
+def _async_database_url(container: PostgresContainer) -> str:
+    url = container.get_connection_url()
+    if url.startswith("postgresql+psycopg2://"):
+        return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
 
 
 @pytest.fixture(scope="session")
-def mongo_container():
-    with MongoDbContainer("mongo:8") as container:
+def postgres_container():
+    with PostgresContainer("postgres:18") as container:
         yield container
 
 
 @pytest.fixture(scope="function")
-async def mongo_client(mongo_container):
-    connection_url = mongo_container.get_connection_url()
-    client = AsyncMongoClient(connection_url)
-    yield client
-    await client.close()
+async def test_db_manager(postgres_container):
+    db_manager = DatabaseManager(database_url=_async_database_url(postgres_container))
+    await db_manager.initialize(create_schema=True)
+    yield db_manager
+    if db_manager.sql_engine is not None:
+        await db_manager.sql_engine.dispose()
 
 
 @pytest.fixture(scope="function")
-async def init_db(mongo_client):
-    db = mongo_client[TEST_DB_NAME]
-
-    collections = await db.list_collection_names()
-    for collection_name in collections:
-        if not collection_name.startswith("system."):
-            await db[collection_name].delete_many({})
-
-    await init_beanie(
-        database=db,
-        document_models=DOCUMENT_MODELS,
-    )
-    yield db
+async def init_db(test_db_manager: DatabaseManager):
+    if test_db_manager.sql_engine is None:
+        raise RuntimeError("SQL engine is not configured for integration tests.")
+    async with test_db_manager.sql_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    yield test_db_manager

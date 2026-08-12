@@ -1,11 +1,10 @@
 import logging
 
-from beanie.exceptions import DocumentNotFound
 from fastapi import Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from pymongo.errors import DuplicateKeyError
 
 from temdb.models import APIErrorResponse
 from temdb.server.config import is_debug_traceback_enabled
@@ -46,56 +45,16 @@ class ResourceInUseError(BaseError):
         )
 
 
-async def duplicate_key_exception_handler(request: Request, exc: DuplicateKeyError):
-    """Handles MongoDB duplicate key errors (returns 409 Conflict)."""
-    conflicting_key = "unknown_field"
-    conflicting_value = "unknown_value"
-    try:
-        details = exc.details
-        if details and "keyPattern" in details and "keyValue" in details:
-            conflicting_key = list(details["keyPattern"].keys())[0]
-            conflicting_value = details["keyValue"].get(conflicting_key, "unknown")
-    except Exception as parse_exc:
-        logger.warning(f"Could not parse DuplicateKeyError details: {parse_exc}")
-
-    error_content = APIErrorResponse(
-        detail=(
-            "Resource creation failed due to a conflict. A resource with the same "
-            f"unique identifier ('{conflicting_key}') already exists."
-        ),
-        error_code="DUPLICATE_RESOURCE",
-        context={
-            "conflicting_field": conflicting_key,
-            "conflicting_value": str(conflicting_value),
-        },
-    )
-    logger.warning(f"DuplicateKeyError on {request.url}: {error_content.detail}")
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=error_content.model_dump(exclude_none=True),
-    )
-
-
-async def document_not_found_exception_handler(request: Request, exc: DocumentNotFound):
-    """Handles Beanie DocumentNotFound errors (returns 404 Not Found)."""
-    error_content = APIErrorResponse(detail="The requested resource was not found.", error_code="RESOURCE_NOT_FOUND")
-    logger.info(f"DocumentNotFound on {request.url}")
-    return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
-        content=error_content.model_dump(exclude_none=True),
-    )
-
-
 async def validation_exception_handler(request: Request, exc: ValidationError):
     """Handles Pydantic ValidationErrors (returns 422 Unprocessable Entity)."""
     error_content = APIErrorResponse(
         detail="Request validation failed. Please check the input data.",
         error_code="VALIDATION_ERROR",
-        context={"errors": exc.errors()},
+        context={"errors": jsonable_encoder(exc.errors())},
     )
     logger.warning(f"ValidationError on {request.url}: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=error_content.model_dump(exclude_none=True),
     )
 
@@ -131,19 +90,17 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
     error_content = APIErrorResponse(
         detail="Request validation failed. Please check the input data.",
         error_code="VALIDATION_ERROR",
-        context={"errors": exc.errors()},
+        context={"errors": jsonable_encoder(exc.errors())},
     )
     logger.warning(f"RequestValidationError on {request.url}: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=error_content.model_dump(exclude_none=True),
     )
 
 
 def register_exception_handlers(app):
     """Registers all defined exception handlers with the FastAPI app."""
-    app.add_exception_handler(DuplicateKeyError, duplicate_key_exception_handler)
-    app.add_exception_handler(DocumentNotFound, document_not_found_exception_handler)
     app.add_exception_handler(ValidationError, validation_exception_handler)
     app.add_exception_handler(BaseError, business_logic_exception_handler)
 

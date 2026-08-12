@@ -27,12 +27,12 @@ async def test_resource_creation(client):
 async def test_extra_datetime(client):
     mock_response = MagicMock()
     mock_response.status_code = 201
-    mock_response.json.return_value = {"specimen_id": "test"}
+    mock_response.json.return_value = {"id": 1, "specimen_id": "test"}
 
     client._http_client.request = AsyncMock(return_value=mock_response)
     await client.specimen.create(
         SpecimenCreate(
             specimen_id="test",
-            random_extra_datetime=datetime.now(),
+            created_at=datetime.now(),
         )
     )

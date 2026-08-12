@@ -1,41 +1,58 @@
 services:
-  mongo:
-    image: mongo:latest
+  postgres:
+    image: postgres:18
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     env_file:
       - ./dev.env
-    environment:
-      - MONGO_DATA_DIR=/data/db
-      - MONGO_LOG_DIR=/dev/null
     volumes:
-      - mongo_data:/data/db
+      - postgres_data:/var/lib/postgresql
     ports:
-      - 27017:27017
+      - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
 
-  mongo-express:
-    image: mongo-express
+  adminer:
+    image: adminer:latest
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: alembic -c packages/temdb/alembic.ini upgrade head
+    environment:
+      PYTHONPATH: /app/packages/temdb-models/src:/app/packages/temdb/src
+    volumes:
+      - ./packages:/app/packages
     env_file:
       - ./dev.env
     depends_on:
-      - mongo
-    ports:
-      - 8081:8081
-    command: ["bash", "-c", "sleep 10 && /docker-entrypoint.sh"]
+      postgres:
+        condition: service_healthy
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    command: python -m uvicorn run:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+    environment:
+      PYTHONPATH: /app/packages/temdb-models/src:/app/packages/temdb/src
     ports:
       - 8000:8000
     volumes:
       - ./packages:/app/packages
       - ./run.py:/app/run.py
-    environment:
-      - TEMDB_ENV=dev
-      - MONGODB_URI=mongodb://mongo:27017/
-      - MONGODB_NAME=temdb
+    env_file:
+      - ./dev.env
     depends_on:
-      - mongo
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
-  mongo_data:
+  postgres_data:

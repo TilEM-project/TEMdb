@@ -1,27 +1,19 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
-from pymongo.errors import BulkWriteError
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy import and_, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import (
-    APIErrorResponse,
-    SectionCreate,
-    SectionMetrics,
-    SectionQuality,
-    SectionUpdate,
-)
-from temdb.server.documents import (
-    CuttingSessionDocument as CuttingSession,
-)
-from temdb.server.documents import (
-    ROIDocument as ROI,
-)
-from temdb.server.documents import (
-    SectionDocument as Section,
-)
-from temdb.server.documents import (
-    SubstrateDocument as Substrate,
+from temdb.models import APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
+from temdb.server.dependencies import get_async_session
+from temdb.server.sqlmodels import (
+    CuttingSessionSQLModel,
+    ROISQLModel,
+    SectionSQLModel,
+    SubstrateSQLModel,
 )
 
 section_api = APIRouter(
@@ -31,7 +23,11 @@ section_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-@section_api.get("/sections", response_model=list[Section])
+def _dump_images(data):
+    return {key: val.model_dump(mode="json") for key, val in data.items()}
+
+
+@section_api.get("/sections", response_model=list[SectionResponse])
 async def list_sections(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -40,21 +36,26 @@ async def list_sections(
     quality: SectionQuality | None = Query(None, description="Filter by section quality"),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve a list of sections with optional filters and pagination."""
-    query_filter = {}
+    statement = select(SectionSQLModel)
     if specimen_id:
-        query_filter["specimen_id"] = specimen_id
+        statement = statement.where(SectionSQLModel.specimen_id == specimen_id)
     if block_id:
-        query_filter["block_id"] = block_id
+        statement = statement.where(SectionSQLModel.block_id == block_id)
     if cutting_session_id:
-        query_filter["cutting_session_id"] = cutting_session_id
+        statement = statement.where(SectionSQLModel.cutting_session_id == cutting_session_id)
     if media_id:
-        query_filter["media_id"] = media_id
+        statement = statement.where(SectionSQLModel.media_id == media_id)
+    sections = (await session.scalars(statement.offset(skip).limit(limit))).all()
     if quality:
-        query_filter["section_metrics.quality"] = quality
-
-    return await Section.find(query_filter, fetch_links=True).skip(skip).limit(limit).to_list()
+        sections = [
+            section
+            for section in sections
+            if isinstance(section.section_metrics, dict) and section.section_metrics.get("quality") == quality.value
+        ]
+    return sections
 
 
 @section_api.get("/sections/count", response_model=int)
@@ -64,181 +65,205 @@ async def count_sections(
     cutting_session_id: str | None = Query(None, description="Filter by human-readable Cutting Session ID"),
     media_id: str | None = Query(None, description="Filter by media ID"),
     quality: SectionQuality | None = Query(None, description="Filter by section quality"),
+    session: AsyncSession = Depends(get_async_session),
 ):
-    query_filter = {}
+    statement = select(func.count()).select_from(SectionSQLModel)
+    conditions = []
     if specimen_id:
-        query_filter["specimen_id"] = specimen_id
+        conditions.append(SectionSQLModel.specimen_id == specimen_id)
     if block_id:
-        query_filter["block_id"] = block_id
+        conditions.append(SectionSQLModel.block_id == block_id)
     if cutting_session_id:
-        query_filter["cutting_session_id"] = cutting_session_id
+        conditions.append(SectionSQLModel.cutting_session_id == cutting_session_id)
     if media_id:
-        query_filter["media_id"] = media_id
+        conditions.append(SectionSQLModel.media_id == media_id)
     if quality:
-        query_filter["section_metrics.quality"] = quality
+        conditions.append(SectionSQLModel.section_metrics["quality"].as_string() == quality.value)
+    if conditions:
+        statement = statement.where(and_(*conditions))
+    return (await session.scalars(statement)).one()
 
-    return await Section.find(query_filter).count()
 
-
-@section_api.get(
-    "/sections/sessions/{cutting_session_id}",
-    response_model=list[Section],
-)
+@section_api.get("/sections/sessions/{cutting_session_id}", response_model=list[SectionResponse])
 async def list_cutting_session_sections(
     cutting_session_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific cutting session using its human-readable ID."""
-    sections = (
-        await Section.find({"cutting_session_id": cutting_session_id}, fetch_links=True)
-        .sort("+section_number")
-        .skip(skip)
-        .limit(limit)
-        .to_list()
-    )
-    if not sections and not await CuttingSession.find_one({"cutting_session_id": cutting_session_id}):
+    rows = (
+        await session.execute(
+            select(CuttingSessionSQLModel.id, SectionSQLModel)
+            .select_from(CuttingSessionSQLModel)
+            .outerjoin(
+                SectionSQLModel,
+                SectionSQLModel.cutting_session_id == CuttingSessionSQLModel.cutting_session_id,
+            )
+            .where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
+            .order_by(SectionSQLModel.section_number)
+        )
+    ).all()
+    if not rows:
         raise HTTPException(status_code=404, detail=f"Cutting Session '{cutting_session_id}' not found")
+    sections = [row[1] for row in rows if row[1] is not None]
+    return sections[skip : skip + limit]
 
-    return sections
 
-
-@section_api.get(
-    "/sections/blocks/{block_id}",
-    response_model=list[Section],
-)
+@section_api.get("/sections/blocks/{block_id}", response_model=list[SectionResponse])
 async def list_block_sections(
     block_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific block using its human-readable ID."""
-    sections = (
-        await Section.find({"block_id": block_id}, fetch_links=True)
-        .sort([("cutting_session_id", 1), ("section_number", 1)])
-        .skip(skip)
+    sections = await session.scalars(
+        select(SectionSQLModel)
+        .where(SectionSQLModel.block_id == block_id)
+        .order_by(SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
+        .offset(skip)
         .limit(limit)
-        .to_list()
     )
+    return sections.all()
 
-    return sections
 
-
-@section_api.get(
-    "/sections/specimens/{specimen_id}",
-    response_model=list[Section],
-)
+@section_api.get("/sections/specimens/{specimen_id}", response_model=list[SectionResponse])
 async def list_specimen_sections(
     specimen_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific specimen using its human-readable ID."""
-    sections = (
-        await Section.find({"specimen_id": specimen_id}, fetch_links=True)
-        .sort([("block_id", 1), ("cutting_session_id", 1), ("section_number", 1)])
-        .skip(skip)
+    sections = await session.scalars(
+        select(SectionSQLModel)
+        .where(SectionSQLModel.specimen_id == specimen_id)
+        .order_by(SectionSQLModel.block_id, SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
+        .offset(skip)
         .limit(limit)
-        .to_list()
     )
+    return sections.all()
 
-    return sections
 
-
-@section_api.get(
-    "/sections/sessions/{cutting_session_id}/sections/{section_id}",
-    response_model=Section,
-)
-async def get_section(cutting_session_id: str, section_id: str):
+@section_api.get("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
+async def get_section(
+    cutting_session_id: str,
+    section_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Retrieve a specific section by its human-readable ID and its session's human-readable ID."""
-    section = await Section.find_one(
-        {"section_id": section_id, "cutting_session_id": cutting_session_id},
-        fetch_links=True,
-    )
-    if not section:
+    row = (
+        await session.execute(
+            select(
+                SectionSQLModel,
+                CuttingSessionSQLModel.id,
+                SubstrateSQLModel.id,
+            )
+            .select_from(SectionSQLModel)
+            .outerjoin(
+                CuttingSessionSQLModel,
+                CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
+            )
+            .outerjoin(
+                SubstrateSQLModel,
+                SubstrateSQLModel.media_id == SectionSQLModel.media_id,
+            )
+            .where(
+                SectionSQLModel.section_id == section_id,
+                SectionSQLModel.cutting_session_id == cutting_session_id,
+            )
+        )
+    ).first()
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
-    return section
+    section_obj, _cutting_session_ref, _substrate_ref = row
+    return section_obj
 
 
-@section_api.post("/sections", response_model=Section, status_code=status.HTTP_201_CREATED)
-async def create_section(section_data: SectionCreate):
+@section_api.post("/sections", status_code=status.HTTP_201_CREATED, response_model=SectionResponse)
+async def create_section(
+    section_data: SectionCreate,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Create a new section."""
-    cut_session = await CuttingSession.find_one(
-        CuttingSession.cutting_session_id == section_data.cutting_session_id,
-        fetch_links=True,
-    )
-    if not cut_session:
+    new_section_id = f"{section_data.media_id}_S{section_data.section_number}"
+    validation_row = (
+        await session.execute(
+            select(
+                CuttingSessionSQLModel,
+                SubstrateSQLModel.id,
+                SectionSQLModel.id,
+            )
+            .select_from(CuttingSessionSQLModel)
+            .outerjoin(SubstrateSQLModel, SubstrateSQLModel.media_id == section_data.media_id)
+            .outerjoin(
+                SectionSQLModel,
+                and_(
+                    SectionSQLModel.section_id == new_section_id,
+                    SectionSQLModel.cutting_session_id == CuttingSessionSQLModel.cutting_session_id,
+                ),
+            )
+            .where(CuttingSessionSQLModel.cutting_session_id == section_data.cutting_session_id)
+        )
+    ).first()
+    cut_obj = validation_row[0] if validation_row else None
+    if cut_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{section_data.cutting_session_id}' not found",
         )
-
-    new_section_id = f"{section_data.media_id}_S{section_data.section_number}"
-
-    existing_section = await Section.find_one(
-        {
-            "section_id": new_section_id,
-            "cutting_session_ref.id": cut_session.id,
-        }
-    )
-    if existing_section:
+    existing_ref = validation_row[2]
+    if existing_ref is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
         )
-
-    substrate = await Substrate.find_one(
-        Substrate.media_id == section_data.media_id,
-        fetch_links=True,
-    )
-
-    new_section = Section(
+    new_section = SectionSQLModel(
         section_id=new_section_id,
         section_number=section_data.section_number,
-        cutting_session_id=cut_session.cutting_session_id,
-        timestamp=(section_data.timestamp if section_data.timestamp else datetime.now(timezone.utc)),
-        block_id=cut_session.block_id,
-        specimen_id=cut_session.specimen_id,
-        cutting_session_ref=cut_session.id,
-        optical_image=section_data.optical_image,
-        section_metrics=section_data.section_metrics,
+        cutting_session_id=cut_obj.cutting_session_id,
+        timestamp=section_data.timestamp or datetime.now(timezone.utc),
+        block_id=cut_obj.block_id,
+        specimen_id=cut_obj.specimen_id,
+        optical_image=(_dump_images(section_data.optical_image) if section_data.optical_image is not None else None),
+        section_metrics=(
+            section_data.section_metrics.model_dump(mode="json") if section_data.section_metrics is not None else None
+        ),
+        run_parameters=(
+            section_data.run_parameters.model_dump(mode="json") if section_data.run_parameters is not None else None
+        ),
         media_id=section_data.media_id,
-        substrate_ref=substrate.id if substrate else None,
+        aperture_uid=section_data.aperture_uid,
+        aperture_index=section_data.aperture_index,
         barcode=section_data.barcode,
+        created_at=section_data.created_at or datetime.now(timezone.utc),
     )
-    await new_section.insert()
-    created_section = await Section.get(new_section.id, fetch_links=True)
-    return created_section
+    session.add(new_section)
+    await session.commit()
+    await session.refresh(new_section)
+    return new_section
 
 
 @section_api.post(
     "/sections/batch",
-    response_model=list[Section],
     status_code=status.HTTP_201_CREATED,
     summary="Create multiple Sections in bulk",
+    response_model=list[SectionResponse],
     responses={
-        status.HTTP_400_BAD_REQUEST: {
-            "model": APIErrorResponse,
-            "description": "Invalid input data",
-        },
-        status.HTTP_404_NOT_FOUND: {
-            "model": APIErrorResponse,
-            "description": "Parent resource not found",
-        },
-        status.HTTP_409_CONFLICT: {
-            "model": APIErrorResponse,
-            "description": "Duplicate section ID",
-        },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "model": APIErrorResponse,
-            "description": "Internal server error",
-        },
+        status.HTTP_400_BAD_REQUEST: {"model": APIErrorResponse, "description": "Invalid input data"},
+        status.HTTP_404_NOT_FOUND: {"model": APIErrorResponse, "description": "Parent resource not found"},
+        status.HTTP_409_CONFLICT: {"model": APIErrorResponse, "description": "Duplicate section ID"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": APIErrorResponse, "description": "Internal server error"},
     },
 )
-async def create_sections_batch(sections_data: list[SectionCreate]):
+async def create_sections_batch(
+    sections_data: list[SectionCreate],
+    session: AsyncSession = Depends(get_async_session),
+):
     """Creates multiple Section documents from a list."""
     if not sections_data:
         raise HTTPException(
@@ -246,162 +271,187 @@ async def create_sections_batch(sections_data: list[SectionCreate]):
             detail="Section data list cannot be empty.",
         )
 
-    sections_to_insert = []
-    parent_cache = {}
+    sections_to_insert: list[SectionSQLModel] = []
+    session_cache: dict[str, CuttingSessionSQLModel] = {}
+    substrate_cache: dict[str, SubstrateSQLModel] = {}
+    seen_ids: set[str] = set()
 
-    for i, section_create in enumerate(sections_data):
+    for idx, section_create in enumerate(sections_data):
         session_id = section_create.cutting_session_id
         media_id = section_create.media_id
-
-        if session_id not in parent_cache:
-            session = await CuttingSession.find_one(CuttingSession.cutting_session_id == session_id)
-            if not session:
+        if session_id not in session_cache:
+            session_result = await session.scalars(
+                select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == session_id)
+            )
+            cut_session = session_result.one_or_none()
+            if cut_session is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"CuttingSession '{session_id}' not found for item {i}.",
+                    detail=f"CuttingSession '{session_id}' not found for item {idx}.",
                 )
-            parent_cache[session_id] = session
-        session = parent_cache[session_id]
+            session_cache[session_id] = cut_session
+        cut_session = session_cache[session_id]
 
-        if media_id not in parent_cache:
-            substrate = await Substrate.find_one(Substrate.media_id == media_id)
-            if not substrate:
+        if media_id not in substrate_cache:
+            substrate_result = await session.scalars(
+                select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id)
+            )
+            substrate = substrate_result.one_or_none()
+            if substrate is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Substrate '{media_id}' not found for item {i}.",
+                    detail=f"Substrate '{media_id}' not found for item {idx}.",
                 )
-            if substrate.media_type != session.media_type:
-                logger.warning(
-                    f"Mismatch media_type between session {session_id} ({session.media_type}) "
-                    f"and substrate {media_id} ({substrate.media_type}) for item {i}"
-                )
-            parent_cache[media_id] = substrate
-        substrate = parent_cache[media_id]
+            substrate_cache[media_id] = substrate
 
         section_id = f"{media_id}_S{section_create.section_number:05d}"
+        if section_id in seen_ids:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="duplicate section IDs in batch")
+        seen_ids.add(section_id)
 
-        section_doc_data = section_create.model_dump(exclude_none=True)
-        section_doc_data.update(
-            {
-                "section_id": section_id,
-                "cutting_session_ref": session.id,
-                "substrate_ref": substrate.id,
-                "block_id": session.block_id,
-                "specimen_id": session.specimen_id,
-            }
+        section_doc = SectionSQLModel(
+            section_id=section_id,
+            section_number=section_create.section_number,
+            timestamp=section_create.timestamp or datetime.now(timezone.utc),
+            cutting_session_id=cut_session.cutting_session_id,
+            block_id=cut_session.block_id,
+            specimen_id=cut_session.specimen_id,
+            media_id=media_id,
+            optical_image=(
+                _dump_images(section_create.optical_image) if section_create.optical_image is not None else None
+            ),
+            aperture_uid=section_create.aperture_uid,
+            aperture_index=section_create.aperture_index,
+            barcode=section_create.barcode,
+            section_metrics=(
+                section_create.section_metrics.model_dump(mode="json")
+                if section_create.section_metrics is not None
+                else None
+            ),
+            run_parameters=(
+                section_create.run_parameters.model_dump(mode="json")
+                if section_create.run_parameters is not None
+                else None
+            ),
+            created_at=section_create.created_at or datetime.now(timezone.utc),
         )
-        section_doc = Section(**section_doc_data)
         sections_to_insert.append(section_doc)
 
+    session.add_all(sections_to_insert)
     try:
-        await Section.insert_many(sections_to_insert)
-        return sections_to_insert
-    except BulkWriteError as e:
-        logger.error(f"BulkWriteError during section batch insert: {e.details}")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Bulk insert failed. Check for duplicate section IDs within the batch "
-                f"or against existing data. Details: {e.details.get('writeErrors')}"
-            ),
-        )
-    except Exception as e:
-        logger.exception("Unexpected error during section batch insert.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An internal error occurred during bulk section creation: {e}",
-        )
+        await session.commit()
+    except IntegrityError as error:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"duplicate sections: {error.orig}") from error
+    for item in sections_to_insert:
+        await session.refresh(item)
+    return sections_to_insert
 
 
-@section_api.patch(
-    "/sections/sessions/{cutting_session_id}/sections/{section_id}",
-    response_model=Section,
-)
+@section_api.patch("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
 async def update_section(
     cutting_session_id: str,
     section_id: str,
     updated_fields: SectionUpdate = Body(...),
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific section."""
-    section = await Section.find_one({"section_id": section_id, "cutting_session_id": cutting_session_id})
-    if not section:
+    section = await session.scalars(
+        select(SectionSQLModel).where(
+            SectionSQLModel.section_id == section_id,
+            SectionSQLModel.cutting_session_id == cutting_session_id,
+        )
+    )
+    section_obj = section.one_or_none()
+    if section_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
-
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
-
-    needs_save = False
-
-    if "quality" in update_data:
-        if section.section_metrics is None:
-            section.section_metrics = SectionMetrics()
-        section.section_metrics.quality = update_data["quality"]
-        needs_save = True
-
+    metrics = update_data.pop("section_metrics", None)
+    if metrics is not None:
+        section_obj.section_metrics = jsonable_encoder(metrics)
+    run_parameters = update_data.pop("run_parameters", None)
+    if run_parameters is not None:
+        section_obj.run_parameters = jsonable_encoder(run_parameters)
+    optical_image = update_data.pop("optical_image", None)
+    if optical_image is not None:
+        section_obj.optical_image = jsonable_encoder(optical_image)
     for field, value in update_data.items():
-        if field == "quality":
-            continue
-
-        if field == "section_metrics":
-            if section.section_metrics == value:
-                continue
-            section.section_metrics = value
-            needs_save = True
-        elif hasattr(section, field) and getattr(section, field) != value:
-            setattr(section, field, value)
-            needs_save = True
-
-    if needs_save:
-        await section.save()
-
-    updated_section = await Section.get(section.id, fetch_links=True)
-    return updated_section
+        setattr(section_obj, field, value)
+    section_obj.updated_at = datetime.now(timezone.utc)
+    session.add(section_obj)
+    await session.commit()
+    await session.refresh(section_obj)
+    return section_obj
 
 
 @section_api.delete(
     "/sections/sessions/{cutting_session_id}/sections/{section_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_section(cutting_session_id: str, section_id: str):
+async def delete_section(
+    cutting_session_id: str,
+    section_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
     """Delete a specific section."""
-    section = await Section.find_one({"section_id": section_id, "cutting_session_id": cutting_session_id})
-    if not section:
+    row = (
+        await session.execute(
+            select(SectionSQLModel, func.count(ROISQLModel.id))
+            .select_from(SectionSQLModel)
+            .outerjoin(ROISQLModel, ROISQLModel.section_id == SectionSQLModel.section_id)
+            .where(
+                SectionSQLModel.section_id == section_id,
+                SectionSQLModel.cutting_session_id == cutting_session_id,
+            )
+            .group_by(SectionSQLModel.id)
+        )
+    ).first()
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
-
-    roi_count = await ROI.find(ROI.section_ref.id == section.id).count()
+    section_obj, roi_count = row
     if roi_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot delete section '{section_id}' as it has {roi_count} associated ROIs.",
         )
-
-    await section.delete()
+    await session.delete(section_obj)
+    await session.commit()
     return None
 
 
-@section_api.get("/sections/media/{media_id}", response_model=list[Section])
+@section_api.get("/sections/media/{media_id}", response_model=list[SectionResponse])
 async def list_sections_by_media(
     media_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     relative_position: int | None = None,
+    session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections by media type and ID."""
-    query = {"media_id": media_id}
+    statement = select(SectionSQLModel).where(SectionSQLModel.media_id == media_id)
     if relative_position is not None:
-        query["relative_position"] = relative_position
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_position is not supported")
+    sections = await session.scalars(statement.offset(skip).limit(limit))
+    return sections.all()
 
-    return await Section.find(query, fetch_links=True).skip(skip).limit(limit).to_list()
 
-
-@section_api.get("/sections/barcode/{barcode}", response_model=list[Section])
-async def get_sections_by_barcode(barcode: str, skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)):
+@section_api.get("/sections/barcode/{barcode}", response_model=list[SectionResponse])
+async def get_sections_by_barcode(
+    barcode: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
+):
     """Retrieve sections by barcode."""
-    return await Section.find({"barcode": barcode}, fetch_links=True).skip(skip).limit(limit).to_list()
+    sections = await session.scalars(
+        select(SectionSQLModel).where(SectionSQLModel.barcode == barcode).offset(skip).limit(limit)
+    )
+    return sections.all()

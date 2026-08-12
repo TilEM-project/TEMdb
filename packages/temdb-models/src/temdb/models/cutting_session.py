@@ -1,12 +1,12 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from .base import TEMDBModel
 
 
-class CuttingSessionBase(BaseModel):
+class CuttingSessionBase(TEMDBModel):
     """Base cutting session fields."""
-
-    model_config = ConfigDict(extra="allow")
 
     start_time: datetime | None = Field(None, description="Time when cutting session started")
     end_time: datetime | None = Field(None, description="Time when cutting session ended")
@@ -24,6 +24,7 @@ class CuttingSessionCreate(CuttingSessionBase):
     start_time: datetime = Field(..., description="Time when cutting session started")
     sectioning_device: str = Field(..., description="Device used for sectioning")
     media_type: str = Field(..., description="Type of substrate the sections are placed upon")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class CuttingSessionUpdate(CuttingSessionBase):
@@ -36,6 +37,9 @@ class CuttingSessionUpdate(CuttingSessionBase):
 class CuttingSessionResponse(CuttingSessionBase):
     """Schema for cutting session API responses."""
 
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int
     cutting_session_id: str = Field(..., description="Unique cutting session identifier")
     specimen_id: str = Field(..., description="ID of specimen")
     block_id: str = Field(..., description="ID of block")

@@ -77,7 +77,7 @@ async def test_get_substrate(async_client: AsyncClient, test_substrate):
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["media_id"] == test_substrate.media_id
-    assert response_data["_id"] == str(test_substrate.id)
+    assert response_data["id"] == test_substrate.id
     assert response_data["media_type"] == test_substrate.media_type
 
 
@@ -148,5 +148,5 @@ async def test_get_substrate_sections(async_client: AsyncClient, test_substrate,
     assert len(response_data) >= 1
     found_section = next((sec for sec in response_data if sec["section_id"] == test_section.section_id), None)
     assert found_section is not None
-    assert found_section["substrate_ref"]["id"] == str(test_substrate.id)
+    assert found_section["id"] == test_section.id
     assert found_section["media_id"] == test_substrate.media_id

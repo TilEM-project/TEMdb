@@ -1,4 +1,6 @@
-from temdb.models import AcquisitionStatus, SectionQuality
+from typing import get_args
+
+from temdb.models import RUN_STATUSES, AcquisitionStatusFilter, SectionQuality
 
 
 class TestSectionQuality:
@@ -17,15 +19,6 @@ class TestSectionQuality:
         assert len(SectionQuality) == 5
 
 
-class TestAcquisitionStatus:
-    def test_all_values_exist(self):
-        assert AcquisitionStatus.ABORTED == "aborted"
-        assert AcquisitionStatus.QC_FAILED == "failed"
-        assert AcquisitionStatus.QC_PASSED == "qc-passed"
-        assert AcquisitionStatus.QC_PENDING == "qc-pending"
-
-    def test_is_string_enum(self):
-        assert isinstance(AcquisitionStatus.QC_PENDING, str)
-
-    def test_all_members_count(self):
-        assert len(AcquisitionStatus) == 4
+class TestAcquisitionStatusFilter:
+    def test_covers_run_statuses_plus_in_flight(self):
+        assert get_args(AcquisitionStatusFilter) == RUN_STATUSES + ("in_flight",)

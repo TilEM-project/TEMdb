@@ -33,7 +33,7 @@ async def test_get_specimen(async_client: AsyncClient, test_specimen):
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["specimen_id"] == test_specimen.specimen_id
-    assert response_data["_id"] == str(test_specimen.id)
+    assert response_data["id"] == test_specimen.id
     assert response_data["description"] == test_specimen.description
 
 
@@ -77,7 +77,7 @@ async def test_get_specimen_blocks(async_client: AsyncClient, test_specimen, tes
     assert len(response_data) > 0
     assert response_data[0]["specimen_id"] == test_specimen.specimen_id
     assert response_data[0]["block_id"] == test_block.block_id
-    assert response_data[0]["specimen_ref"]["id"] == str(test_specimen.id)
+    assert response_data[0]["id"] == test_block.id
 
 
 @pytest.mark.asyncio

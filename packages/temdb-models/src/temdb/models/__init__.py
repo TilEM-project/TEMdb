@@ -23,11 +23,34 @@ from temdb.models.cutting_session import (
     CuttingSessionResponse,
     CuttingSessionUpdate,
 )
+from temdb.models.dataset import (
+    DatasetBase,
+    DatasetCreate,
+    DatasetResponse,
+    DatasetUpdate,
+)
 from temdb.models.enums import (
-    AcquisitionStatus,
+    QC_STATES,
+    RUN_STATUSES,
+    SECTION_CONDITIONS,
+    TASK_KINDS,
+    TRANSFER_STATES,
+    AcquisitionStatusFilter,
     SectionQuality,
 )
 from temdb.models.error import APIErrorResponse
+from temdb.models.lens_correction import (
+    LensCorrectionBase,
+    LensCorrectionCreate,
+    LensCorrectionResponse,
+    LensCorrectionUpdate,
+)
+from temdb.models.microscope import (
+    MicroscopeBase,
+    MicroscopeCreate,
+    MicroscopeResponse,
+    MicroscopeUpdate,
+)
 from temdb.models.quality_control import (
     AcquisitionFocusScoresResponse,
     BadFocusTileInfo,
@@ -35,9 +58,9 @@ from temdb.models.quality_control import (
     TileFocusScore,
 )
 from temdb.models.roi import (
-    ROIBase,
     ROIChildrenResponse,
     ROICreate,
+    ROIPayload,
     ROIResponse,
     ROIUpdate,
 )
@@ -82,8 +105,14 @@ from temdb.models.utils.uri import URI
 
 __all__ = [
     # Enums
-    "AcquisitionStatus",
+    "AcquisitionStatusFilter",
     "SectionQuality",
+    # Vocab constants
+    "RUN_STATUSES",
+    "QC_STATES",
+    "TRANSFER_STATES",
+    "SECTION_CONDITIONS",
+    "TASK_KINDS",
     # Tile
     "Matcher",
     "TileBase",
@@ -113,7 +142,7 @@ __all__ = [
     "BlockUpdate",
     "BlockResponse",
     # ROI
-    "ROIBase",
+    "ROIPayload",
     "ROICreate",
     "ROIUpdate",
     "ROIResponse",
@@ -144,6 +173,21 @@ __all__ = [
     "CuttingSessionCreate",
     "CuttingSessionUpdate",
     "CuttingSessionResponse",
+    # Dataset
+    "DatasetBase",
+    "DatasetCreate",
+    "DatasetUpdate",
+    "DatasetResponse",
+    # Microscope
+    "MicroscopeBase",
+    "MicroscopeCreate",
+    "MicroscopeUpdate",
+    "MicroscopeResponse",
+    # Lens Correction
+    "LensCorrectionBase",
+    "LensCorrectionCreate",
+    "LensCorrectionUpdate",
+    "LensCorrectionResponse",
     # Error
     "APIErrorResponse",
     # Quality Control

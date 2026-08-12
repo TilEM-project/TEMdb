@@ -1,21 +1,21 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
-from .enums import SectionQuality
+from .base import TEMDBModel
+from .enums import SECTION_CONDITIONS, SectionQuality
 from .utils.uri import URI
 
 
-class SectioningRunParameters(BaseModel):
+class SectioningRunParameters(TEMDBModel):
     """Parameters from a sectioning run."""
 
-    model_config = ConfigDict(extra="allow")
-
+    cutting_thickness_um: float | None = Field(None, description="Cutting thickness in micrometers")
     cutting_speed_mms: float | None = Field(None, description="Cutting speed in mm/s")
     retract_speed_mms: float | None = Field(None, description="Retract speed in mm/s")
     water_level_mm: float | None = Field(None, description="Water level in boat in mm")
-    wafer_set_level: float | None = Field(None, description="Wafer set level value")
+    water_set_level: float | None = Field(None, description="Water set level value")
     tape_speed: float | None = Field(None, description="Main tape speed value")
     new_tape_speed: float | None = Field(None, description="Temporary tape speed during timePhi")
     tape_cycle: float | None = Field(None, description="Tape cycle duration/value")
@@ -30,10 +30,8 @@ class SectioningRunParameters(BaseModel):
     )
 
 
-class SectionMetric(BaseModel):
+class SectionMetric(TEMDBModel):
     """Section Metric with Confidence"""
-
-    model_config = ConfigDict(extra="allow")
 
     confidence: float | None = Field(None, description="The confidence value of this metric.", ge=0, le=1)
     label: Any | None = Field(None, description="")
@@ -41,12 +39,17 @@ class SectionMetric(BaseModel):
     message: str | None = Field(None, description="Additional human readable infomation about this metric.")
 
 
-class SectionMetrics(BaseModel):
+class SectionMetrics(TEMDBModel):
     """Metrics and parameters of a section."""
 
-    model_config = ConfigDict(extra="allow")
-
+    segmentation: SectionMetric | None = Field(None, description="Segmentation quality of the section")
+    capture_overlap: SectionMetric | None = Field(
+        None, description="Overlap between the section segmentation and the loop segmentation"
+    )
     quality: SectionQuality | None = Field(None, description="Qualitative state of the section (e.g., Good, Broken)")
+    qc_summary: SectionMetric | None = Field(
+        None, description="Summary of the quality control assessment for this section"
+    )
     thickness_um: SectionMetric | None = Field(None, description="Measured section thickness in micrometers")
     thickness_consistency: SectionMetric | None = Field(None, description="Measured section thischness consistency")
     knife_marks: SectionMetric | None = Field(
@@ -54,26 +57,21 @@ class SectionMetrics(BaseModel):
     )
     coverage: SectionMetric | None = Field(None, description="")
     shape: SectionMetric | None = Field(None, description="")
-    run_parameters: SectioningRunParameters | None = Field(
-        None, description="Detailed parameters from the sectioning run"
-    )
 
 
-class OpticalImage(BaseModel):
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+class OpticalImage(TEMDBModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     image_path: URI.Type = Field(description="The URI of where the optical image is stored")
     metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
 
 
-class SectionBase(BaseModel):
+class SectionBase(TEMDBModel):
     """Base section fields."""
-
-    model_config = ConfigDict(extra="allow")
 
     section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
-    optical_image: OpticalImage | None = Field(
+    optical_image: dict[str, OpticalImage] | None = Field(
         None,
         description="Optical image collected before imaging",
     )
@@ -87,7 +85,9 @@ class SectionBase(BaseModel):
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
-    destroyed: bool = Field(False, description="Denotes if the section has been destroyed.")
+    run_parameters: SectioningRunParameters | None = Field(
+        None, description="Detailed parameters from the sectioning run"
+    )
 
 
 class SectionCreate(SectionBase):
@@ -99,23 +99,56 @@ class SectionCreate(SectionBase):
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
     section_number: int = Field(..., gt=0, description="Sequential section number")
+    created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class SectionUpdate(SectionBase):
     """Schema for updating a section."""
 
-    pass
+    condition: str | None = Field(None, description="Physical condition of the section")
+    condition_reason: str | None = Field(None, description="Reason for the current condition")
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_destroyed(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "destroyed" in data:
+            raise ValueError("`destroyed` is read-only; set condition='destroyed' instead")
+        return data
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, value: str | None) -> str | None:
+        if value is not None and value not in SECTION_CONDITIONS:
+            raise ValueError(f"condition must be one of {SECTION_CONDITIONS}")
+        return value
 
 
 class SectionResponse(SectionBase):
     """Schema for section API responses."""
 
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    id: int
     section_id: str = Field(..., description="Unique, system-generated ID for the section")
     section_number: int = Field(..., gt=0, description="Sequential section number within the cutting session")
     cutting_session_id: str = Field(..., description="ID of the cutting session")
     block_id: str = Field(..., description="ID of the block")
     specimen_id: str = Field(..., description="ID of the specimen")
     media_id: str = Field(..., description="ID of the substrate")
+    condition: str = Field("ok", description="Physical condition of the section")
+    condition_reason: str | None = Field(None, description="Reason for the current condition")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_wire_destroyed(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "destroyed" in data:
+            data = {key: value for key, value in data.items() if key != "destroyed"}
+        return data
+
+    @computed_field(description="Deprecated: derived from condition == 'destroyed'")
+    @property
+    def destroyed(self) -> bool:
+        return self.condition == "destroyed"

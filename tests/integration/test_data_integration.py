@@ -1,95 +1,230 @@
-import logging
+from datetime import datetime, timezone
 
 import pytest
+from sqlalchemy import select
 
-from temdb.server.documents import (
-    AcquisitionDocument,
-    AcquisitionTaskDocument,
-    BlockDocument,
-    CuttingSessionDocument,
-    ROIDocument,
-    SectionDocument,
-    SpecimenDocument,
-    SubstrateDocument,
-    TileDocument,
+from temdb.server.database import DatabaseManager
+from temdb.server.ids import uuid7
+from temdb.server.sqlmodels import (
+    AcquisitionSQLModel,
+    AcquisitionTaskSQLModel,
+    BlockSQLModel,
+    CuttingSessionSQLModel,
+    DatasetSQLModel,
+    MicroscopeSQLModel,
+    ROISQLModel,
+    SectionSQLModel,
+    SpecimenSQLModel,
+    SubstrateSQLModel,
+    TileSQLModel,
 )
-from tests.integration.generators import (
-    generate_acquisition,
-    generate_acquisition_task,
-    generate_block,
-    generate_cutting_session,
-    generate_roi,
-    generate_section,
-    generate_specimen,
-    generate_substrate,
-    generate_tile,
-)
-
-logging.basicConfig(level=logging.INFO)
+from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
 
 class TestDataIntegration:
     @pytest.fixture(autouse=True)
-    async def setup_test(self, init_db):
-        self.db = init_db
+    async def setup_test(self, init_db: DatabaseManager):
+        self.db_manager = init_db
         yield
 
-    async def create_specimen(self) -> SpecimenDocument:
-        specimen = generate_specimen()
-        await specimen.insert()
-        return await SpecimenDocument.get(specimen.id)
+    async def create_specimen(self) -> SpecimenSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            specimen = SpecimenSQLModel(
+                specimen_id=f"SPEC_{int(datetime.now(timezone.utc).timestamp())}",
+                description="integration specimen",
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(specimen)
+            await session.commit()
+            await session.refresh(specimen)
+            return specimen
 
-    async def create_block(self, specimen: SpecimenDocument) -> BlockDocument:
-        block = generate_block(specimen)
-        await block.insert()
-        return await BlockDocument.get(block.id)
+    async def create_block(self, specimen: SpecimenSQLModel) -> BlockSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            block = BlockSQLModel(
+                block_id=f"BLOCK_{specimen.specimen_id}",
+                specimen_id=specimen.specimen_id,
+                microCT_info={"resolution": 1.5},
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(block)
+            await session.commit()
+            await session.refresh(block)
+            return block
 
-    async def create_cutting_session(self, specimen: SpecimenDocument, block: BlockDocument) -> CuttingSessionDocument:
-        cutting_session = generate_cutting_session(specimen, block)
+    async def create_cutting_session(
+        self,
+        specimen: SpecimenSQLModel,
+        block: BlockSQLModel,
+    ) -> CuttingSessionSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            cutting_session = CuttingSessionSQLModel(
+                cutting_session_id=f"CUT_{block.block_id}",
+                specimen_id=specimen.specimen_id,
+                block_id=block.block_id,
+                start_time=datetime.now(timezone.utc),
+                operator="integration operator",
+                sectioning_device="integration device",
+                media_type="tape",
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(cutting_session)
+            await session.commit()
+            await session.refresh(cutting_session)
+            return cutting_session
 
-        await cutting_session.insert()
-        return await CuttingSessionDocument.get(cutting_session.id)
-
-    async def create_substrate(self, cutting_session: CuttingSessionDocument) -> SubstrateDocument:
-        create_substrate = generate_substrate(cutting_session)
-        await create_substrate.insert()
-        return await SubstrateDocument.get(create_substrate.id)
+    async def create_substrate(self) -> SubstrateSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            substrate = SubstrateSQLModel(
+                media_id=f"SUB_{int(datetime.now(timezone.utc).timestamp())}",
+                media_type="tape",
+                metadata_json={},
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(substrate)
+            await session.commit()
+            await session.refresh(substrate)
+            return substrate
 
     async def create_section(
-        self, cutting_session: CuttingSessionDocument, substrate: SubstrateDocument, section_number: int = 1
-    ) -> SectionDocument:
-        section = generate_section(cutting_session, substrate, section_number)
+        self,
+        cutting_session: CuttingSessionSQLModel,
+        substrate: SubstrateSQLModel,
+        section_number: int = 1,
+    ) -> SectionSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            section = SectionSQLModel(
+                section_id=f"SEC_{cutting_session.cutting_session_id}_{section_number:03d}",
+                section_number=section_number,
+                timestamp=datetime.now(timezone.utc),
+                cutting_session_id=cutting_session.cutting_session_id,
+                block_id=cutting_session.block_id,
+                specimen_id=cutting_session.specimen_id,
+                media_id=substrate.media_id,
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(section)
+            await session.commit()
+            await session.refresh(section)
+            return section
 
-        await section.insert()
-        return await SectionDocument.get(section.id)
-
-    async def create_roi(self, section: SectionDocument, roi_number: int = 1) -> ROIDocument:
-        roi = generate_roi(section, roi_number)
-
-        await roi.insert()
-        return await ROIDocument.get(roi.id)
+    async def create_roi(self, section: SectionSQLModel, roi_number: int = 1) -> ROISQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            roi = ROISQLModel(
+                roi_id=f"{section.specimen_id}.{section.block_id}.{section.section_id}.{section.media_id}.ROI{roi_number:03d}",
+                roi_number=roi_number,
+                section_id=section.section_id,
+                block_id=section.block_id,
+                specimen_id=section.specimen_id,
+                substrate_media_id=section.media_id,
+                hierarchy_level=1,
+                section_number=section.section_number,
+                roi_payload={},
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            session.add(roi)
+            await session.commit()
+            await session.refresh(roi)
+            return roi
 
     async def create_acquisition_task(
-        self, specimen: SpecimenDocument, block: BlockDocument, roi: ROIDocument
-    ) -> AcquisitionTaskDocument:
-        task = generate_acquisition_task(specimen, block, roi)
-
-        await task.insert()
-        return await AcquisitionTaskDocument.get(task.id)
+        self,
+        specimen: SpecimenSQLModel,
+        block: BlockSQLModel,
+        roi: ROISQLModel,
+    ) -> AcquisitionTaskSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            task = AcquisitionTaskSQLModel(
+                task_id=f"TASK_{roi.roi_id}",
+                specimen_id=specimen.specimen_id,
+                block_id=block.block_id,
+                roi_id=roi.roi_id,
+                kind="montage",
+                tags=[],
+                metadata_json={},
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(task)
+            await session.commit()
+            await session.refresh(task)
+            return task
 
     async def create_acquisition(
-        self, specimen: SpecimenDocument, roi: ROIDocument, task: AcquisitionTaskDocument
-    ) -> AcquisitionDocument:
-        acq = generate_acquisition(specimen, roi, task)
+        self,
+        specimen: SpecimenSQLModel,
+        roi: ROISQLModel,
+        task: AcquisitionTaskSQLModel,
+    ) -> AcquisitionSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            dataset = DatasetSQLModel(
+                dataset_id=uuid7(),
+                name=f"DS_{task.task_id}",
+                specimen_id=specimen.specimen_id,
+                size_class="small",
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(dataset)
+            microscope = MicroscopeSQLModel(label=f"SCOPE_{task.task_id}")
+            session.add(microscope)
+            await session.commit()
+            await session.refresh(dataset)
+            await session.refresh(microscope)
+            acq = AcquisitionSQLModel(
+                acquisition_id=f"ACQ_{task.task_id}",
+                montage_id=f"MONT_{task.task_id}",
+                specimen_id=specimen.specimen_id,
+                roi_id=roi.roi_id,
+                acquisition_task_id=task.task_id,
+                dataset_id=dataset.dataset_id,
+                hardware_settings={
+                    "scope_id": "SEM_1",
+                    "camera_model": "CamA",
+                    "camera_serial": "SERIAL",
+                    "camera_bit_depth": 16,
+                    "media_type": "tape",
+                },
+                acquisition_settings={
+                    "magnification": 1000,
+                    "spot_size": 2,
+                    "exposure_time": 100,
+                    "tile_size": [4096, 4096],
+                    "tile_overlap": 0.1,
+                    "saved_bit_depth": 8,
+                },
+                microscope_id=microscope.microscope_id,
+                tilt_angle_deg=0.0,
+                start_time=datetime.now(timezone.utc),
+            )
+            session.add(acq)
+            await session.commit()
+            await session.refresh(acq)
+            return acq
 
-        await acq.insert()
-        return await AcquisitionDocument.get(acq.id)
-
-    async def create_tile(self, acquisition: AcquisitionDocument, raster_index: int) -> TileDocument:
-        tile = generate_tile(acquisition, raster_index)
-
-        await tile.insert()
-        return await TileDocument.get(tile.id)
+    async def create_tile(self, acquisition: AcquisitionSQLModel, raster_index: int) -> TileSQLModel:
+        async with self.db_manager.async_session_factory() as session:
+            await ensure_tile_partition(session, acquisition.dataset_id)
+            tile = TileSQLModel(
+                tile_id=uuid7(),
+                dataset_id=acquisition.dataset_id,
+                run_id=acquisition.run_id,
+                raster_index=raster_index,
+                stage_x_nm=float(raster_index),
+                stage_y_nm=float(raster_index),
+                montage_row=raster_index // 10,
+                montage_col=raster_index % 10,
+                focus_score=0.9,
+                min_value=0.0,
+                max_value=65535.0,
+                mean_value=10000.0,
+                std_value=500.0,
+                image_path=f"/tmp/{raster_index}.tif",
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(tile)
+            await session.commit()
+            await session.refresh(tile)
+            return tile
 
     @pytest.mark.asyncio
     async def test_specimen_creation(self):
@@ -101,10 +236,8 @@ class TestDataIntegration:
     async def test_block_creation(self):
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
-
         assert block.id is not None
         assert block.block_id is not None
-        assert block.specimen_ref.ref.id == specimen.id
         assert block.specimen_id == specimen.specimen_id
 
     @pytest.mark.asyncio
@@ -112,21 +245,14 @@ class TestDataIntegration:
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-
         assert cutting_session.id is not None
         assert cutting_session.cutting_session_id is not None
-
-        assert cutting_session.block_ref.ref.id == block.id
-        assert cutting_session.specimen_ref.ref.id == specimen.id
         assert cutting_session.block_id == block.block_id
         assert cutting_session.specimen_id == specimen.specimen_id
 
     @pytest.mark.asyncio
     async def test_substrate_creation(self):
-        specimen = await self.create_specimen()
-        cutting_session = await self.create_cutting_session(specimen, await self.create_block(specimen))
-        substrate = await self.create_substrate(cutting_session)
-
+        substrate = await self.create_substrate()
         assert substrate.id is not None
         assert substrate.media_type == "tape"
 
@@ -135,12 +261,10 @@ class TestDataIntegration:
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-        substrate = await self.create_substrate(cutting_session)
+        substrate = await self.create_substrate()
         section = await self.create_section(cutting_session, substrate)
-
         assert section.id is not None
         assert section.section_id is not None
-        assert section.cutting_session_ref.ref.id == cutting_session.id
         assert section.cutting_session_id == cutting_session.cutting_session_id
         assert section.block_id == block.block_id
         assert section.specimen_id == specimen.specimen_id
@@ -150,14 +274,11 @@ class TestDataIntegration:
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-        substrate = await self.create_substrate(cutting_session)
-
+        substrate = await self.create_substrate()
         section = await self.create_section(cutting_session, substrate)
         roi = await self.create_roi(section)
-
         assert roi.id is not None
         assert roi.roi_id is not None
-        assert roi.section_ref.ref.id == section.id
         assert roi.section_id == section.section_id
         assert roi.block_id == block.block_id
         assert roi.specimen_id == specimen.specimen_id
@@ -167,34 +288,28 @@ class TestDataIntegration:
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-        substrate = await self.create_substrate(cutting_session)
+        substrate = await self.create_substrate()
         section = await self.create_section(cutting_session, substrate)
         roi = await self.create_roi(section)
         task = await self.create_acquisition_task(specimen, block, roi)
-
         assert task.id is not None
         assert task.task_id is not None
-        assert task.specimen_ref.ref.id == specimen.id
-        assert task.block_ref.ref.id == block.id
-        assert task.roi_ref.ref.id == roi.id
+        assert task.specimen_id == specimen.specimen_id
+        assert task.block_id == block.block_id
+        assert task.roi_id == roi.roi_id
 
     @pytest.mark.asyncio
     async def test_acquisition_creation(self):
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-        substrate = await self.create_substrate(cutting_session)
+        substrate = await self.create_substrate()
         section = await self.create_section(cutting_session, substrate)
         roi = await self.create_roi(section)
         task = await self.create_acquisition_task(specimen, block, roi)
         acquisition = await self.create_acquisition(specimen, roi, task)
-
         assert acquisition.id is not None
         assert acquisition.acquisition_id is not None
-        assert acquisition.specimen_ref.ref.id == specimen.id
-        assert acquisition.roi_ref.ref.id == roi.id
-        assert acquisition.acquisition_task_ref.ref.id == task.id
-
         assert acquisition.specimen_id == specimen.specimen_id
         assert acquisition.roi_id == roi.roi_id
         assert acquisition.acquisition_task_id == task.task_id
@@ -204,53 +319,59 @@ class TestDataIntegration:
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-        substrate = await self.create_substrate(cutting_session)
+        substrate = await self.create_substrate()
         section = await self.create_section(cutting_session, substrate)
         roi = await self.create_roi(section)
         task = await self.create_acquisition_task(specimen, block, roi)
         acquisition = await self.create_acquisition(specimen, roi, task)
-
         tile = await self.create_tile(acquisition, 1)
-
-        assert tile.id is not None
         assert tile.tile_id is not None
         assert tile.raster_index == 1
-        assert tile.acquisition_ref.ref.id == acquisition.id
-        assert tile.acquisition_id == acquisition.acquisition_id
+        assert tile.run_id == acquisition.run_id
 
-        fetched_tile = await TileDocument.find_one(
-            TileDocument.acquisition_id == acquisition.acquisition_id, TileDocument.raster_index == 1
-        )
+        async with self.db_manager.async_session_factory() as session:
+            fetched_tile = (
+                await session.scalars(
+                    select(TileSQLModel).where(
+                        TileSQLModel.dataset_id == acquisition.dataset_id,
+                        TileSQLModel.run_id == acquisition.run_id,
+                        TileSQLModel.raster_index == 1,
+                    )
+                )
+            ).first()
         assert fetched_tile is not None
-        assert fetched_tile.id == tile.id
+        assert fetched_tile.tile_id == tile.tile_id
 
     @pytest.mark.asyncio
     async def test_multiple_tiles_creation(self):
         specimen = await self.create_specimen()
         block = await self.create_block(specimen)
         cutting_session = await self.create_cutting_session(specimen, block)
-        substrate = await self.create_substrate(cutting_session)
+        substrate = await self.create_substrate()
         section = await self.create_section(cutting_session, substrate)
         roi = await self.create_roi(section)
         task = await self.create_acquisition_task(specimen, block, roi)
         acquisition = await self.create_acquisition(specimen, roi, task)
 
-        NUM_TILES = 5
+        num_tiles = 5
         created_tiles = []
-        for i in range(NUM_TILES):
+        for i in range(num_tiles):
             tile = await self.create_tile(acquisition, i)
             created_tiles.append(tile)
 
-        tiles_count = await TileDocument.find(TileDocument.acquisition_id == acquisition.acquisition_id).count()
-        assert tiles_count == NUM_TILES
-
-        fetched_tiles = (
-            await TileDocument.find(TileDocument.acquisition_id == acquisition.acquisition_id)
-            .sort(+TileDocument.raster_index)
-            .to_list()
-        )
-        assert len(fetched_tiles) == NUM_TILES
-        for i in range(NUM_TILES):
-            assert fetched_tiles[i].id == created_tiles[i].id
+        async with self.db_manager.async_session_factory() as session:
+            fetched_tiles = (
+                await session.scalars(
+                    select(TileSQLModel)
+                    .where(
+                        TileSQLModel.dataset_id == acquisition.dataset_id,
+                        TileSQLModel.run_id == acquisition.run_id,
+                    )
+                    .order_by(TileSQLModel.raster_index)
+                )
+            ).all()
+        assert len(fetched_tiles) == num_tiles
+        for i in range(num_tiles):
+            assert fetched_tiles[i].tile_id == created_tiles[i].tile_id
             assert fetched_tiles[i].raster_index == i
-            assert fetched_tiles[i].acquisition_id == acquisition.acquisition_id
+            assert fetched_tiles[i].run_id == acquisition.run_id

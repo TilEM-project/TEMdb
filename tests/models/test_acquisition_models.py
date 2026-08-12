@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 import pytest
@@ -7,7 +8,6 @@ from temdb.models import (
     AcquisitionCreate,
     AcquisitionParams,
     AcquisitionResponse,
-    AcquisitionStatus,
     AcquisitionUpdate,
     Calibration,
     HardwareParams,
@@ -33,16 +33,16 @@ class TestHardwareParams:
         with pytest.raises(ValidationError):
             HardwareParams()
 
-    def test_extra_fields_allowed(self):
-        params = HardwareParams(
-            scope_id="SCOPE001",
-            camera_model="Test Camera",
-            camera_serial="12345",
-            camera_bit_depth=16,
-            media_type="tape",
-            custom_field="value",
-        )
-        assert params.custom_field == "value"
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            HardwareParams(
+                scope_id="SCOPE001",
+                camera_model="Test Camera",
+                camera_serial="12345",
+                camera_bit_depth=16,
+                media_type="tape",
+                custom_field="value",
+            )
 
 
 class TestAcquisitionParams:
@@ -102,6 +102,27 @@ class TestStorageLocationCreate:
         assert loc.metadata == {}
 
 
+def _hardware_params() -> HardwareParams:
+    return HardwareParams(
+        scope_id="SCOPE001",
+        camera_model="Test Camera",
+        camera_serial="12345",
+        camera_bit_depth=16,
+        media_type="tape",
+    )
+
+
+def _acquisition_params() -> AcquisitionParams:
+    return AcquisitionParams(
+        magnification=1000,
+        spot_size=2,
+        exposure_time=100,
+        tile_size=[4096, 4096],
+        tile_overlap=0.1,
+        saved_bit_depth=8,
+    )
+
+
 class TestAcquisitionCreate:
     def test_valid_acquisition_create(self):
         acq = AcquisitionCreate(
@@ -109,56 +130,56 @@ class TestAcquisitionCreate:
             montage_id="MONTAGE001",
             roi_id="ROI001",
             acquisition_task_id="TASK001",
-            hardware_settings=HardwareParams(
-                scope_id="SCOPE001",
-                camera_model="Test Camera",
-                camera_serial="12345",
-                camera_bit_depth=16,
-                media_type="tape",
-            ),
-            acquisition_settings=AcquisitionParams(
-                magnification=1000,
-                spot_size=2,
-                exposure_time=100,
-                tile_size=[4096, 4096],
-                tile_overlap=0.1,
-                saved_bit_depth=8,
-            ),
-            tilt_angle=0.0,
-            lens_correction=False,
+            microscope_id=uuid.uuid4(),
+            hardware_settings=_hardware_params(),
+            acquisition_settings=_acquisition_params(),
+            tilt_angle_deg=0.0,
         )
         assert acq.acquisition_id == "ACQ001"
-        assert acq.status == AcquisitionStatus.QC_PENDING
+        assert acq.kind == "montage"
+        assert acq.lc_id is None
+        assert acq.tilt_angle_deg == 0.0
 
     def test_required_fields(self):
         with pytest.raises(ValidationError):
             AcquisitionCreate()
 
-    def test_default_status(self):
+    def test_microscope_id_required(self):
+        with pytest.raises(ValidationError):
+            AcquisitionCreate(
+                acquisition_id="ACQ001",
+                montage_id="MONTAGE001",
+                roi_id="ROI001",
+                acquisition_task_id="TASK001",
+                hardware_settings=_hardware_params(),
+                acquisition_settings=_acquisition_params(),
+            )
+
+    def test_invalid_kind_rejected(self):
+        with pytest.raises(ValidationError):
+            AcquisitionCreate(
+                acquisition_id="ACQ001",
+                montage_id="MONTAGE001",
+                roi_id="ROI001",
+                acquisition_task_id="TASK001",
+                microscope_id=uuid.uuid4(),
+                kind="tilt_series",
+                hardware_settings=_hardware_params(),
+                acquisition_settings=_acquisition_params(),
+            )
+
+    def test_lens_correction_kind_without_lineage(self):
         acq = AcquisitionCreate(
             acquisition_id="ACQ001",
             montage_id="MONTAGE001",
-            roi_id="ROI001",
             acquisition_task_id="TASK001",
-            hardware_settings=HardwareParams(
-                scope_id="SCOPE001",
-                camera_model="Test Camera",
-                camera_serial="12345",
-                camera_bit_depth=16,
-                media_type="tape",
-            ),
-            acquisition_settings=AcquisitionParams(
-                magnification=1000,
-                spot_size=2,
-                exposure_time=100,
-                tile_size=[4096, 4096],
-                tile_overlap=0.1,
-                saved_bit_depth=8,
-            ),
-            tilt_angle=0.0,
-            lens_correction=False,
+            microscope_id=uuid.uuid4(),
+            kind="lens_correction",
+            hardware_settings=_hardware_params(),
+            acquisition_settings=_acquisition_params(),
         )
-        assert acq.status == AcquisitionStatus.QC_PENDING
+        assert acq.roi_id is None
+        assert acq.kind == "lens_correction"
 
 
 class TestAcquisitionUpdate:
@@ -167,39 +188,59 @@ class TestAcquisitionUpdate:
         assert update.status is None
         assert update.end_time is None
 
-    def test_partial_update(self):
+    def test_terminal_status_update(self):
         update = AcquisitionUpdate(
-            status=AcquisitionStatus.QC_PASSED,
+            status="complete",
             end_time=datetime.now(),
         )
-        assert update.status == AcquisitionStatus.QC_PASSED
+        assert update.status == "complete"
+
+    def test_running_is_not_a_status(self):
+        with pytest.raises(ValidationError):
+            AcquisitionUpdate(status="running")
+
+    def test_invalid_qc_state_rejected(self):
+        with pytest.raises(ValidationError):
+            AcquisitionUpdate(qc_state="passed")
+
+    def test_invalid_transfer_state_rejected(self):
+        with pytest.raises(ValidationError):
+            AcquisitionUpdate(transfer_state="done")
+
+    def test_axis_states_and_rollups(self):
+        update = AcquisitionUpdate(
+            qc_state="qc_pass",
+            transfer_state="in_progress",
+            updated_by="qc-service",
+            tile_count=10,
+            avg_focus_score=0.9,
+        )
+        assert update.qc_state == "qc_pass"
+        assert update.transfer_state == "in_progress"
+        assert update.updated_by == "qc-service"
+        assert update.tile_count == 10
 
 
 class TestAcquisitionResponse:
     def test_valid_response(self):
         response = AcquisitionResponse(
+            id=1,
             acquisition_id="ACQ001",
+            run_id=uuid.uuid4(),
             montage_id="MONTAGE001",
             specimen_id="SPEC001",
             roi_id="ROI001",
             acquisition_task_id="TASK001",
-            hardware_settings=HardwareParams(
-                scope_id="SCOPE001",
-                camera_model="Test Camera",
-                camera_serial="12345",
-                camera_bit_depth=16,
-                media_type="tape",
-            ),
-            acquisition_settings=AcquisitionParams(
-                magnification=1000,
-                spot_size=2,
-                exposure_time=100,
-                tile_size=[4096, 4096],
-                tile_overlap=0.1,
-                saved_bit_depth=8,
-            ),
-            status=AcquisitionStatus.QC_PASSED,
+            microscope_id=uuid.uuid4(),
+            kind="montage",
+            hardware_settings=_hardware_params(),
+            acquisition_settings=_acquisition_params(),
+            status=None,
+            qc_state="pending",
+            transfer_state="not_started",
             start_time=datetime.now(),
         )
         assert response.acquisition_id == "ACQ001"
         assert response.specimen_id == "SPEC001"
+        assert response.status is None
+        assert response.qc_state == "pending"

@@ -1,14 +1,14 @@
+import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
+from .base import TEMDBModel
 from .enums import MatchPosition
 from .utils.uri import URI
 
 
-class Matcher(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class Matcher(TEMDBModel):
     row: int = Field(..., description="Row index of the tile")
     col: int = Field(..., description="Column index of the tile")
     dX: float = Field(..., description="X offset of the tile")
@@ -25,8 +25,8 @@ class Matcher(BaseModel):
     qY: list[float] = Field(..., description="Y position of the points in the reference tile")
 
 
-class TileBase(BaseModel):
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+class TileBase(TEMDBModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     stage_position: dict[str, float] | None = Field(
         None, description="Stage position of the tile in stage coordinates in nm"
@@ -46,7 +46,7 @@ class TileBase(BaseModel):
 
 
 class TileCreate(TileBase):
-    tile_id: str = Field(..., description="Unique tile identifier")
+    tile_id: uuid.UUID | None = Field(None, description="Unique tile identifier (minted server-side if omitted)")
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: dict[str, float] = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: dict[str, int] = Field(..., description="Row, column raster position of the tile")
@@ -63,6 +63,8 @@ class TileUpdate(TileBase):
 
 
 class TileResponse(TileBase):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
     tile_id: str = Field(..., description="Unique tile identifier")
     acquisition_id: str = Field(..., description="Parent acquisition ID")
     raster_index: int = Field(..., description="Index of the tile in the raster")
