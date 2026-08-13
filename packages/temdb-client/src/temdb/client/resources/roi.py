@@ -9,7 +9,7 @@ from temdb.models import (
     ROIUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class ROIResource(BaseResource):
@@ -52,6 +52,7 @@ class ROIResource(BaseResource):
         response_data = await self._get(endpoint, params=params)
         return [ROIResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
 
+    @kwargs2model(ROICreate)
     async def create(self, roi_data: ROICreate) -> ROIResponse:
         """Create a new ROI."""
         response_data = await self._post("rois", data=roi_data.model_dump(exclude_unset=True))
@@ -62,6 +63,7 @@ class ROIResource(BaseResource):
         response_data = await self._get(f"rois/{roi_id}")
         return ROIResponse.model_validate(response_data)
 
+    @kwargs2model(ROIUpdate)
     async def update(self, roi_id: int, roi_data: ROIUpdate) -> ROIResponse:
         """Update an existing ROI."""
         update_payload = roi_data.model_dump(exclude_unset=True)

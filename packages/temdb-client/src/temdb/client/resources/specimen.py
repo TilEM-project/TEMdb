@@ -8,7 +8,7 @@ from temdb.models import (
     SpecimenUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class SpecimenResource(BaseResource):
@@ -23,6 +23,7 @@ class SpecimenResource(BaseResource):
             [SpecimenResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
         )
 
+    @kwargs2model(SpecimenCreate)
     async def create(self, specimen_data: SpecimenCreate) -> SpecimenResponse:
         """Create a new specimen."""
         response_data = await self._post("specimens", data=specimen_data.model_dump(exclude_unset=True))
@@ -33,6 +34,7 @@ class SpecimenResource(BaseResource):
         response_data = await self._get(f"specimens/{specimen_id}")
         return SpecimenResponse.model_validate(response_data)
 
+    @kwargs2model(SpecimenUpdate)
     async def update(self, specimen_id: str, specimen_data: SpecimenUpdate) -> SpecimenResponse:
         """Update an existing specimen."""
         update_payload = specimen_data.model_dump(exclude_unset=True)

@@ -117,6 +117,29 @@ async def test_lc_create_posts():
 
 
 @pytest.mark.asyncio
+async def test_lc_create_accepts_kwargs_via_decorator():
+    res, request = _lc_resource()
+    request.return_value = _lc_payload()
+    out = await res.create(
+        microscope_id=SCOPE_ID,
+        magnification=20000,
+        started_at=NOW,
+    )
+    assert request.await_args.kwargs["json"]["microscope_id"] == SCOPE_ID
+    assert out.magnification == 20000
+
+
+@pytest.mark.asyncio
+async def test_lc_create_rejects_model_plus_kwargs():
+    res, _ = _lc_resource()
+    with pytest.raises(AssertionError):
+        await res.create(
+            LensCorrectionCreate(microscope_id=SCOPE_ID, magnification=20000, started_at=NOW),
+            correction_x_uri="s3://bucket/lc/x.tiff",
+        )
+
+
+@pytest.mark.asyncio
 async def test_lc_get():
     res, request = _lc_resource()
     request.return_value = _lc_payload()
@@ -157,6 +180,15 @@ async def test_lc_update_patches_artifacts():
     out = await res.update(LC_ID, LensCorrectionUpdate(correction_y_uri="s3://bucket/lc/y.tiff"))
     assert request.await_args.args[0] == "PATCH"
     assert request.await_args.args[1] == f"lens-corrections/{LC_ID}"
+    assert request.await_args.kwargs["json"] == {"correction_y_uri": "s3://bucket/lc/y.tiff"}
+    assert out.correction_y_uri == "s3://bucket/lc/y.tiff"
+
+
+@pytest.mark.asyncio
+async def test_lc_update_accepts_kwargs_via_decorator():
+    res, request = _lc_resource()
+    request.return_value = _lc_payload(correction_y_uri="s3://bucket/lc/y.tiff")
+    out = await res.update(LC_ID, correction_y_uri="s3://bucket/lc/y.tiff")
     assert request.await_args.kwargs["json"] == {"correction_y_uri": "s3://bucket/lc/y.tiff"}
     assert out.correction_y_uri == "s3://bucket/lc/y.tiff"
 
