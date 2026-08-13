@@ -69,9 +69,7 @@ async def test_list_datasets_filters_by_status(async_client):
 @pytest.mark.asyncio
 async def test_patch_status_sets_collected_at(async_client):
     created = (await async_client.post("/api/v2/datasets", json={"name": "ds_ts", "size_class": "small"})).json()
-    patched = await async_client.patch(
-        f"/api/v2/datasets/{created['dataset_id']}", json={"status": "collected"}
-    )
+    patched = await async_client.patch(f"/api/v2/datasets/{created['dataset_id']}", json={"status": "collected"})
     assert patched.status_code == 200
     assert patched.json()["status"] == "collected"
     assert patched.json()["collected_at"] is not None

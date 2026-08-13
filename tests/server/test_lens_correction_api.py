@@ -61,14 +61,10 @@ async def test_lc_current_picks_most_recent(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-02")
     base = {"microscope_id": scope["microscope_id"], "magnification": 4000}
     old = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"})
     ).json()
     new = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"})
     ).json()
     assert old["lc_id"] != new["lc_id"]
     current = (await async_client.get("/api/v2/lens-corrections/current", params=base)).json()
@@ -142,14 +138,10 @@ async def test_lc_list_filters_and_get_and_patch(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-07")
     base = {"microscope_id": scope["microscope_id"], "magnification": 8000}
     first = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-09T00:00:00Z"})
     ).json()
     second = (
-        await async_client.post(
-            "/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"}
-        )
+        await async_client.post("/api/v2/lens-corrections", json={**base, "started_at": "2026-06-10T00:00:00Z"})
     ).json()
     await async_client.post(
         "/api/v2/lens-corrections",

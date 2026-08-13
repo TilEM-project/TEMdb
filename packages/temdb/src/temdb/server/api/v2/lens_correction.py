@@ -31,9 +31,7 @@ async def _get_by_id(session: AsyncSession, lc_id: str) -> LensCorrectionSQLMode
 )
 async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSession = Depends(get_async_session)):
     microscope = (
-        await session.scalars(
-            select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id)
-        )
+        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id))
     ).one_or_none()
     if microscope is None:
         raise HTTPException(status_code=404, detail=f"Microscope '{data.microscope_id}' not found")
@@ -70,9 +68,7 @@ async def list_lens_corrections(
     if magnification is not None:
         stmt = stmt.where(LensCorrectionSQLModel.magnification == magnification)
     rows = (
-        await session.scalars(
-            stmt.order_by(LensCorrectionSQLModel.started_at.desc()).offset(skip).limit(limit)
-        )
+        await session.scalars(stmt.order_by(LensCorrectionSQLModel.started_at.desc()).offset(skip).limit(limit))
     ).all()
     return rows
 

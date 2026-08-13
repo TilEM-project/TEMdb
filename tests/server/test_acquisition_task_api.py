@@ -301,9 +301,7 @@ async def test_update_acquisition_task(async_client: AsyncClient, test_acquisiti
 
 
 @pytest.mark.asyncio
-async def test_update_acquisition_task_invalid_kind_rejected(
-    async_client: AsyncClient, test_acquisition_task
-):
+async def test_update_acquisition_task_invalid_kind_rejected(async_client: AsyncClient, test_acquisition_task):
     response = await async_client.patch(
         f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}",
         json={"kind": "bogus"},
