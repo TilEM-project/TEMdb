@@ -67,7 +67,6 @@ async def test_create_acquisition(
         "acquisition_task_id": test_acquisition_task.task_id,
         "microscope_id": str(test_microscope.microscope_id),
         "hardware_settings": {
-            "scope_id": "TEST_SCOPE_CREATE",
             "camera_model": "Test Camera Create",
             "camera_serial": "CR12345",
             "camera_bit_depth": 16,
@@ -113,7 +112,6 @@ async def test_create_acquisition_invalid_parent(
         "acquisition_task_id": invalid_task_id,
         "microscope_id": str(test_microscope.microscope_id),
         "hardware_settings": {
-            "scope_id": "s",
             "camera_model": "c",
             "camera_serial": "1",
             "camera_bit_depth": 8,
@@ -188,7 +186,6 @@ async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acqu
         "acquisition_task_id": test_acquisition_task.task_id,
         "microscope_id": str(test_microscope.microscope_id),
         "hardware_settings": {
-            "scope_id": "s",
             "camera_model": "c",
             "camera_serial": "1",
             "camera_bit_depth": 8,
@@ -482,8 +479,7 @@ async def test_acquisition_metadata_endpoints_status_filter(async_client: AsyncC
     filtered_data = response_filtered.json()
 
     assert any(
-        acq["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id
-        for acq in filtered_data["acquisitions"]
+        acq["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id for acq in filtered_data["acquisitions"]
     )
     for acq in filtered_data["acquisitions"]:
         assert acq["acquisition"]["status"] is None
@@ -537,10 +533,12 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
     async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope
 ):
     # Dataset via the API (server resolves size_class from the estimate).
-    ds = (await async_client.post(
-        "/api/v2/datasets",
-        json={"name": "ds_e2e", "estimated_tile_count": 1000},
-    )).json()
+    ds = (
+        await async_client.post(
+            "/api/v2/datasets",
+            json={"name": "ds_e2e", "estimated_tile_count": 1000},
+        )
+    ).json()
 
     acq_resp = await async_client.post(
         "/api/v2/acquisitions",
@@ -552,12 +550,18 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
             "microscope_id": str(test_microscope.microscope_id),
             "dataset_id": ds["dataset_id"],
             "hardware_settings": {
-                "scope_id": "S1", "camera_model": "C", "camera_serial": "X",
-                "camera_bit_depth": 16, "media_type": "tape",
+                "camera_model": "C",
+                "camera_serial": "X",
+                "camera_bit_depth": 16,
+                "media_type": "tape",
             },
             "acquisition_settings": {
-                "magnification": 1000, "spot_size": 2, "exposure_time": 100,
-                "tile_size": [4096, 4096], "tile_overlap": 0.1, "saved_bit_depth": 8,
+                "magnification": 1000,
+                "spot_size": 2,
+                "exposure_time": 100,
+                "tile_size": [4096, 4096],
+                "tile_overlap": 0.1,
+                "saved_bit_depth": 8,
             },
             "tilt_angle_deg": 0.0,
         },
@@ -569,11 +573,16 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
     add = await async_client.post(
         "/api/v2/acquisitions/ACQ_E2E_001/tiles",
         json={
-            "tile_id": tile_id, "raster_index": 7,
+            "tile_id": tile_id,
+            "raster_index": 7,
             "stage_position": {"x": 11.5, "y": 22.5},
             "raster_position": {"row": 0, "col": 7},
-            "focus_score": 0.9, "min_value": 0, "max_value": 255,
-            "mean_value": 128, "std_value": 25, "image_path": "/p/7.tif",
+            "focus_score": 0.9,
+            "min_value": 0,
+            "max_value": 255,
+            "mean_value": 128,
+            "std_value": 25,
+            "image_path": "/p/7.tif",
         },
     )
     assert add.status_code == 201  # would 409 if dataset_id were not persisted

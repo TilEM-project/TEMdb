@@ -19,8 +19,10 @@ async def test_tiles_is_partitioned_by_list(init_db, test_db_manager):
     async with test_db_manager.async_session_factory() as session:
         kind = (
             await session.execute(
-                text("SELECT partstrat FROM pg_partitioned_table p "
-                     "JOIN pg_class c ON c.oid = p.partrelid WHERE c.relname = 'tiles'")
+                text(
+                    "SELECT partstrat FROM pg_partitioned_table p "
+                    "JOIN pg_class c ON c.oid = p.partrelid WHERE c.relname = 'tiles'"
+                )
             )
         ).scalar()
         # 'l' == LIST partitioning. asyncpg surfaces Postgres's internal
@@ -32,7 +34,9 @@ async def test_tiles_is_partitioned_by_list(init_db, test_db_manager):
 
 async def _make_dataset(session, size_class="small"):
     ds = DatasetSQLModel(
-        dataset_id=uuid7(), name=f"ds_{uuid7().hex[:8]}", size_class=size_class,
+        dataset_id=uuid7(),
+        name=f"ds_{uuid7().hex[:8]}",
+        size_class=size_class,
         created_at=datetime.now(timezone.utc),
     )
     session.add(ds)
@@ -43,8 +47,7 @@ async def _make_dataset(session, size_class="small"):
 async def _child_count(session, parent: str) -> int:
     return (
         await session.execute(
-            text("SELECT count(*) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhparent "
-                 "WHERE c.relname = :p"),
+            text("SELECT count(*) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhparent WHERE c.relname = :p"),
             {"p": parent},
         )
     ).scalar()
@@ -59,9 +62,7 @@ async def test_ensure_creates_nested_partitions_and_freezes_modulus(init_db, tes
 
         assert await _child_count(session, partition_name(ds_id)) == 4
         frozen = (
-            await session.execute(
-                text("SELECT tile_hash_modulus FROM datasets WHERE dataset_id = :id"), {"id": ds_id}
-            )
+            await session.execute(text("SELECT tile_hash_modulus FROM datasets WHERE dataset_id = :id"), {"id": ds_id})
         ).scalar()
         assert frozen == 4
 
@@ -127,14 +128,15 @@ async def test_per_acquisition_read_prunes_to_one_child(init_db, test_db_manager
         await ensure_tile_partition(session, ds_id)
         await session.commit()
         plan = (
-            await session.execute(
-                text(
-                    "EXPLAIN (FORMAT TEXT) SELECT * FROM tiles "
-                    "WHERE dataset_id = :d AND run_id = :a"
-                ),
-                {"d": ds_id, "a": uuid7()},
+            (
+                await session.execute(
+                    text("EXPLAIN (FORMAT TEXT) SELECT * FROM tiles WHERE dataset_id = :d AND run_id = :a"),
+                    {"d": ds_id, "a": uuid7()},
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         plan_text = "\n".join(plan)
         # Exactly one hash leaf partition is scanned (others pruned at plan time).
         scanned = [line for line in plan if "tile_d_" in line and "_h" in line]

@@ -21,9 +21,15 @@ def test_size_class_modulus_values():
     }
 
 
-@pytest.mark.parametrize("size_class,expected", [
-    ("small", 4), ("medium", 32), ("large", 256), ("xlarge", 1024),
-])
+@pytest.mark.parametrize(
+    "size_class,expected",
+    [
+        ("small", 4),
+        ("medium", 32),
+        ("large", 256),
+        ("xlarge", 1024),
+    ],
+)
 def test_resolve_modulus_known(size_class, expected):
     assert resolve_modulus(size_class) == expected
 
@@ -54,16 +60,19 @@ def test_size_class_ceiling_values():
     }
 
 
-@pytest.mark.parametrize("count,expected", [
-    (0, "small"),
-    (100_000_000, "small"),
-    (100_000_001, "medium"),
-    (1_000_000_000, "medium"),
-    (1_000_000_001, "large"),
-    (10_000_000_000, "large"),
-    (10_000_000_001, "xlarge"),
-    (50_000_000_000, "xlarge"),
-])
+@pytest.mark.parametrize(
+    "count,expected",
+    [
+        (0, "small"),
+        (100_000_000, "small"),
+        (100_000_001, "medium"),
+        (1_000_000_000, "medium"),
+        (1_000_000_001, "large"),
+        (10_000_000_000, "large"),
+        (10_000_000_001, "xlarge"),
+        (50_000_000_000, "xlarge"),
+    ],
+)
 def test_resolve_size_class(count, expected):
     assert resolve_size_class(count) == expected
 

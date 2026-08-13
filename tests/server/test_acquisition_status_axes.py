@@ -7,7 +7,6 @@ MINIMAL_ACQ_PAYLOAD = {
     "acquisition_id": "ACQ_AXES_001",
     "montage_id": "MONTAGE_AXES_001",
     "hardware_settings": {
-        "scope_id": "TEST_SCOPE_001",
         "camera_model": "Test Camera",
         "camera_serial": "12345",
         "camera_bit_depth": 16,
@@ -76,9 +75,7 @@ async def test_create_returns_run_id_in_flight(
 
 
 @pytest.mark.asyncio
-async def test_create_requires_microscope(
-    async_client: AsyncClient, test_roi, test_acquisition_task
-):
+async def test_create_requires_microscope(async_client: AsyncClient, test_roi, test_acquisition_task):
     r = await async_client.post(
         "/api/v2/acquisitions",
         json={
@@ -91,9 +88,7 @@ async def test_create_requires_microscope(
 
 
 @pytest.mark.asyncio
-async def test_create_unknown_microscope_404(
-    async_client: AsyncClient, test_roi, test_acquisition_task
-):
+async def test_create_unknown_microscope_404(async_client: AsyncClient, test_roi, test_acquisition_task):
     r = await async_client.post(
         "/api/v2/acquisitions",
         json={
@@ -107,9 +102,7 @@ async def test_create_unknown_microscope_404(
 
 
 @pytest.mark.asyncio
-async def test_create_montage_requires_lineage(
-    async_client: AsyncClient, test_acquisition_task, test_microscope
-):
+async def test_create_montage_requires_lineage(async_client: AsyncClient, test_acquisition_task, test_microscope):
     r = await async_client.post(
         "/api/v2/acquisitions",
         json={
@@ -122,9 +115,7 @@ async def test_create_montage_requires_lineage(
 
 
 @pytest.mark.asyncio
-async def test_create_unknown_lc_404(
-    async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope
-):
+async def test_create_unknown_lc_404(async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope):
     r = await async_client.post(
         "/api/v2/acquisitions",
         json={
@@ -139,33 +130,23 @@ async def test_create_unknown_lc_404(
 
 
 @pytest.mark.asyncio
-async def test_status_write_once_at_termination(
-    async_client: AsyncClient, test_acquisition
-):
+async def test_status_write_once_at_termination(async_client: AsyncClient, test_acquisition):
     acq_id = test_acquisition.acquisition_id
     assert test_acquisition.status is None
-    r = await async_client.patch(
-        f"/api/v2/acquisitions/{acq_id}", json={"status": "complete"}
-    )
+    r = await async_client.patch(f"/api/v2/acquisitions/{acq_id}", json={"status": "complete"})
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "complete"
     assert body["end_time"] is not None  # set together with the terminal status
-    r = await async_client.patch(
-        f"/api/v2/acquisitions/{acq_id}", json={"status": "failed"}
-    )
+    r = await async_client.patch(f"/api/v2/acquisitions/{acq_id}", json={"status": "failed"})
     assert r.status_code == 409  # terminal status is write-once
 
 
 @pytest.mark.asyncio
-async def test_terminal_status_loser_does_not_clobber_winner(
-    async_client: AsyncClient, test_acquisition
-):
+async def test_terminal_status_loser_does_not_clobber_winner(async_client: AsyncClient, test_acquisition):
     acq_id = test_acquisition.acquisition_id
     assert test_acquisition.status is None
-    r1 = await async_client.patch(
-        f"/api/v2/acquisitions/{acq_id}", json={"status": "complete"}
-    )
+    r1 = await async_client.patch(f"/api/v2/acquisitions/{acq_id}", json={"status": "complete"})
     assert r1.status_code == 200
     first = r1.json()
     assert first["status"] == "complete"
@@ -230,9 +211,7 @@ async def test_rollups_settable_via_patch(async_client: AsyncClient, test_acquis
 
 
 @pytest.mark.asyncio
-async def test_list_in_flight_and_qc_state_filters(
-    async_client: AsyncClient, test_acquisition
-):
+async def test_list_in_flight_and_qc_state_filters(async_client: AsyncClient, test_acquisition):
     r = await async_client.get("/api/v2/acquisitions?status=in_flight")
     assert r.status_code == 200
     acqs = r.json()["acquisitions"]
@@ -246,7 +225,4 @@ async def test_list_in_flight_and_qc_state_filters(
 
     r = await async_client.get("/api/v2/acquisitions?qc_state=qc_fail")
     assert r.status_code == 200
-    assert all(
-        a["acquisition_id"] != test_acquisition.acquisition_id
-        for a in r.json()["acquisitions"]
-    )
+    assert all(a["acquisition_id"] != test_acquisition.acquisition_id for a in r.json()["acquisitions"])

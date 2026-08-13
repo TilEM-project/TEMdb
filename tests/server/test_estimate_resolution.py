@@ -2,12 +2,15 @@ import pytest
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("estimate,expected", [
-    (50_000_000, "small"),
-    (500_000_000, "medium"),
-    (5_000_000_000, "large"),
-    (20_000_000_000, "xlarge"),
-])
+@pytest.mark.parametrize(
+    "estimate,expected",
+    [
+        (50_000_000, "small"),
+        (500_000_000, "medium"),
+        (5_000_000_000, "large"),
+        (20_000_000_000, "xlarge"),
+    ],
+)
 async def test_create_resolves_size_class_from_estimate(async_client, estimate, expected):
     resp = await async_client.post(
         "/api/v2/datasets", json={"name": f"ds_{estimate}", "estimated_tile_count": estimate}

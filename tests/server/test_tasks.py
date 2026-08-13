@@ -7,7 +7,6 @@ from temdb.server.api.v2.tasks import derive_task_state
 from temdb.server.sqlmodels import AcquisitionSQLModel
 
 _HARDWARE_SETTINGS = {
-    "scope_id": "TEST_SCOPE_001",
     "camera_model": "Test Camera",
     "camera_serial": "12345",
     "camera_bit_depth": 16,
@@ -268,9 +267,7 @@ async def test_tilt_series_batch_groups(
     assert len(group_ids) == 1
     assert None not in group_ids
 
-    series = (
-        await async_client.get("/api/v2/acquisition-tasks", params={"task_group_id": group_ids.pop()})
-    ).json()
+    series = (await async_client.get("/api/v2/acquisition-tasks", params={"task_group_id": group_ids.pop()})).json()
     assert [t["tilt_angle_deg"] for t in series] == [-15.0, 0.0, 15.0]
 
 
