@@ -337,7 +337,6 @@ async def test_acquisition(
             acquisition_task_id=test_acquisition_task.task_id,
             dataset_id=test_dataset.dataset_id,
             hardware_settings={
-                "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
                 "camera_serial": "12345",
                 "camera_bit_depth": 16,
