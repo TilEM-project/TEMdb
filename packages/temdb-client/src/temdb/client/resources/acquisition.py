@@ -14,6 +14,7 @@ from temdb.models import (
     StorageLocationCreate,
     TileCreate,
     TileResponse,
+    TileUpdate,
 )
 
 from .base import BaseResource
@@ -122,10 +123,36 @@ class AcquisitionResource(BaseResource):
         payload = [tile.model_dump(exclude_unset=True) for tile in tiles_data]
         return await self._post(endpoint, data=payload)
 
+    async def update_tile(self, acquisition_id: str, tile_id: str, tile_data: TileUpdate) -> TileResponse:
+        """Updates a tile from an acquisition."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
+        payload = tile_data.model_dump(exclude_unset=True)
+        response_data = await self._patch(endpoint, data=payload)
+        return TileResponse.model_validate(response_data)
+
+    async def update_tiles_bulk(
+        self, acquisition_id: str, tile_updates: dict[str, TileUpdate]
+    ) -> builtins.list[TileResponse]:
+        """Updates multiple tiles from an acquisition."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
+        payload = {tile_id: tile_data.model_dump(exclude_unset=True) for tile_id, tile_data in tile_updates.items()}
+        response_data = await self._patch(endpoint, data=payload)
+        return [TileResponse.model_validate(tile) for tile in response_data]
+
     async def delete_tile(self, acquisition_id: str, tile_id: str) -> None:
         """Delete a specific tile from an acquisition."""
         endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
         await self._delete(endpoint)
+
+    async def delete_all_tiles(self, acquisition_id: str) -> None:
+        """Deletes all tiles from an acquisition."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/all"
+        await self._delete(endpoint)
+
+    async def delete_tiles_bulk(self, acquisition_id: str, tile_ids: builtins.list[str]) -> None:
+        """Deletes specified tiles from an acquisition."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
+        await self._delete(endpoint, json=tile_ids)
 
     async def add_storage_location(
         self, acquisition_id: str, location_data: StorageLocationCreate

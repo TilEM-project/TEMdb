@@ -124,9 +124,7 @@ async def get_block(
     """Retrieve a specific block by its human-readable ID and specimen ID."""
     block = (
         await session.execute(
-            select(BlockSQLModel).where(
-                BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id
-            )
+            select(BlockSQLModel).where(BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id)
         )
     ).scalar_one_or_none()
     if block is None:
@@ -147,9 +145,7 @@ async def update_block(
     """Update details of a specific block."""
     block_obj = (
         await session.execute(
-            select(BlockSQLModel).where(
-                BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id
-            )
+            select(BlockSQLModel).where(BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id)
         )
     ).scalar_one_or_none()
     if block_obj is None:
@@ -224,10 +220,7 @@ async def list_specimen_blocks(
     return (
         (
             await session.execute(
-                select(BlockSQLModel)
-                .where(BlockSQLModel.specimen_id == specimen_id)
-                .offset(skip)
-                .limit(limit)
+                select(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id).offset(skip).limit(limit)
             )
         )
         .scalars()
