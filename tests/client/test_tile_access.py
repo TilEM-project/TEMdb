@@ -4,6 +4,7 @@ import pytest
 
 from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.client.resources.roi import ROIResource
+from temdb.models import TileUpdate
 
 API = "http://test/api/v2"
 
@@ -128,3 +129,66 @@ async def test_acquisition_list_with_full_metadata_passes_status():
     await res.list_with_full_metadata(status="failed")
     params = request.await_args.kwargs["params"]
     assert params["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_update_tile_sends_patch_and_returns_model():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = _tile(7)
+
+    out = await res.update_tile("ACQ1", "018f-7", TileUpdate(focus_score=0.95))
+
+    method, endpoint = request.await_args.args[0], request.await_args.args[1]
+    assert (method, endpoint) == ("PATCH", "acquisitions/ACQ1/tiles/018f-7")
+    assert request.await_args.kwargs["json"] == {"focus_score": 0.95}
+    assert out.tile_id == "018f-7"
+    assert out.focus_score == 0.9
+
+
+@pytest.mark.asyncio
+async def test_update_tiles_bulk_sends_patch_and_returns_models():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = [_tile(0), _tile(1)]
+
+    out = await res.update_tiles_bulk(
+        "ACQ1",
+        {
+            "018f-0": TileUpdate(focus_score=0.91),
+            "018f-1": TileUpdate(stage_position={"x": 10.0, "y": 20.0}),
+        },
+    )
+
+    method, endpoint = request.await_args.args[0], request.await_args.args[1]
+    assert (method, endpoint) == ("PATCH", "acquisitions/ACQ1/tiles/bulk")
+    assert request.await_args.kwargs["json"] == {
+        "018f-0": {"focus_score": 0.91},
+        "018f-1": {"stage_position": {"x": 10.0, "y": 20.0}},
+    }
+    assert [tile.tile_id for tile in out] == ["018f-0", "018f-1"]
+
+
+@pytest.mark.asyncio
+async def test_delete_all_tiles_calls_delete():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {}
+
+    await res.delete_all_tiles("ACQ1")
+
+    method, endpoint = request.await_args.args[0], request.await_args.args[1]
+    assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/all")
+
+
+@pytest.mark.asyncio
+async def test_delete_tiles_bulk_sends_json_body():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {}
+
+    await res.delete_tiles_bulk("ACQ1", ["018f-0", "018f-1"])
+
+    method, endpoint = request.await_args.args[0], request.await_args.args[1]
+    assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/bulk")
+    assert request.await_args.kwargs["json"] == ["018f-0", "018f-1"]
