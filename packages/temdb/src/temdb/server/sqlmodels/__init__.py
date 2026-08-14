@@ -3,6 +3,7 @@ from .base import Base
 from .block import BlockSQLModel
 from .cutting_session import CuttingSessionSQLModel
 from .dataset import DatasetSQLModel
+from .layout import SubstrateLayoutSQLModel
 from .lens_correction import LensCorrectionSQLModel
 from .microscope import MicroscopeSQLModel
 from .roi import ROISQLModel
@@ -21,6 +22,7 @@ __all__ = [
     "MicroscopeSQLModel",
     "LensCorrectionSQLModel",
     "SubstrateSQLModel",
+    "SubstrateLayoutSQLModel",
     "SectionSQLModel",
     "ROISQLModel",
     "AcquisitionTaskSQLModel",

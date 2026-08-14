@@ -39,6 +39,14 @@ from temdb.models.enums import (
     SectionQuality,
 )
 from temdb.models.error import APIErrorResponse
+from temdb.models.layout import (
+    Aperture,
+    Fiducial,
+    SubstrateLayoutBase,
+    SubstrateLayoutCreate,
+    SubstrateLayoutResponse,
+    SubstrateLayoutUpdate,
+)
 from temdb.models.lens_correction import (
     LensCorrectionBase,
     LensCorrectionCreate,
@@ -163,6 +171,13 @@ __all__ = [
     "ReferencePoints",
     "Aperture",
     "SubstrateMetadata",
+    # SubstrateLayout
+    "Aperture",
+    "Fiducial",
+    "SubstrateLayoutBase",
+    "SubstrateLayoutCreate",
+    "SubstrateLayoutResponse",
+    "SubstrateLayoutUpdate",
     # Task
     "AcquisitionTaskBase",
     "AcquisitionTaskCreate",
