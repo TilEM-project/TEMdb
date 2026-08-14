@@ -88,10 +88,13 @@ class SubstrateCreate(SubstrateBase):
         ...,
         description="Primary unique identifier for this substrate (e.g., wafer ID, tape reel ID)",
     )
-    media_type: str = Field(..., description="Type of substrate (e.g., 'wafer', 'tape', 'stick', 'grid')")
     status: str | None = Field(
         "new",
         description="Status of the entire substrate",
+    )
+    substrate_layout_id: str = Field(
+        ...,
+        description="The ID of the substrate layout",
     )
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
@@ -100,7 +103,6 @@ class SubstrateUpdate(SubstrateBase):
     """Schema for updating a substrate."""
 
     media_id: str | None = Field(None, description="Primary unique identifier")
-    media_type: str | None = Field(None, description="Type of substrate")
 
 
 class SubstrateResponse(SubstrateBase):
@@ -115,7 +117,10 @@ class SubstrateResponse(SubstrateBase):
         validation_alias=AliasChoices("metadata_json", "metadata"),
     )
     media_id: str = Field(..., description="Primary unique identifier")
-    media_type: str = Field(..., description="Type of substrate")
+    substrate_layout_id: str = Field(
+        ...,
+        description="The ID of the substrate layout",
+    )
 
     created_at: datetime | None = None
     updated_at: datetime | None = None

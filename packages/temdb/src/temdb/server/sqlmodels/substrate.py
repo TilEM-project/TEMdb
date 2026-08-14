@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import Identity, Index, String
+from sqlalchemy import ForeignKey, Identity, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,7 +13,6 @@ class SubstrateSQLModel(TimestampMixin, ModelDumpMixin, Base):
 
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
     media_id: Mapped[str] = mapped_column(String, index=True, unique=True)
-    media_type: Mapped[str] = mapped_column(String)
     uid: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str | None] = mapped_column(String, nullable=True, default="new")
     refpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -21,3 +20,4 @@ class SubstrateSQLModel(TimestampMixin, ModelDumpMixin, Base):
     source_path: Mapped[str | None] = mapped_column(String, nullable=True)
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
     apertures: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    substrate_layout_id: Mapped[str] = mapped_column(ForeignKey("layouts.layout_id"))
