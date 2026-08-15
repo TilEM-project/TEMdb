@@ -316,6 +316,54 @@ async def test_get_tiles_from_acquisition(async_client: AsyncClient, test_acquis
 
 
 @pytest.mark.asyncio
+async def test_get_tiles_from_acquisition_bbox_filter(async_client: AsyncClient, test_acquisition):
+    acq_id = test_acquisition.acquisition_id
+    tile_specs = [
+        (str(uuid7()), 10, 10.0, 10.0),
+        (str(uuid7()), 11, 25.0, 20.0),
+        (str(uuid7()), 12, 40.0, 30.0),
+    ]
+    for tile_id, raster_index, x, y in tile_specs:
+        response = await async_client.post(
+            f"/api/v2/acquisitions/{acq_id}/tiles",
+            json={
+                "tile_id": tile_id,
+                "raster_index": raster_index,
+                "stage_position": {"x": x, "y": y},
+                "raster_position": {"row": 0, "col": raster_index},
+                "focus_score": 0.9,
+                "min_value": 0,
+                "max_value": 255,
+                "mean_value": 128,
+                "std_value": 25,
+                "image_path": f"/path/to/{tile_id}.tif",
+            },
+        )
+        assert response.status_code == 201
+
+    response = await async_client.get(
+        f"/api/v2/acquisitions/{acq_id}/tiles?x_min=20&x_max=45&y_min=15&y_max=35&limit=10"
+    )
+    assert response.status_code == 200
+    tiles = response.json()["tiles"]
+    returned_ids = {tile["tile_id"] for tile in tiles}
+    assert returned_ids == {tile_specs[1][0], tile_specs[2][0]}
+
+
+@pytest.mark.asyncio
+async def test_get_tiles_from_acquisition_bbox_invalid_range_returns_422(async_client: AsyncClient, test_acquisition):
+    acq_id = test_acquisition.acquisition_id
+
+    bad_x = await async_client.get(f"/api/v2/acquisitions/{acq_id}/tiles?x_min=100&x_max=10")
+    assert bad_x.status_code == 422
+    assert "x_min must be <= x_max" in bad_x.json()["detail"]
+
+    bad_y = await async_client.get(f"/api/v2/acquisitions/{acq_id}/tiles?y_min=100&y_max=10")
+    assert bad_y.status_code == 422
+    assert "y_min must be <= y_max" in bad_y.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_get_tile_from_acquisition(async_client: AsyncClient, test_acquisition, test_tile):
     """Test retrieving a specific tile from an acquisition."""
     response = await async_client.get(
