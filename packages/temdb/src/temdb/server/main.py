@@ -3,7 +3,7 @@ import logging
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -88,6 +88,8 @@ class DebugTracebackMiddleware:
 
         try:
             await self.app(scope, receive, send)
+        except HTTPException:
+            raise
         except Exception as exc:
             if not self.enabled:
                 raise
@@ -96,7 +98,7 @@ class DebugTracebackMiddleware:
             response = JSONResponse(
                 status_code=500,
                 content={
-                    "detail": str(exc) or "Unhandled server exception.",
+                    "detail": repr(exc) or "Unhandled server exception.",
                     "error_code": "INTERNAL_SERVER_ERROR",
                     "context": {"traceback": traceback_text},
                 },
