@@ -644,6 +644,10 @@ async def get_tiles_from_acquisition(
     cursor: int | None = Query(None, description="Last raster_index seen"),
     limit: int = Query(100, ge=1, le=1000),
     fields: list[str] | None = Query(None),
+    x_min: float | None = Query(None, description="The min X axis stage coordinate value in nanometers"),
+    x_max: float | None = Query(None, description="The max X axis stage coordinate value in nanometers"),
+    y_min: float | None = Query(None, description="The min Y axis stage coordinate value in nanometers"),
+    y_max: float | None = Query(None, description="The max Y axis stage coordinate value in nanometers"),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve tiles associated with a specific acquisition."""
@@ -656,9 +660,23 @@ async def get_tiles_from_acquisition(
     if acq_obj.dataset_id is None:
         rows = []
     else:
+        if x_min is not None and x_max is not None and x_min > x_max:
+            raise HTTPException(422, "Invalid bounding box: x_min must be <= x_max")
+        if y_min is not None and y_max is not None and y_min > y_max:
+            raise HTTPException(422, "Invalid bounding box: y_min must be <= y_max")
+        bbox = []
+        if x_min is not None:
+            bbox.append(TileSQLModel.stage_x_nm >= x_min)
+        if x_max is not None:
+            bbox.append(TileSQLModel.stage_x_nm <= x_max)
+        if y_min is not None:
+            bbox.append(TileSQLModel.stage_y_nm >= y_min)
+        if y_max is not None:
+            bbox.append(TileSQLModel.stage_y_nm <= y_max)
         query = select(TileSQLModel).where(
             TileSQLModel.dataset_id == acq_obj.dataset_id,
             TileSQLModel.run_id == acq_obj.run_id,
+            *bbox,
         )
         if cursor is not None:
             query = query.where(TileSQLModel.raster_index > cursor)
