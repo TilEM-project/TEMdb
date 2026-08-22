@@ -2,6 +2,8 @@
 name = "temdb"
 version = "2.0.0"
 description = "TEMdb - Metadata database server"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.13",
@@ -16,7 +18,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
