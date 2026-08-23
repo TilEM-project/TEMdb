@@ -1,6 +1,19 @@
 from httpx import HTTPStatusError
 
 
+def _format_validation_errors(errors) -> str:
+    if not isinstance(errors, list):
+        return ""
+    rendered = []
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        loc = ".".join(str(part) for part in error.get("loc", []))
+        msg = error.get("msg", "")
+        rendered.append(f"{loc}: {msg}" if loc else str(msg))
+    return "; ".join(part for part in rendered if part)
+
+
 class TEMdbError(Exception):
     """Base exception for TEMdb errors."""
 
@@ -22,11 +35,15 @@ class TEMdbServerError(TEMdbError):
         self,
         message: str,
         code: int,
-        traceback: str = None,
+        traceback: str | None = None,
+        error_code: str | None = None,
+        context: dict | None = None,
     ):
         super().__init__(message)
         self.code = code
         self.traceback = traceback
+        self.error_code = error_code
+        self.context = context or {}
 
     @classmethod
     def from_httpx_status_error(cls, httpx_error):
@@ -36,11 +53,22 @@ class TEMdbServerError(TEMdbError):
         try:
             payload = httpx_error.response.json()
         except Exception:
+            payload = None
+        if not isinstance(payload, dict):
             payload = {"detail": httpx_error.response.text}
+        context = payload.get("context")
+        if not isinstance(context, dict):
+            context = {}
+        message = f"{httpx_error.request.url}: {payload.get('detail', exception.NAME)}"
+        errors = _format_validation_errors(context.get("errors"))
+        if errors:
+            message = f"{message} [{errors}]"
         return exception(
-            f"{httpx_error.request.url}: {payload.get('detail', exception.NAME)}",
+            message,
             code,
-            payload.get("context", {}).get("traceback"),
+            context.get("traceback"),
+            error_code=payload.get("error_code"),
+            context=context,
         )
 
     @classmethod
