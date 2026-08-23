@@ -99,10 +99,22 @@ class AcquisitionResource(BaseResource):
         cursor: str | None = None,
         limit: int = 100,
         fields: builtins.list[str] | None = None,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_min: float | None = None,
+        y_max: float | None = None,
     ) -> PaginatedTileResponse:
         """Retrieve tiles for an acquisition with pagination."""
         endpoint = f"acquisitions/{acquisition_id}/tiles"
-        params = {"limit": limit, "cursor": cursor, "fields": fields}
+        params = {
+            "limit": limit,
+            "cursor": cursor,
+            "fields": fields,
+            "x_min": x_min,
+            "x_max": x_max,
+            "y_min": y_min,
+            "y_max": y_max,
+        }
         params = {k: v for k, v in params.items() if v is not None}
         response_data = await self._get(endpoint, params=params)
         return PaginatedTileResponse.model_validate(response_data)
@@ -141,12 +153,14 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(endpoint)
         return StorageLocation.model_validate(response_data) if response_data else None
 
-    async def get_all_tiles(self, acquisition_id: str, *, page_limit: int = 1000) -> builtins.list[TileResponse]:
+    async def get_all_tiles(
+        self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
+    ) -> builtins.list[TileResponse]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
         all_tiles: builtins.list[TileResponse] = []
         cursor: int | None = None
         while True:
-            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit)
+            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
             all_tiles.extend(page.tiles)
             if not page.metadata.get("has_more"):
                 break

@@ -48,6 +48,44 @@ async def test_get_all_tiles_single_page():
 
 
 @pytest.mark.asyncio
+async def test_get_tiles_passes_bbox_params():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {"tiles": [], "metadata": {"has_more": False, "next_cursor": None}}
+
+    await res.get_tiles("ACQ1", x_min=1.0, x_max=2.0, y_min=3.0, y_max=4.0, limit=10)
+
+    assert request.await_args.args[0] == "GET"
+    assert request.await_args.args[1] == "acquisitions/ACQ1/tiles"
+    assert request.await_args.kwargs["params"] == {
+        "limit": 10,
+        "x_min": 1.0,
+        "x_max": 2.0,
+        "y_min": 3.0,
+        "y_max": 4.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_all_tiles_forwards_bbox_params():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.side_effect = [
+        {"tiles": [_tile(0)], "metadata": {"has_more": True, "next_cursor": 1}},
+        {"tiles": [_tile(1)], "metadata": {"has_more": False, "next_cursor": None}},
+    ]
+
+    await res.get_all_tiles("ACQ1", page_limit=1, x_min=10.0, x_max=20.0)
+
+    first_call = request.await_args_list[0]
+    second_call = request.await_args_list[1]
+    assert first_call.kwargs["params"]["x_min"] == 10.0
+    assert first_call.kwargs["params"]["x_max"] == 20.0
+    assert second_call.kwargs["params"]["x_min"] == 10.0
+    assert second_call.kwargs["params"]["x_max"] == 20.0
+
+
+@pytest.mark.asyncio
 async def test_roi_list_acquisitions_filters_by_roi_and_status():
     request = AsyncMock()
     res = ROIResource(request, API)
