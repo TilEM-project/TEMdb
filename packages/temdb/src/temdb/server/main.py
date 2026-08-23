@@ -1,4 +1,5 @@
 import gzip
+import importlib.metadata
 import logging
 import traceback
 from contextlib import asynccontextmanager
@@ -25,7 +26,7 @@ from temdb.server.config import config, is_debug_traceback_enabled
 from temdb.server.database import DatabaseManager
 from temdb.server.exception_handlers import register_exception_handlers
 
-__version__ = "2.0.0"
+__version__ = importlib.metadata.version("temdb")
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.DEBUG if config.debug else logging.INFO)
