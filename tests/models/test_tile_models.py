@@ -149,3 +149,52 @@ class TestTileBase:
     def test_tile_base_stage_position_rejects_extra_fields(self):
         with pytest.raises(ValidationError):
             TileBase(stage_position={"x": 100, "y": 200, "z": 300})
+
+
+class TestTileCreatePositionValidation:
+
+    @staticmethod
+    def _create(**overrides):
+        payload = {
+            "raster_index": 0,
+            "stage_position": {"x": 1.0, "y": 2.0},
+            "raster_position": {"row": 0, "col": 0},
+            "focus_score": 0.5,
+            "min_value": 0,
+            "max_value": 255,
+            "mean_value": 128,
+            "std_value": 10,
+            "image_path": "/path/to/tile.tif",
+        }
+        payload.update(overrides)
+        return TileCreate(**payload)
+
+    @pytest.mark.parametrize(
+        "stage_position",
+        [
+            pytest.param({}, id="empty"),
+            pytest.param({"X": 1.0, "Y": 2.0}, id="wrong_case"),
+            pytest.param({"x": 1.0}, id="missing_y"),
+            pytest.param({"x": 1.0, "y": 2.0, "z": 3.0}, id="extra_key"),
+        ],
+    )
+    def test_bad_stage_position_fails_before_the_http_call(self, stage_position):
+        with pytest.raises(ValidationError):
+            self._create(stage_position=stage_position)
+
+    @pytest.mark.parametrize(
+        "raster_position",
+        [
+            pytest.param({}, id="empty"),
+            pytest.param({"Row": 0, "Col": 0}, id="wrong_case"),
+            pytest.param({"row": 0}, id="missing_col"),
+        ],
+    )
+    def test_bad_raster_position_fails_before_the_http_call(self, raster_position):
+        with pytest.raises(ValidationError):
+            self._create(raster_position=raster_position)
+
+    def test_valid_positions_are_parsed_into_models(self):
+        tile = self._create()
+        assert tile.stage_position.x == 1.0
+        assert tile.raster_position.col == 0

@@ -112,7 +112,9 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "image_path": str(tile_data.image_path),
         "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
         "supertile_id": tile_data.supertile_id,
-        "supertile_raster_position": tile_data.supertile_raster_position,
+        "supertile_raster_position": (
+            tile_data.supertile_raster_position.model_dump() if tile_data.supertile_raster_position else None
+        ),
     }
 
 
