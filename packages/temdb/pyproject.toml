@@ -17,9 +17,17 @@ dependencies = [
     "temdb-models>=2.0.0",
 ]
 
+[project.scripts]
+temdb-server = "temdb.server.cli:server_main"
+temdb-migrate = "temdb.server.cli:migrate_main"
+
 [build-system]
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/temdb"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"migrations" = "temdb/migrations"
+"alembic.ini" = "temdb/alembic.ini"

@@ -17,6 +17,12 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Check LICENSE copies are in sync
+        run: |
+          for p in temdb-models temdb-client temdb; do
+            diff -q LICENSE "packages/$p/LICENSE" || exit 1
+          done
+
       - name: Lint
         run: uv run ruff check .
   test:
