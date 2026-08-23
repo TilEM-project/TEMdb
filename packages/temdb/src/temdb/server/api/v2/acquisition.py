@@ -101,10 +101,10 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "run_id": run_id,
         "raster_index": tile_data.raster_index,
         "tile_id": tile_data.tile_id if tile_data.tile_id is not None else uuid7(),
-        "stage_x_nm": tile_data.stage_position["x"],
-        "stage_y_nm": tile_data.stage_position["y"],
-        "montage_row": tile_data.raster_position["row"],
-        "montage_col": tile_data.raster_position["col"],
+        "stage_x_nm": tile_data.stage_position.x,
+        "stage_y_nm": tile_data.stage_position.y,
+        "montage_row": tile_data.raster_position.row,
+        "montage_col": tile_data.raster_position.col,
         "focus_score": tile_data.focus_score,
         "min_value": tile_data.min_value,
         "max_value": tile_data.max_value,
@@ -113,7 +113,9 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "image_path": str(tile_data.image_path),
         "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
         "supertile_id": tile_data.supertile_id,
-        "supertile_raster_position": tile_data.supertile_raster_position,
+        "supertile_raster_position": (
+            tile_data.supertile_raster_position.model_dump() if tile_data.supertile_raster_position else None
+        ),
     }
 
 

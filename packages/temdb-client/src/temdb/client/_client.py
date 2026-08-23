@@ -12,7 +12,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from .exceptions import NotFoundError, TEMdbClientError
+from .exceptions import TEMdbClientError, TEMdbServerError
 from .resources.acquisition import AcquisitionResource
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
@@ -146,9 +146,7 @@ class TEMdbClient:
             return response.json()
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
-            if e.response.status_code == 404:
-                raise NotFoundError(f"Resource not found: {endpoint}") from e
-            raise TEMdbClientError(f"HTTP {e.response.status_code}: {e.response.text}") from e
+            raise TEMdbServerError.from_httpx_status_error(e) from e
         except httpx.RequestError as e:
             self.logger.error(f"Request failed: {str(e)}")
             raise TEMdbClientError(f"Request failed: {str(e)}") from e

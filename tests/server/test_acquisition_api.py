@@ -268,6 +268,32 @@ async def test_add_tile_to_acquisition(async_client: AsyncClient, test_acquisiti
 
 
 @pytest.mark.asyncio
+async def test_add_tile_with_supertile_raster_position(async_client: AsyncClient, test_acquisition):
+    tile_id_hr = str(uuid7())
+    tile_data = {
+        "tile_id": tile_id_hr,
+        "raster_index": 42,
+        "stage_position": {"x": 1.5, "y": 2.5},
+        "raster_position": {"row": 3, "col": 4},
+        "focus_score": 0.5,
+        "min_value": 0,
+        "max_value": 255,
+        "mean_value": 128,
+        "std_value": 10,
+        "image_path": f"/path/to/test/{tile_id_hr}.tif",
+        "supertile_id": "banana",
+        "supertile_raster_position": {"row": 7, "col": 8},
+    }
+    response = await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data)
+    assert response.status_code == 201, response.text
+    assert response.json()["supertile_raster_position"] == {"row": 7, "col": 8}
+
+    read_back = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id_hr}")
+    assert read_back.status_code == 200, read_back.text
+    assert read_back.json()["supertile_raster_position"] == {"row": 7, "col": 8}
+
+
+@pytest.mark.asyncio
 async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acquisition):
     """Test adding multiple tiles in bulk."""
     num_tiles = TEST_MAX_BATCH_SIZE + 5
