@@ -6,7 +6,11 @@ import pytest
 
 from temdb.client import TEMdbClient
 from temdb.client.exceptions import (
+    TEMdbBadRequestError,
+    TEMdbConflictError,
+    TEMdbInternalError,
     TEMdbNotFoundError,
+    TEMdbNotImplementedError,
     TEMdbServerError,
     TEMdbUnprocessableError,
 )
@@ -90,3 +94,69 @@ async def test_async_request_raises_mapped_server_error(client):
     assert exc_info.value.code == 422
     assert exc_info.value.traceback == "trace-422"
     assert "Validation failed" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        (400, TEMdbBadRequestError),
+        (404, TEMdbNotFoundError),
+        (409, TEMdbConflictError),
+        (422, TEMdbUnprocessableError),
+        (500, TEMdbInternalError),
+        (501, TEMdbNotImplementedError),
+    ],
+)
+def test_every_mapped_status_resolves_to_its_own_class(status, expected):
+    req = httpx.Request("GET", "https://api.temdb.example.com/api/v2/thing")
+    resp = httpx.Response(status, request=req, json={"detail": "x"})
+    err = httpx.HTTPStatusError(f"{status} error", request=req, response=resp)
+
+    mapped = TEMdbServerError.from_httpx_status_error(err)
+
+    assert type(mapped) is expected
+    assert mapped.code == status
+
+
+@pytest.mark.parametrize("body", ["null", "[1, 2]", '"a bare string"'])
+def test_non_object_json_body_does_not_mask_the_http_error(body):
+    req = httpx.Request("GET", "https://api.temdb.example.com/api/v2/thing")
+    resp = httpx.Response(
+        502,
+        request=req,
+        content=body.encode(),
+        headers={"content-type": "application/json"},
+    )
+    err = httpx.HTTPStatusError("502 error", request=req, response=resp)
+
+    mapped = TEMdbServerError.from_httpx_status_error(err)
+
+    assert mapped.code == 502
+    assert body in str(mapped)
+    assert mapped.context == {}
+
+
+def test_validation_errors_reach_the_caller():
+    req = httpx.Request("POST", "https://api.temdb.example.com/api/v2/specimens")
+    resp = httpx.Response(
+        422,
+        request=req,
+        json={
+            "detail": "Request validation failed. Please check the input data.",
+            "error_code": "VALIDATION_ERROR",
+            "context": {
+                "errors": [
+                    {"loc": ["body", "specimen_id"], "msg": "Field required"},
+                    {"loc": ["body", "tile_count"], "msg": "Input should be a valid integer"},
+                ]
+            },
+        },
+    )
+    err = httpx.HTTPStatusError("422 error", request=req, response=resp)
+
+    mapped = TEMdbServerError.from_httpx_status_error(err)
+
+    assert "body.specimen_id: Field required" in str(mapped)
+    assert "body.tile_count: Input should be a valid integer" in str(mapped)
+    assert mapped.error_code == "VALIDATION_ERROR"
+    assert len(mapped.context["errors"]) == 2
