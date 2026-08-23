@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from functools import wraps
 from typing import Any
 
 
@@ -22,3 +23,17 @@ class BaseResource:
 
     async def _delete(self, endpoint: str, **kwargs) -> None:
         await self._request("DELETE", endpoint, **kwargs)
+
+
+def kwargs2model(model):
+    def model_wrapper(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            if isinstance(args[-1], model):
+                assert not kwargs, f"If a {model.__name__} object is provided, no keyword arguments may be provided!"
+                return await func(*args)
+            return await func(*args, model(**kwargs))
+
+        return wrapper
+
+    return model_wrapper

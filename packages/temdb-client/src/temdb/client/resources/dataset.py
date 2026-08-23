@@ -2,12 +2,13 @@ from typing import Any
 
 from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class DatasetResource(BaseResource):
     """Resource class for interacting with Dataset endpoints."""
 
+    @kwargs2model(DatasetCreate)
     async def create(self, dataset_data: DatasetCreate) -> DatasetResponse:
         """Create a new dataset."""
         response_data = await self._post("datasets", data=dataset_data.model_dump(exclude_unset=True))
@@ -40,6 +41,7 @@ class DatasetResource(BaseResource):
             [DatasetResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
         )
 
+    @kwargs2model(DatasetUpdate)
     async def update(self, dataset_id: str, dataset_data: DatasetUpdate) -> DatasetResponse:
         """Update a dataset (e.g. status, description)."""
         response_data = await self._patch(f"datasets/{dataset_id}", data=dataset_data.model_dump(exclude_unset=True))

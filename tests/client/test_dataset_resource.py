@@ -32,6 +32,27 @@ async def test_create_posts_dataset():
 
 
 @pytest.mark.asyncio
+async def test_create_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    request.return_value = {
+        "dataset_id": str(uuid.uuid4()),
+        "name": "d2",
+        "status": "collecting",
+        "size_class": "small",
+    }
+    out = await res.create(name="d2", size_class="small")
+    assert request.await_args.kwargs["json"] == {"name": "d2", "size_class": "small"}
+    assert out.name == "d2"
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_model_plus_kwargs():
+    res, _ = _resource()
+    with pytest.raises(AssertionError):
+        await res.create(DatasetCreate(name="d1", size_class="small"), status="collecting")
+
+
+@pytest.mark.asyncio
 async def test_get_by_name_uses_by_name_path():
     res, request = _resource()
     request.return_value = {
@@ -64,6 +85,16 @@ async def test_update_patches():
     await res.update("1", DatasetUpdate(status="archived"))
     assert request.await_args.args[0] == "PATCH"
     assert request.await_args.args[1] == "datasets/1"
+
+
+@pytest.mark.asyncio
+async def test_update_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    dataset_id = str(uuid.uuid4())
+    request.return_value = {"dataset_id": dataset_id, "name": "a", "status": "archived", "size_class": "small"}
+    out = await res.update("1", status="archived")
+    assert request.await_args.kwargs["json"] == {"status": "archived"}
+    assert out.status == "archived"
 
 
 @pytest.mark.asyncio

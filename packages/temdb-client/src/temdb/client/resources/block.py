@@ -7,7 +7,7 @@ from temdb.models import (
     CuttingSessionResponse,
 )
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class BlockResource(BaseResource):
@@ -38,6 +38,7 @@ class BlockResource(BaseResource):
         response_data = await self._get(endpoint, params=params)
         return [BlockResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
 
+    @kwargs2model(BlockCreate)
     async def create(self, block_data: BlockCreate) -> BlockResponse:
         """Create a new block."""
         response_data = await self._post("blocks", data=block_data.model_dump(exclude_unset=True))
@@ -49,6 +50,7 @@ class BlockResource(BaseResource):
         response_data = await self._get(endpoint)
         return BlockResponse.model_validate(response_data)
 
+    @kwargs2model(BlockUpdate)
     async def update(self, specimen_id: str, block_id: str, block_data: BlockUpdate) -> BlockResponse:
         """Update an existing block."""
         endpoint = f"blocks/specimens/{specimen_id}/blocks/{block_id}"

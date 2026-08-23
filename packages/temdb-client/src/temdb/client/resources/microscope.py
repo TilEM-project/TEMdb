@@ -1,11 +1,12 @@
 from temdb.models import MicroscopeCreate, MicroscopeResponse, MicroscopeUpdate
 
-from .base import BaseResource
+from .base import BaseResource, kwargs2model
 
 
 class MicroscopeResource(BaseResource):
     """Resource class for interacting with Microscope endpoints."""
 
+    @kwargs2model(MicroscopeCreate)
     async def create(self, data: MicroscopeCreate) -> MicroscopeResponse:
         """Register a new microscope."""
         payload = await self._post("microscopes", data=data.model_dump(exclude_unset=True, mode="json"))
@@ -20,6 +21,7 @@ class MicroscopeResource(BaseResource):
         data = await self._get("microscopes", params={"skip": skip, "limit": limit})
         return [MicroscopeResponse.model_validate(i) for i in data] if isinstance(data, list) else []
 
+    @kwargs2model(MicroscopeUpdate)
     async def update(self, microscope_id: str, data: MicroscopeUpdate) -> MicroscopeResponse:
         """Update microscope metadata."""
         payload = await self._patch(
