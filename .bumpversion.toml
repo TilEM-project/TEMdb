@@ -28,10 +28,10 @@ replace = "version = \"{new_version}\""
 # Also update the dependency pins
 [[tool.bumpversion.files]]
 filename = "packages/temdb-client/pyproject.toml"
-search = "temdb-models>={current_version}"
-replace = "temdb-models>={new_version}"
+search = "temdb-models=={current_version}"
+replace = "temdb-models=={new_version}"
 
 [[tool.bumpversion.files]]
 filename = "packages/temdb/pyproject.toml"
-search = "temdb-models>={current_version}"
-replace = "temdb-models>={new_version}"
+search = "temdb-models=={current_version}"
+replace = "temdb-models=={new_version}"
