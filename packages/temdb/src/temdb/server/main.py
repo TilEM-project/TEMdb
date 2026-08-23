@@ -1,9 +1,10 @@
 import gzip
+import importlib.metadata
 import logging
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -25,7 +26,7 @@ from temdb.server.config import config, is_debug_traceback_enabled
 from temdb.server.database import DatabaseManager
 from temdb.server.exception_handlers import register_exception_handlers
 
-__version__ = "2.0.0"
+__version__ = importlib.metadata.version("temdb")
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.DEBUG if config.debug else logging.INFO)
@@ -88,17 +89,17 @@ class DebugTracebackMiddleware:
 
         try:
             await self.app(scope, receive, send)
+        except HTTPException:
+            raise
         except Exception as exc:
             if not self.enabled:
                 raise
 
-            traceback_text = "".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
-            )
+            traceback_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             response = JSONResponse(
                 status_code=500,
                 content={
-                    "detail": str(exc) or "Unhandled server exception.",
+                    "detail": repr(exc) or "Unhandled server exception.",
                     "error_code": "INTERNAL_SERVER_ERROR",
                     "context": {"traceback": traceback_text},
                 },
@@ -110,9 +111,7 @@ class DebugTracebackMiddleware:
 async def lifespan(app: FastAPI):
     database_url = app.state.database_url
 
-    logger.info(
-        f"Connecting to SQL database: {database_url if database_url else 'disabled'}"
-    )
+    logger.info(f"Connecting to SQL database: {database_url if database_url else 'disabled'}")
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     await db_manager.initialize()

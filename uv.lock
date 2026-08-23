@@ -1284,7 +1284,7 @@ wheels = [
 
 [[package]]
 name = "temdb"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "packages/temdb" }
 dependencies = [
     { name = "alembic" },
@@ -1313,7 +1313,7 @@ requires-dist = [
 
 [[package]]
 name = "temdb-client"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "packages/temdb-client" }
 dependencies = [
     { name = "httpx" },
@@ -1332,7 +1332,7 @@ requires-dist = [
 
 [[package]]
 name = "temdb-models"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "packages/temdb-models" }
 dependencies = [
     { name = "pathlib-abc" },
@@ -1353,7 +1353,7 @@ requires-dist = [
 
 [[package]]
 name = "temdb-workspace"
-version = "2.0.0"
+version = "3.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "platformdirs" },
