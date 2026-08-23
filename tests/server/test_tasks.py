@@ -7,7 +7,6 @@ from temdb.server.api.v2.tasks import derive_task_state
 from temdb.server.sqlmodels import AcquisitionSQLModel
 
 _HARDWARE_SETTINGS = {
-    "scope_id": "TEST_SCOPE_001",
     "camera_model": "Test Camera",
     "camera_serial": "12345",
     "camera_bit_depth": 16,

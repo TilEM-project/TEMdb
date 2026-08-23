@@ -67,7 +67,6 @@ async def test_create_acquisition(
         "acquisition_task_id": test_acquisition_task.task_id,
         "microscope_id": str(test_microscope.microscope_id),
         "hardware_settings": {
-            "scope_id": "TEST_SCOPE_CREATE",
             "camera_model": "Test Camera Create",
             "camera_serial": "CR12345",
             "camera_bit_depth": 16,
@@ -113,7 +112,6 @@ async def test_create_acquisition_invalid_parent(
         "acquisition_task_id": invalid_task_id,
         "microscope_id": str(test_microscope.microscope_id),
         "hardware_settings": {
-            "scope_id": "s",
             "camera_model": "c",
             "camera_serial": "1",
             "camera_bit_depth": 8,
@@ -188,7 +186,6 @@ async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acqu
         "acquisition_task_id": test_acquisition_task.task_id,
         "microscope_id": str(test_microscope.microscope_id),
         "hardware_settings": {
-            "scope_id": "s",
             "camera_model": "c",
             "camera_serial": "1",
             "camera_bit_depth": 8,
@@ -553,7 +550,6 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
             "microscope_id": str(test_microscope.microscope_id),
             "dataset_id": ds["dataset_id"],
             "hardware_settings": {
-                "scope_id": "S1",
                 "camera_model": "C",
                 "camera_serial": "X",
                 "camera_bit_depth": 16,

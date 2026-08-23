@@ -33,7 +33,6 @@ class Calibration(TEMDBModel):
 
 
 class HardwareParams(TEMDBModel):
-    scope_id: str = Field(..., description="ID of microscope")
     camera_model: str = Field(..., description="Model of camera")
     camera_serial: str = Field(..., description="Serial number of camera")
     camera_bit_depth: int = Field(..., description="Native bit depth of camera")

@@ -64,7 +64,6 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
                 "microscope_id": "0190a6b2-7c3e-7000-8000-000000000002",
                 "kind": "montage",
                 "hardware_settings": {
-                    "scope_id": "scope1",
                     "camera_model": "FalconIV",
                     "camera_serial": "SN001",
                     "camera_bit_depth": 16,
