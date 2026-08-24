@@ -5,9 +5,25 @@ from httpx import AsyncClient
 
 from temdb.server.config import config
 from temdb.server.ids import uuid7
+from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
 
 TEST_MAX_BATCH_SIZE = 10
 config.max_batch_size = TEST_MAX_BATCH_SIZE
+
+
+def _tile_payload(tile_id: str, raster_index: int) -> dict:
+    return {
+        "tile_id": tile_id,
+        "raster_index": raster_index,
+        "stage_position": {"x": float(raster_index), "y": float(raster_index + 1)},
+        "raster_position": {"row": 0, "col": raster_index},
+        "focus_score": 0.8,
+        "min_value": 10,
+        "max_value": 240,
+        "mean_value": 100,
+        "std_value": 20,
+        "image_path": f"/path/to/{tile_id}.tif",
+    }
 
 
 @pytest.mark.asyncio
@@ -398,6 +414,129 @@ async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acqu
 
 
 @pytest.mark.asyncio
+async def test_update_tile_from_acquisition(async_client: AsyncClient, test_acquisition):
+    tile_id_hr = str(uuid7())
+    add_resp = await async_client.post(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
+        json=_tile_payload(tile_id_hr, 3),
+    )
+    assert add_resp.status_code == 201
+
+    patch_resp = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id_hr}",
+        json={
+            "stage_position": {"x": 999.0, "y": 1000.0},
+            "raster_position": {"row": 5, "col": 6},
+            "focus_score": 0.95,
+        },
+    )
+    assert patch_resp.status_code == 200
+    patched = patch_resp.json()
+    assert patched["tile_id"] == tile_id_hr
+    assert patched["stage_position"] == {"x": 999.0, "y": 1000.0}
+    assert patched["raster_position"] == {"row": 5, "col": 6}
+    assert patched["focus_score"] == pytest.approx(0.95)
+
+    get_resp = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id_hr}")
+    assert get_resp.status_code == 200
+    got = get_resp.json()
+    assert got["stage_position"] == {"x": 999.0, "y": 1000.0}
+    assert got["raster_position"] == {"row": 5, "col": 6}
+    assert got["focus_score"] == pytest.approx(0.95)
+
+
+@pytest.mark.asyncio
+async def test_update_tiles_from_acquisition_bulk(async_client: AsyncClient, test_acquisition):
+    tile_id_1 = str(uuid7())
+    tile_id_2 = str(uuid7())
+    for tile_id, raster_index in ((tile_id_1, 10), (tile_id_2, 11)):
+        add_resp = await async_client.post(
+            f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
+            json=_tile_payload(tile_id, raster_index),
+        )
+        assert add_resp.status_code == 201
+
+    patch_resp = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json={
+            tile_id_1: {"focus_score": 0.91, "raster_position": {"row": 2, "col": 20}},
+            tile_id_2: {"focus_score": 0.92, "stage_position": {"x": 123.0, "y": 456.0}},
+        },
+    )
+    assert patch_resp.status_code == 200
+    body = patch_resp.json()
+    assert len(body) == 2
+    by_id = {tile["tile_id"]: tile for tile in body}
+    assert by_id[tile_id_1]["focus_score"] == pytest.approx(0.91)
+    assert by_id[tile_id_1]["raster_position"] == {"row": 2, "col": 20}
+    assert by_id[tile_id_2]["focus_score"] == pytest.approx(0.92)
+    assert by_id[tile_id_2]["stage_position"] == {"x": 123.0, "y": 456.0}
+
+
+@pytest.mark.asyncio
+async def test_update_tiles_from_acquisition_bulk_missing_tile_returns_404(async_client: AsyncClient, test_acquisition):
+    tile_id_hr = str(uuid7())
+    add_resp = await async_client.post(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
+        json=_tile_payload(tile_id_hr, 12),
+    )
+    assert add_resp.status_code == 201
+
+    missing_id = str(uuid7())
+    patch_resp = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json={
+            tile_id_hr: {"focus_score": 0.77},
+            missing_id: {"focus_score": 0.88},
+        },
+    )
+    assert patch_resp.status_code == 404
+    assert "Unable to find tiles" in patch_resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_delete_tiles_from_acquisition_bulk(async_client: AsyncClient, test_acquisition):
+    tile_ids = [str(uuid7()), str(uuid7())]
+    for i, tile_id in enumerate(tile_ids):
+        add_resp = await async_client.post(
+            f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
+            json=_tile_payload(tile_id, 20 + i),
+        )
+        assert add_resp.status_code == 201
+
+    delete_resp = await async_client.request(
+        "DELETE",
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json=tile_ids,
+    )
+    assert delete_resp.status_code == 204
+
+    count_resp = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tile-count")
+    assert count_resp.status_code == 200
+    assert count_resp.json()["tile_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_tiles_from_acquisition_all(async_client: AsyncClient, test_acquisition):
+    for i in range(3):
+        tile_id = str(uuid7())
+        add_resp = await async_client.post(
+            f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
+            json=_tile_payload(tile_id, 30 + i),
+        )
+        assert add_resp.status_code == 201
+
+    delete_resp = await async_client.delete(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/all",
+    )
+    assert delete_resp.status_code == 204
+
+    count_resp = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tile-count")
+    assert count_resp.status_code == 200
+    assert count_resp.json()["tile_count"] == 0
+
+
+@pytest.mark.asyncio
 async def test_get_acquisition_with_full_metadata(async_client: AsyncClient, test_acquisition):
     """Test retrieving an acquisition with complete hierarchy metadata."""
     response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/metadata")
@@ -620,3 +759,269 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
     got = (await async_client.get(f"/api/v2/acquisitions/ACQ_E2E_001/tiles/{tile_id}")).json()
     assert got["stage_position"] == {"x": 11.5, "y": 22.5}
     assert got["raster_position"] == {"row": 0, "col": 7}
+
+
+@pytest.fixture(scope="function")
+async def second_acquisition(
+    init_db,
+    test_db_manager,
+    test_specimen,
+    test_roi,
+    test_acquisition_task,
+    test_dataset,
+    test_microscope,
+    test_acquisition,
+):
+    async with test_db_manager.async_session_factory() as session:
+        acquisition = AcquisitionSQLModel(
+            acquisition_id="TEST_ACQ_002",
+            montage_id="TEST_MONTAGE_002",
+            specimen_id=test_specimen.specimen_id,
+            roi_id=test_roi.roi_id,
+            acquisition_task_id=test_acquisition_task.task_id,
+            dataset_id=test_dataset.dataset_id,
+            hardware_settings={},
+            acquisition_settings={},
+            microscope_id=test_microscope.microscope_id,
+            start_time=datetime.now(timezone.utc),
+        )
+        session.add(acquisition)
+        await session.commit()
+        await session.refresh(acquisition)
+        yield acquisition
+
+
+async def _seed_tiles(async_client: AsyncClient, acquisition_id: str, count: int) -> list[str]:
+    tiles = [_tile_payload(str(uuid7()), i) for i in range(count)]
+    response = await async_client.post(f"/api/v2/acquisitions/{acquisition_id}/tiles/bulk", json=tiles)
+    assert response.status_code in (200, 201), response.text
+    return [tile["tile_id"] for tile in tiles]
+
+
+async def _tile_count(async_client: AsyncClient, acquisition_id: str) -> int:
+    response = await async_client.get(f"/api/v2/acquisitions/{acquisition_id}/tile-count")
+    return response.json()["tile_count"]
+
+
+@pytest.mark.asyncio
+async def test_delete_all_tiles_is_scoped_to_one_acquisition(
+    async_client: AsyncClient, test_acquisition, second_acquisition
+):
+    assert test_acquisition.dataset_id == second_acquisition.dataset_id
+    await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+    await _seed_tiles(async_client, second_acquisition.acquisition_id, 2)
+
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/all")
+
+    assert response.status_code == 204
+    assert await _tile_count(async_client, test_acquisition.acquisition_id) == 0
+    assert await _tile_count(async_client, second_acquisition.acquisition_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_cannot_reach_another_acquisitions_tiles(
+    async_client: AsyncClient, test_acquisition, second_acquisition
+):
+    await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+    other_ids = await _seed_tiles(async_client, second_acquisition.acquisition_id, 2)
+
+    response = await async_client.request(
+        "DELETE", f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk", json=other_ids
+    )
+
+    assert response.status_code == 404
+    assert await _tile_count(async_client, second_acquisition.acquisition_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_cannot_reach_another_acquisitions_tiles(
+    async_client: AsyncClient, test_acquisition, second_acquisition
+):
+    await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+    other_ids = await _seed_tiles(async_client, second_acquisition.acquisition_id, 1)
+
+    response = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json={other_ids[0]: {"focus_score": 0.99}},
+    )
+
+    assert response.status_code == 404
+    read_back = await async_client.get(f"/api/v2/acquisitions/{second_acquisition.acquisition_id}/tiles/{other_ids[0]}")
+    assert read_back.json()["focus_score"] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_with_an_empty_list_deletes_nothing(async_client: AsyncClient, test_acquisition):
+    await _seed_tiles(async_client, test_acquisition.acquisition_id, 2)
+
+    response = await async_client.request(
+        "DELETE", f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk", json=[]
+    )
+
+    assert response.status_code == 400
+    assert await _tile_count(async_client, test_acquisition.acquisition_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_leaves_the_batch_untouched_when_one_tile_is_missing(
+    async_client: AsyncClient, test_acquisition
+):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 2)
+
+    response = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json={tile_ids[0]: {"focus_score": 0.99}, str(uuid7()): {"focus_score": 0.99}},
+    )
+
+    assert response.status_code == 404
+    read_back = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_ids[0]}")
+    assert read_back.json()["focus_score"] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_reports_ids_it_could_not_find(async_client: AsyncClient, test_acquisition):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+    ghost = str(uuid7())
+
+    response = await async_client.request(
+        "DELETE",
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json=[tile_ids[0], ghost],
+    )
+
+    assert response.status_code == 404
+    assert ghost in response.json()["detail"]
+    # the valid id in the batch must survive the rejection
+    assert await _tile_count(async_client, test_acquisition.acquisition_id) == 3
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_removes_every_tile_when_all_ids_match(async_client: AsyncClient, test_acquisition):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+
+    response = await async_client.request(
+        "DELETE",
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json=tile_ids[:2],
+    )
+
+    assert response.status_code == 204
+    assert await _tile_count(async_client, test_acquisition.acquisition_id) == 1
+
+
+_GHOST_TILE = "0199a1f0-0000-7000-8000-000000000000"
+
+_TILE_WRITE_ENDPOINTS = [
+    ("PATCH", f"tiles/{_GHOST_TILE}", {"focus_score": 0.5}),
+    ("PATCH", "tiles/bulk", {_GHOST_TILE: {"focus_score": 0.5}}),
+    ("DELETE", f"tiles/{_GHOST_TILE}", None),
+    ("DELETE", "tiles/bulk", [_GHOST_TILE]),
+    ("DELETE", "tiles/all", None),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method, suffix, body", _TILE_WRITE_ENDPOINTS)
+async def test_tile_writes_404_on_an_unknown_acquisition(async_client: AsyncClient, method: str, suffix: str, body):
+    response = await async_client.request(method, f"/api/v2/acquisitions/NO_SUCH_ACQ/{suffix}", json=body)
+
+    assert response.status_code == 404, response.text
+    assert "NO_SUCH_ACQ" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, suffix, body",
+    [
+        ("PATCH", "tiles/not-a-uuid", {"focus_score": 0.5}),
+        ("DELETE", "tiles/not-a-uuid", None),
+        ("DELETE", "tiles/bulk", ["not-a-uuid"]),
+        ("PATCH", "tiles/bulk", {"not-a-uuid": {"focus_score": 0.5}}),
+    ],
+)
+async def test_malformed_tile_id_is_a_404_not_a_500(
+    async_client: AsyncClient, test_acquisition, method: str, suffix: str, body
+):
+    """A tile_id that is not a UUID cannot name a row, so it is a miss, not a crash."""
+    response = await async_client.request(
+        method, f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/{suffix}", json=body
+    )
+
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio
+async def test_single_tile_update_cannot_reach_another_acquisitions_tile(
+    async_client: AsyncClient, test_acquisition, second_acquisition
+):
+    other_ids = await _seed_tiles(async_client, second_acquisition.acquisition_id, 1)
+
+    response = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{other_ids[0]}",
+        json={"focus_score": 0.99},
+    )
+
+    assert response.status_code == 404
+    read_back = await async_client.get(f"/api/v2/acquisitions/{second_acquisition.acquisition_id}/tiles/{other_ids[0]}")
+    assert read_back.json()["focus_score"] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_single_tile_delete_cannot_reach_another_acquisitions_tile(
+    async_client: AsyncClient, test_acquisition, second_acquisition
+):
+    other_ids = await _seed_tiles(async_client, second_acquisition.acquisition_id, 1)
+
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{other_ids[0]}")
+
+    assert response.status_code == 404
+    assert await _tile_count(async_client, second_acquisition.acquisition_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_all_tiles_404s_when_the_acquisition_has_none(async_client: AsyncClient, test_acquisition):
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/all")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_new_tile_has_no_updated_at(async_client: AsyncClient, test_acquisition):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+
+    tile = (
+        await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_ids[0]}")
+    ).json()
+
+    assert tile["created_at"] is not None
+    assert tile["updated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_updating_a_tile_stamps_updated_at(async_client: AsyncClient, test_acquisition):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+
+    patched = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_ids[0]}",
+        json={"focus_score": 0.99},
+    )
+
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["updated_at"] is not None
+    read_back = (
+        await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_ids[0]}")
+    ).json()
+    assert read_back["updated_at"] == patched.json()["updated_at"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_stamps_updated_at_on_every_tile(async_client: AsyncClient, test_acquisition):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 2)
+
+    response = await async_client.patch(
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
+        json={tile_id: {"focus_score": 0.99} for tile_id in tile_ids},
+    )
+
+    assert response.status_code == 200, response.text
+    assert all(tile["updated_at"] is not None for tile in response.json())
