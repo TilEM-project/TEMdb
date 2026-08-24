@@ -82,6 +82,7 @@ def _tile_payload(
         "supertile_id": tile.supertile_id,
         "supertile_raster_position": tile.supertile_raster_position,
         "created_at": tile.created_at,
+        "updated_at": tile.updated_at,
     }
     if acquisition_internal_id is not None:
         payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
@@ -852,6 +853,11 @@ async def get_tile_count(
     return {"tile_count": tile_count}
 
 
+def _missing_tiles_detail(missing_ids, acquisition_id: str) -> str:
+    listed = ", ".join(sorted(str(tile_id) for tile_id in missing_ids))
+    return f"Unable to find tiles [{listed}] in acquisition '{acquisition_id}'"
+
+
 def _tile_sql_patch_kwargs(updated_fields: TileUpdate):
     update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
     stage_position = update_data.pop("stage_position", None)
@@ -893,7 +899,7 @@ async def update_tile_from_acquisition_bulk(
     ).all()
     missing_ids = set(updates.keys()) - {tile.tile_id for tile in tiles}
     if missing_ids:
-        raise HTTPException(404, f"Unable to find tiles {missing_ids} in acquisition {acquisition_id}")
+        raise HTTPException(404, _missing_tiles_detail(missing_ids, acquisition_id))
     for tile_obj in tiles:
         updated_fields = updates.get(tile_obj.tile_id)
         if updated_fields is None:
@@ -966,16 +972,21 @@ async def delete_tiles_from_acquisition_bulk(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    if not tile_ids:
+        raise HTTPException(400, "No tile IDs provided")
     tile_keys = [_tile_uuid_or_404(tile_id) for tile_id in tile_ids]
     result = await session.execute(
-        delete(TileSQLModel).where(
+        delete(TileSQLModel)
+        .where(
             TileSQLModel.tile_id.in_(tile_keys),
             TileSQLModel.dataset_id == acq_obj.dataset_id,
             TileSQLModel.run_id == acq_obj.run_id,
         )
+        .returning(TileSQLModel.tile_id)
     )
-    if not result.rowcount:
-        raise HTTPException(404, f"No tiles deleted from acquisition '{acquisition_id}'")
+    missing_ids = set(tile_keys) - set(result.scalars().all())
+    if missing_ids:
+        raise HTTPException(404, _missing_tiles_detail(missing_ids, acquisition_id))
     await session.commit()
     return None
 
