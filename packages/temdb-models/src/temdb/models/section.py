@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
 from .base import TEMDBModel
-from .enums import SECTION_CONDITIONS, SectionQuality
+from .enums import SECTION_CONDITIONS, EventType, SectionQuality
 from .utils.uri import URI
 
 
@@ -28,6 +30,59 @@ class SectioningRunParameters(TEMDBModel):
         default_factory=dict,
         description="Dictionary for any other arbitrary run parameters",
     )
+
+
+# These below two classes could actually be made much more universal to apply to anything, not just sections.
+class EnvironmentalVariable(TEMDBModel):
+    """Represents a single environmental variable related to a section."""
+
+    name: str = Field(..., description="Name of the environmental variable")
+    value: float | None = Field(None, description="Value of the environmental variable")
+    unit: str | None = Field(None, description="Unit of the environmental variable")
+
+
+class SectionEnvironment(TEMDBModel):
+    """Environmental conditions related to a section."""
+
+    enclosure_temperature: EnvironmentalVariable | None = Field(None, description="Temperature")
+    enclosure_humidity: EnvironmentalVariable | None = Field(None, description="Relative humidity in percent")
+    enclosure_pressure: EnvironmentalVariable | None = Field(None, description="Atmospheric pressure in the enclosure")
+    room_temperature: EnvironmentalVariable | None = Field(None, description="Room temperature")
+    room_humidity: EnvironmentalVariable | None = Field(None, description="Relative humidity in the room")
+
+
+# The events that transpired during the time between when the section was cut and
+# when the section was placed onto the substrate
+class SectionEvent(TEMDBModel):
+    """Event related to a section."""
+
+    label: str = Field(..., description="Label or name of the event")
+    timestamp: datetime = Field(..., description="The time when the event occurred")
+    event_type: EventType = Field(..., description="Type of the event")
+    description: str | None = Field(None, description="Additional details about the event")
+
+
+class SectionEvents(TEMDBModel):
+    """Collection of events related to a section."""
+
+    cut_start: SectionEvent | None = Field(None, description="Event marking the start of the cut")
+    cut_end: SectionEvent | None = Field(None, description="Event marking the end of the cut")
+    loop_water_touch: SectionEvent | None = Field(None, description="Event marking when the loop touched the water")
+    loop_boat_exit: SectionEvent | None = Field(None, description="Event marking when the loop exited the boat")
+    loop_substrate_touch: SectionEvent | None = Field(
+        None, description="Event marking when the loop touched the substrate"
+    )
+    loop_blower_activate: SectionEvent | None = Field(
+        None, description="Event marking when the loop blower was activated"
+    )
+    loop_blower_deactivate: SectionEvent | None = Field(
+        None, description="Event marking when the loop blower was deactivated"
+    )
+    loop_substrate_depart: SectionEvent | None = Field(
+        None, description="Event marking when the loop departed from the substrate"
+    )
+    # TODO Consider adding a flexible structure for capturing additional
+    #  events that do not fit into the predefined categories
 
 
 class SectionMetric(TEMDBModel):
@@ -85,6 +140,7 @@ class SectionBase(TEMDBModel):
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
+    section_events: SectionEvents | None = Field(None, description="Collection of events related to this section")
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
     )

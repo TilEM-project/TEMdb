@@ -2,6 +2,12 @@ from enum import Enum
 from typing import Literal
 
 
+class EventType(str, Enum):
+    ROUTINE = "routine"
+    MAINTENANCE = "maintenance"
+    EMERGENCY = "emergency"
+
+
 class SectionQuality(str, Enum):
     GOOD = "good"
     BROKEN = "broken"
