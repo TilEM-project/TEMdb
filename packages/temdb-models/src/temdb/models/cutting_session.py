@@ -1,8 +1,34 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
 from .base import TEMDBModel
+from .enums import EventType
+
+
+class CuttingSessionEvent(TEMDBModel):
+    """Event related to a cutting session."""
+
+    label: str = Field(..., description="Label or name of the event")
+    timestamp: datetime = Field(..., description="The time when the event occurred")
+    event_type: EventType = Field(..., description="Type of the event")
+    description: str | None = Field(None, description="Additional details about the event")
+
+
+class CuttingSessionEvents(TEMDBModel):
+    """Collection of events related to a cutting session."""
+
+    automated_knife_cleanings: list[CuttingSessionEvent] | None = Field(
+        None, description="List of automated knife cleaning events associated with the cutting session"
+    )
+    manual_knife_cleanings: list[CuttingSessionEvent] | None = Field(
+        None, description="List of manual knife cleaning events associated with the cutting session"
+    )
+    water_additions: list[CuttingSessionEvent] | None = Field(
+        None, description="List of water addition events associated with the cutting session"
+    )
 
 
 class CuttingSessionBase(TEMDBModel):
@@ -14,6 +40,9 @@ class CuttingSessionBase(TEMDBModel):
     sectioning_device: str | None = Field(None, description="Microtome/Device used for sectioning")
     media_type: str | None = Field(None, description="Type of substrate the sections are placed upon")
     knife_id: str | None = Field(None, description="Identifier for the knife used")
+    cutting_session_events: CuttingSessionEvents | None = Field(
+        None, description="Collection of events related to this cutting session"
+    )
 
 
 class CuttingSessionCreate(CuttingSessionBase):
