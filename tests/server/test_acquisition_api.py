@@ -1025,3 +1025,90 @@ async def test_bulk_update_stamps_updated_at_on_every_tile(async_client: AsyncCl
 
     assert response.status_code == 200, response.text
     assert all(tile["updated_at"] is not None for tile in response.json())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["image_path", "stage_position", "raster_position"])
+async def test_update_tile_rejects_null_for_a_not_null_column(async_client: AsyncClient, test_acquisition, field: str):
+    [tile_id] = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+    url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}"
+
+    response = await async_client.patch(url, json={field: None})
+
+    assert response.status_code == 422, response.text
+    assert [err["loc"][-1] for err in response.json()["context"]["errors"]] == [field]
+    assert (await async_client.get(url)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_rejects_null_for_a_not_null_column(async_client: AsyncClient, test_acquisition):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 2)
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+
+    response = await async_client.patch(
+        f"{base}/bulk",
+        json={tile_ids[0]: {"focus_score": 0.5}, tile_ids[1]: {"image_path": None}},
+    )
+
+    assert response.status_code == 422, response.text
+    for tile_id in tile_ids:
+        got = await async_client.get(f"{base}/{tile_id}")
+        assert got.status_code == 200
+        assert got.json()["focus_score"] == pytest.approx(0.8)  # the whole batch was refused
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_rejects_one_tile_id_spelled_two_ways(async_client: AsyncClient, test_acquisition):
+    [tile_id] = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+
+    response = await async_client.patch(
+        f"{base}/bulk",
+        json={tile_id: {"focus_score": 0.1}, tile_id.upper(): {"focus_score": 0.2}},
+    )
+
+    assert response.status_code == 400, response.text
+    got = await async_client.get(f"{base}/{tile_id}")
+    assert got.json()["focus_score"] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_tile_without_stats_is_stored_and_read_back(async_client: AsyncClient, test_acquisition):
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    tile = _tile_payload(str(uuid7()), 0)
+    for field in ("focus_score", "min_value", "max_value", "mean_value", "std_value"):
+        del tile[field]
+
+    response = await async_client.post(f"{base}/bulk", json=[tile])
+    assert response.status_code in (200, 201), response.text
+
+    got = await async_client.get(f"{base}/{tile['tile_id']}")
+    assert got.status_code == 200, got.text
+    assert got.json()["focus_score"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_tile_clears_a_stat_with_null(async_client: AsyncClient, test_acquisition):
+    [tile_id] = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+    url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}"
+
+    response = await async_client.patch(url, json={"focus_score": None})
+
+    assert response.status_code == 200, response.text
+    got = await async_client.get(url)
+    assert got.status_code == 200, got.text
+    assert got.json()["focus_score"] is None
+
+
+@pytest.mark.asyncio
+async def test_focus_scores_lists_a_tile_without_a_score(async_client: AsyncClient, test_acquisition):
+    acquisition_id = test_acquisition.acquisition_id
+    tile_ids = await _seed_tiles(async_client, acquisition_id, 2)
+    await async_client.patch(f"/api/v2/acquisitions/{acquisition_id}/tiles/{tile_ids[1]}", json={"focus_score": None})
+
+    response = await async_client.get(f"/api/v2/qc/{acquisition_id}/focus-scores")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [tile["focus_score"] for tile in body["focus_scores"]] == [pytest.approx(0.8), None]
+    assert body["mean_focus"] == pytest.approx(0.8)

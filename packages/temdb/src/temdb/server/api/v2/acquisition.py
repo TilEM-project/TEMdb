@@ -643,7 +643,6 @@ async def add_tiles_to_acquisition(
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=dict[str, Any])
 async def get_tiles_from_acquisition(
-    response: Response,
     acquisition_id: str,
     cursor: int | None = Query(None, description="Last raster_index seen"),
     limit: int = Query(100, ge=1, le=1000),
@@ -679,7 +678,6 @@ async def get_tiles_from_acquisition(
             trimmed.append(entry)
         payloads = trimmed
     next_cursor = tiles[-1].raster_index if tiles else None
-    response.headers["Cache-Control"] = "private, max-age=300"
     return {
         "tiles": payloads,
         "metadata": {
@@ -887,21 +885,23 @@ async def update_tile_from_acquisition_bulk(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    updates = {_tile_uuid_or_404(tile_id): update for tile_id, update in updates.items()}
+    keyed_updates = {_tile_uuid_or_404(tile_id): update for tile_id, update in updates.items()}
+    if len(keyed_updates) != len(updates):
+        raise HTTPException(400, "Duplicate tile IDs in request")
     tiles = (
         await session.scalars(
             select(TileSQLModel).where(
-                TileSQLModel.tile_id.in_(updates.keys()),
+                TileSQLModel.tile_id.in_(keyed_updates.keys()),
                 TileSQLModel.dataset_id == acq_obj.dataset_id,
                 TileSQLModel.run_id == acq_obj.run_id,
             )
         )
     ).all()
-    missing_ids = set(updates.keys()) - {tile.tile_id for tile in tiles}
+    missing_ids = set(keyed_updates.keys()) - {tile.tile_id for tile in tiles}
     if missing_ids:
         raise HTTPException(404, _missing_tiles_detail(missing_ids, acquisition_id))
     for tile_obj in tiles:
-        updated_fields = updates.get(tile_obj.tile_id)
+        updated_fields = keyed_updates.get(tile_obj.tile_id)
         if updated_fields is None:
             raise HTTPException(400, f"No update data for tile {tile_obj.tile_id}")
         update_data = _tile_sql_patch_kwargs(updated_fields)
@@ -909,10 +909,10 @@ async def update_tile_from_acquisition_bulk(
             setattr(tile_obj, field, value)
         session.add(tile_obj)
     await session.commit()
-    (
+    tiles = (
         await session.scalars(
             select(TileSQLModel)
-            .where(TileSQLModel.tile_id.in_(updates.keys()))
+            .where(TileSQLModel.tile_id.in_(keyed_updates.keys()))
             .execution_options(populate_existing=True)
         )
     ).all()

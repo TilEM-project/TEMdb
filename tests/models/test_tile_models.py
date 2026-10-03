@@ -3,7 +3,14 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from temdb.models import Matcher, TileBase, TileCreate, TileResponse
+from temdb.models import (
+    Matcher,
+    TileBase,
+    TileCreate,
+    TileFocusScore,
+    TileResponse,
+    TileUpdate,
+)
 
 TILE_UUID = uuid.UUID("0190a6b2-7c3e-7000-8000-000000000001")
 
@@ -149,6 +156,80 @@ class TestTileBase:
     def test_tile_base_stage_position_rejects_extra_fields(self):
         with pytest.raises(ValidationError):
             TileBase(stage_position={"x": 100, "y": 200, "z": 300})
+
+
+class TestTileStatsOptional:
+    def test_tile_create_without_stats(self):
+        tile = TileCreate(
+            raster_index=0,
+            stage_position={"x": 1.0, "y": 2.0},
+            raster_position={"row": 0, "col": 0},
+            image_path="/path/to/tile.tif",
+        )
+        assert [
+            tile.focus_score,
+            tile.min_value,
+            tile.max_value,
+            tile.mean_value,
+            tile.std_value,
+        ] == [None] * 5
+
+    def test_tile_response_without_stats(self):
+        tile = TileResponse(
+            tile_id="TILE_001",
+            acquisition_id="ACQ_001",
+            raster_index=0,
+            stage_position={"x": 100.0, "y": 200.0},
+            raster_position={"row": 0, "col": 0},
+            image_path="/data/tiles/TILE_001.tif",
+        )
+        assert [
+            tile.focus_score,
+            tile.min_value,
+            tile.max_value,
+            tile.mean_value,
+            tile.std_value,
+        ] == [None] * 5
+
+    def test_tile_focus_score_accepts_null(self):
+        assert (
+            TileFocusScore(
+                tile_id="TILE_001", raster_index=0, focus_score=None
+            ).focus_score
+            is None
+        )
+
+
+class TestTileUpdate:
+    @pytest.mark.parametrize(
+        "field", ["stage_position", "raster_position", "image_path"]
+    )
+    def test_null_rejected_for_a_not_null_column(self, field):
+        with pytest.raises(ValidationError):
+            TileUpdate(**{field: None})
+
+    def test_omitted_fields_stay_unset(self):
+        assert TileUpdate(focus_score=0.5).model_dump(exclude_unset=True) == {
+            "focus_score": 0.5
+        }
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "focus_score",
+            "min_value",
+            "max_value",
+            "mean_value",
+            "std_value",
+            "matcher",
+            "supertile_id",
+            "supertile_raster_position",
+        ],
+    )
+    def test_null_accepted_for_a_nullable_field(self, field):
+        assert TileUpdate(**{field: None}).model_dump(exclude_unset=True) == {
+            field: None
+        }
 
 
 class TestTileCreatePositionValidation:
