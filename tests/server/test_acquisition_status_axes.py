@@ -7,7 +7,6 @@ MINIMAL_ACQ_PAYLOAD = {
     "acquisition_id": "ACQ_AXES_001",
     "montage_id": "MONTAGE_AXES_001",
     "hardware_settings": {
-        "scope_id": "TEST_SCOPE_001",
         "camera_model": "Test Camera",
         "camera_serial": "12345",
         "camera_bit_depth": 16,
