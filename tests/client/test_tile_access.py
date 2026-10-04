@@ -1,10 +1,13 @@
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
+from temdb.client import TEMdbClient
+from temdb.client.exceptions import TEMdbConflictError
 from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.client.resources.roi import ROIResource
-from temdb.models import TileUpdate
+from temdb.models import TileBulkDeleteResult, TileDeleteAllResult, TileUpdate
 
 API = "http://test/api/v2"
 
@@ -170,25 +173,41 @@ async def test_update_tiles_bulk_sends_patch_and_returns_models():
 
 
 @pytest.mark.asyncio
-async def test_delete_all_tiles_calls_delete():
+async def test_delete_all_tiles_returns_the_deleted_count():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {}
+    request.return_value = {"deleted": 3}
 
-    await res.delete_all_tiles("ACQ1")
+    out = await res.delete_all_tiles("ACQ1")
 
     method, endpoint = request.await_args.args[0], request.await_args.args[1]
     assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/all")
+    assert out == TileDeleteAllResult(deleted=3)
 
 
 @pytest.mark.asyncio
-async def test_delete_tiles_bulk_sends_json_body():
+async def test_delete_tiles_bulk_sends_json_body_and_returns_the_result():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {}
+    request.return_value = {"requested": 2, "deleted": 1, "not_found": ["018f-1"]}
 
-    await res.delete_tiles_bulk("ACQ1", ["018f-0", "018f-1"])
+    out = await res.delete_tiles_bulk("ACQ1", ["018f-0", "018f-1"])
 
     method, endpoint = request.await_args.args[0], request.await_args.args[1]
     assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/bulk")
     assert request.await_args.kwargs["json"] == ["018f-0", "018f-1"]
+    assert out == TileBulkDeleteResult(requested=2, deleted=1, not_found=["018f-1"])
+
+
+@pytest.mark.asyncio
+async def test_delete_all_tiles_on_a_complete_acquisition_raises_conflict():
+    client = TEMdbClient("https://api.temdb.example.com")
+    req = httpx.Request("DELETE", "https://api.temdb.example.com/api/v2/acquisitions/ACQ1/tiles/all")
+    client._http_client.request = AsyncMock(
+        return_value=httpx.Response(409, request=req, json={"detail": "Acquisition 'ACQ1' is complete"})
+    )
+    try:
+        with pytest.raises(TEMdbConflictError, match="is complete"):
+            await client.acquisition.delete_all_tiles("ACQ1")
+    finally:
+        await client.close()

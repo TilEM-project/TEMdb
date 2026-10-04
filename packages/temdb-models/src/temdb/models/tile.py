@@ -82,3 +82,13 @@ class TileResponse(TileBase):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     version: int | None = Field(None, description="Document version number")
+
+
+class TileBulkDeleteResult(TEMDBModel):
+    requested: int = Field(..., description="Distinct tile IDs in the request")
+    deleted: int = Field(..., description="Tiles deleted")
+    not_found: list[str] = Field(..., description="Requested IDs with no tile in this acquisition")
+
+
+class TileDeleteAllResult(TEMDBModel):
+    deleted: int = Field(..., description="Tiles deleted")
