@@ -60,16 +60,13 @@ class TileCreate(TileBase):
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
-    focus_score: float = Field(..., description="Focus score of the tile")
-    min_value: float = Field(..., description="Minimum pixel value of the tile")
-    max_value: float = Field(..., description="Maximum pixel value of the tile")
-    mean_value: float = Field(..., description="Mean pixel value of the tile")
-    std_value: float = Field(..., description="Standard deviation of pixel values of the tile")
     image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
 
 class TileUpdate(TileBase):
-    pass
+    stage_position: StagePosition = Field(None, description="Stage position of the tile in stage coordinates in nm")
+    raster_position: RasterPosition = Field(None, description="Row, column raster position of the tile")
+    image_path: URI.Type = Field(None, description="URL to the image of the tile")
 
 
 class TileResponse(TileBase):
@@ -80,13 +77,18 @@ class TileResponse(TileBase):
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
-    focus_score: float = Field(..., description="Focus score of the tile")
-    min_value: float = Field(..., description="Minimum pixel value of the tile")
-    max_value: float = Field(..., description="Maximum pixel value of the tile")
-    mean_value: float = Field(..., description="Mean pixel value of the tile")
-    std_value: float = Field(..., description="Standard deviation of pixel values of the tile")
     image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
     version: int | None = Field(None, description="Document version number")
+
+
+class TileBulkDeleteResult(TEMDBModel):
+    requested: int = Field(..., description="Distinct tile IDs in the request")
+    deleted: int = Field(..., description="Tiles deleted")
+    not_found: list[str] = Field(..., description="Requested IDs with no tile in this acquisition")
+
+
+class TileDeleteAllResult(TEMDBModel):
+    deleted: int = Field(..., description="Tiles deleted")

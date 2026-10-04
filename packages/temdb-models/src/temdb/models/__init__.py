@@ -97,7 +97,9 @@ from temdb.models.task import (
 from temdb.models.tile import (
     Matcher,
     TileBase,
+    TileBulkDeleteResult,
     TileCreate,
+    TileDeleteAllResult,
     TileResponse,
     TileUpdate,
 )
@@ -119,6 +121,8 @@ __all__ = [
     "TileCreate",
     "TileUpdate",
     "TileResponse",
+    "TileBulkDeleteResult",
+    "TileDeleteAllResult",
     # Acquisition
     "AcquisitionBase",
     "AcquisitionCreate",
