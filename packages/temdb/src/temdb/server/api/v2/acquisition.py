@@ -12,7 +12,8 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, bindparam, delete, func, select, update
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -626,9 +627,18 @@ async def add_tiles_to_acquisition(
         # Retried batches are expected (at-least-once ingest): ON CONFLICT DO
         # NOTHING keeps the write-once rows and reports duplicates as skipped.
         rows = [_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.run_id) for tile in tiles]
+        columns = TileSQLModel.__table__.c
+        # One bound array per column: one value per cell exceeds asyncpg's 32,767-argument limit at 1,928 tiles.
+        # dimensions=1 keeps each matcher list as one jsonb element.
+        unnested = select(
+            *(
+                func.unnest(bindparam(key, [row[key] for row in rows], type_=ARRAY(columns[key].type, dimensions=1)))
+                for key in rows[0]
+            )
+        )
         result = await session.execute(
             pg_insert(TileSQLModel)
-            .values(rows)
+            .from_select(list(rows[0]), unnested)
             .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
         )
         await session.commit()

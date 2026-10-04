@@ -1112,3 +1112,42 @@ async def test_focus_scores_lists_a_tile_without_a_score(async_client: AsyncClie
     body = response.json()
     assert [tile["focus_score"] for tile in body["focus_scores"]] == [pytest.approx(0.8), None]
     assert body["mean_focus"] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_bulk_upload_large_tile_batch(async_client: AsyncClient, test_acquisition):
+    tiles = [_tile_payload(str(uuid7()), i) for i in range(4096)]
+    matcher = {
+        "row": 0,
+        "col": 1,
+        "dX": 1.5,
+        "dY": -2.0,
+        "dXsd": 0.1,
+        "dYsd": 0.2,
+        "distance": 3.0,
+        "rotation": 0.01,
+        "match_quality": 0.9,
+        "position": "left",
+        "pX": [1.0, 2.0],
+        "pY": [3.0],
+        "qX": [4.0],
+        "qY": [5.0],
+    }
+    tiles[0].update(matcher=[matcher], supertile_id="ST_0", supertile_raster_position={"row": 1, "col": 2})
+    tiles[1].update(focus_score=None, std_value=None)
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+
+    response = await async_client.post(f"{base}/bulk", json=tiles)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["inserted"] == 4096
+    assert await _tile_count(async_client, test_acquisition.acquisition_id) == 4096
+    first = (await async_client.get(f"{base}/{tiles[0]['tile_id']}")).json()
+    assert first["matcher"] == [matcher]
+    assert (first["supertile_id"], first["supertile_raster_position"]) == ("ST_0", {"row": 1, "col": 2})
+    second = (await async_client.get(f"{base}/{tiles[1]['tile_id']}")).json()
+    assert (second["focus_score"], second["std_value"], second["mean_value"]) == (None, None, 100)
+    last = (await async_client.get(f"{base}/{tiles[4095]['tile_id']}")).json()
+    assert last["stage_position"] == {"x": 4095.0, "y": 4096.0}
+    assert last["raster_position"] == {"row": 0, "col": 4095}
+    assert last["image_path"] == tiles[4095]["image_path"]

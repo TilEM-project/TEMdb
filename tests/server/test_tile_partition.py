@@ -35,7 +35,7 @@ async def test_tiles_is_partitioned_by_list(init_db, test_db_manager):
 async def _make_dataset(session, size_class="small"):
     ds = DatasetSQLModel(
         dataset_id=uuid7(),
-        name=f"ds_{uuid7().hex[:8]}",
+        name=f"ds_{uuid7().hex}",
         size_class=size_class,
         created_at=datetime.now(timezone.utc),
     )
@@ -239,6 +239,22 @@ async def test_concurrent_ensure_does_not_error(init_db, test_db_manager):
 
     async with test_db_manager.async_session_factory() as session:
         assert await _child_count(session, partition_name(ds_id)) == 4
+
+
+@pytest.mark.asyncio
+async def test_concurrent_ensure_for_different_datasets_does_not_deadlock(init_db, test_db_manager):
+    async def worker(ds_id):
+        async with test_db_manager.async_session_factory() as session:
+            await ensure_tile_partition(session, ds_id)
+            await session.commit()
+
+    async with test_db_manager.async_session_factory() as session:
+        ds_ids = [await _make_dataset(session, size_class="small") for _ in range(8)]
+
+    await asyncio.gather(*(worker(ds_id) for ds_id in ds_ids))
+
+    async with test_db_manager.async_session_factory() as session:
+        assert [await _child_count(session, partition_name(ds_id)) for ds_id in ds_ids] == [4] * 8
 
 
 @pytest.mark.asyncio
