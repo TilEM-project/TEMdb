@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import REAL, ForeignKey, Index, Integer, String, Uuid, func, text
+from sqlalchemy import REAL, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Uuid, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -18,6 +18,11 @@ class TileSQLModel(ModelDumpMixin, TimestampMixin, Base):
             "dataset_id",
             "focus_score",
             postgresql_where=text("focus_score IS NOT NULL"),
+        ),
+        ForeignKeyConstraint(
+            ["dataset_id", "run_id"],
+            ["acquisitions.dataset_id", "acquisitions.run_id"],
+            name="fk_tiles_dataset_id_acquisitions",
         ),
         {"postgresql_partition_by": "LIST (dataset_id)"},
     )
