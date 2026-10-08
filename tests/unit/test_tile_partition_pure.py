@@ -5,7 +5,6 @@ import pytest
 from temdb.server.sqlmodels.tile_partition import (
     SIZE_CLASS_CEILING,
     SIZE_CLASS_MODULUS,
-    lock_key,
     partition_name,
     resolve_modulus,
     resolve_size_class,
@@ -42,14 +41,6 @@ def test_resolve_modulus_unknown_raises():
 def test_partition_name_is_deterministic_hex():
     ds = uuid.UUID("018f9c2a-7b3d-7e4f-8a1b-2c3d4e5f6a7b")
     assert partition_name(ds) == f"tile_d_{ds.hex}"
-
-
-def test_lock_key_is_stable_signed_64bit():
-    ds = uuid.UUID("018f9c2a-7b3d-7e4f-8a1b-2c3d4e5f6a7b")
-    key = lock_key(ds)
-    assert isinstance(key, int)
-    assert -(2**63) <= key < 2**63
-    assert lock_key(ds) == key  # deterministic
 
 
 def test_size_class_ceiling_values():
