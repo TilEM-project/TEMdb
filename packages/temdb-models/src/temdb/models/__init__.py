@@ -37,8 +37,18 @@ from temdb.models.enums import (
     TRANSFER_STATES,
     AcquisitionStatusFilter,
     SectionQuality,
+    ShapeType,
+    SubstrateType,
 )
 from temdb.models.error import APIErrorResponse
+from temdb.models.layout import (
+    Aperture,
+    Fiducial,
+    SubstrateLayoutBase,
+    SubstrateLayoutCreate,
+    SubstrateLayoutResponse,
+    SubstrateLayoutUpdate,
+)
 from temdb.models.lens_correction import (
     LensCorrectionBase,
     LensCorrectionCreate,
@@ -80,11 +90,8 @@ from temdb.models.specimen import (
     SpecimenUpdate,
 )
 from temdb.models.substrate import (
-    Aperture,
-    ReferencePoints,
     SubstrateBase,
     SubstrateCreate,
-    SubstrateMetadata,
     SubstrateResponse,
     SubstrateUpdate,
 )
@@ -109,6 +116,8 @@ __all__ = [
     # Enums
     "AcquisitionStatusFilter",
     "SectionQuality",
+    "SubstrateType",
+    "ShapeType",
     # Vocab constants
     "RUN_STATUSES",
     "QC_STATES",
@@ -167,6 +176,13 @@ __all__ = [
     "ReferencePoints",
     "Aperture",
     "SubstrateMetadata",
+    # SubstrateLayout
+    "Aperture",
+    "Fiducial",
+    "SubstrateLayoutBase",
+    "SubstrateLayoutCreate",
+    "SubstrateLayoutResponse",
+    "SubstrateLayoutUpdate",
     # Task
     "AcquisitionTaskBase",
     "AcquisitionTaskCreate",

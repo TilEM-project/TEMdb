@@ -45,10 +45,12 @@ class TestSectionCreate:
             cutting_session_id="CUT001",
             section_number=1,
             media_id="MEDIA001",
+            aperture_id=0,
         )
         assert section.cutting_session_id == "CUT001"
         assert section.section_number == 1
         assert section.media_id == "MEDIA001"
+        assert section.aperture_id == 0
 
     def test_required_fields(self):
         with pytest.raises(ValidationError):
@@ -59,6 +61,7 @@ class TestSectionCreate:
             cutting_session_id="CUT001",
             section_number=1,
             media_id="MEDIA001",
+            aperture_id=0,
             barcode="BC123456",
             optical_image={
                 "inspection": {
@@ -97,9 +100,11 @@ class TestSectionResponse:
             cutting_session_id="CUT001",
             section_number=1,
             media_id="MEDIA001",
+            aperture_id=0,
             block_id="BLOCK001",
             specimen_id="SPEC001",
             timestamp=datetime.now(),
         )
         assert response.section_id == "MEDIA001_S00001"
         assert response.section_number == 1
+        assert response.aperture_id == 0

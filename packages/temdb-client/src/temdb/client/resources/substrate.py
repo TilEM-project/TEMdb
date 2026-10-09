@@ -17,7 +17,6 @@ class SubstrateResource(BaseResource):
     async def list(
         self,
         media_type: str | None = None,
-        status: str | None = None,
         skip: int = 0,
         limit: int = 100,
         **kwargs: Any,
@@ -25,7 +24,6 @@ class SubstrateResource(BaseResource):
         """List substrates with optional filtering and pagination."""
         params = {
             "media_type": media_type,
-            "status": status,
             "skip": skip,
             "limit": limit,
         }

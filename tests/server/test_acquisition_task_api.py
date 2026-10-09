@@ -80,6 +80,7 @@ async def test_list_acquisition_tasks_skip_destroyed(
             block_id=test_block.block_id,
             specimen_id=test_specimen.specimen_id,
             media_id=test_substrate.media_id,
+            aperture_id=0,
             condition="destroyed",
             created_at=datetime.now(timezone.utc),
         )

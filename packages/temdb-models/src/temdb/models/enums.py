@@ -19,6 +19,31 @@ class MatchPosition(str, Enum):
     BOTTOM = "bottom"
 
 
+class SubstrateType(str, Enum):
+    GRID_DISC = "grid_disc"
+    WAFER = "wafer"
+    TAPE = "tape"
+    STICK = "stick"
+    GRID = "grid"
+    WASHER = "washer"
+
+
+class ApertureCondition(str, Enum):
+    OK = "ok"
+    DAMAGED = "damaged"
+    MISSING = "missing"
+    BURST = "burst"
+    CONTAMINATED = "contaminated"
+
+
+class ShapeType(str, Enum):
+    CIRCLE = "circle"
+    SLOT = "slot"
+    RECTANGLE = "rectangle"
+    TRIANGLE = "triangle"
+    CIRCLE_ARRAY = "circle_array"
+
+
 RUN_STATUSES = ("complete", "aborted", "failed")
 AcquisitionStatusFilter = Literal["complete", "aborted", "failed", "in_flight"]
 QC_STATES = ("pending", "qc_pass", "qc_fail", "needs_review")

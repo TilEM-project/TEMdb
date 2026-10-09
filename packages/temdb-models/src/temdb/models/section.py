@@ -75,14 +75,6 @@ class SectionBase(TEMDBModel):
         None,
         description="Optical image collected before imaging",
     )
-    aperture_uid: str | None = Field(
-        None,
-        description="UID of the specific aperture holding this section",
-    )
-    aperture_index: int | None = Field(
-        None,
-        description="Index of the specific aperture holding this section",
-    )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
     run_parameters: SectioningRunParameters | None = Field(
@@ -98,6 +90,7 @@ class SectionCreate(SectionBase):
         ...,
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
+    aperture_id: int = Field(..., description="ID of the aperture on the substrate this section is placed on")
     section_number: int = Field(..., gt=0, description="Sequential section number")
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
@@ -135,6 +128,7 @@ class SectionResponse(SectionBase):
     block_id: str = Field(..., description="ID of the block")
     specimen_id: str = Field(..., description="ID of the specimen")
     media_id: str = Field(..., description="ID of the substrate")
+    aperture_id: int = Field(..., description="ID of the aperture on the substrate")
     condition: str = Field("ok", description="Physical condition of the section")
     condition_reason: str | None = Field(None, description="Reason for the current condition")
 
