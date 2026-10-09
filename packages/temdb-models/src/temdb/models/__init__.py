@@ -37,6 +37,8 @@ from temdb.models.enums import (
     TRANSFER_STATES,
     AcquisitionStatusFilter,
     SectionQuality,
+    SubstrateType,
+    ShapeType,
 )
 from temdb.models.error import APIErrorResponse
 from temdb.models.layout import (
@@ -88,11 +90,8 @@ from temdb.models.specimen import (
     SpecimenUpdate,
 )
 from temdb.models.substrate import (
-    Aperture,
-    ReferencePoints,
     SubstrateBase,
     SubstrateCreate,
-    SubstrateMetadata,
     SubstrateResponse,
     SubstrateUpdate,
 )

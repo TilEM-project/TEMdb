@@ -22,6 +22,7 @@ from temdb.server.sqlmodels import (
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
+    SubstrateLayoutSQLModel,
     SubstrateSQLModel,
     TileSQLModel,
 )
@@ -138,13 +139,27 @@ async def test_cutting_session(
 
 
 @pytest.fixture(scope="function")
-async def test_substrate(init_db, test_db_manager: DatabaseManager):
+async def test_layout(init_db, test_db_manager: DatabaseManager):
+    return await _seed(
+        test_db_manager,
+        SubstrateLayoutSQLModel(
+            layout_id="TEST_LAYOUT_001",
+            name="Test layout",
+            media_type="tape",
+            apertures={0: {}},
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+
+
+@pytest.fixture(scope="function")
+async def test_substrate(init_db, test_db_manager: DatabaseManager, test_layout: SubstrateLayoutSQLModel):
     return await _seed(
         test_db_manager,
         SubstrateSQLModel(
             media_id="SUB001",
-            media_type="tape",
-            metadata_json={},
+            substrate_layout_id=test_layout.layout_id,
+            condition={0: "ok"},
             created_at=datetime.now(timezone.utc),
         ),
     )
@@ -167,6 +182,7 @@ async def test_section(
             block_id=test_cutting_session.block_id,
             specimen_id=test_cutting_session.specimen_id,
             media_id=test_substrate.media_id,
+            aperture_id=0,
             created_at=datetime.now(timezone.utc),
         ),
     )

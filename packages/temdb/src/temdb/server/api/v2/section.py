@@ -237,8 +237,7 @@ async def create_section(
             section_data.run_parameters.model_dump(mode="json") if section_data.run_parameters is not None else None
         ),
         media_id=section_data.media_id,
-        aperture_uid=section_data.aperture_uid,
-        aperture_index=section_data.aperture_index,
+        aperture_id=section_data.aperture_id,
         barcode=section_data.barcode,
         created_at=section_data.created_at or datetime.now(timezone.utc),
     )
@@ -320,8 +319,7 @@ async def create_sections_batch(
             optical_image=(
                 _dump_images(section_create.optical_image) if section_create.optical_image is not None else None
             ),
-            aperture_uid=section_create.aperture_uid,
-            aperture_index=section_create.aperture_index,
+            aperture_id=section_create.aperture_id,
             barcode=section_create.barcode,
             section_metrics=(
                 section_create.section_metrics.model_dump(mode="json")

@@ -24,6 +24,7 @@ from .resources.section import SectionResource
 from .resources.specimen import SpecimenResource
 from .resources.substrate import SubstrateResource
 from .resources.task import AcquisitionTaskResource
+from .resources.layout import SubstrateLayoutResource
 
 
 class TEMdbClient:
@@ -69,6 +70,7 @@ class TEMdbClient:
         self._section = SectionResource(self._async_request, self.api_url)
         self._microscope = MicroscopeResource(self._async_request, self.api_url)
         self._lens_correction = LensCorrectionResource(self._async_request, self.api_url)
+        self._substrate_layout = SubstrateLayoutResource(self._async_request, self.api_url)
 
     @property
     def specimen(self) -> SpecimenResource:
@@ -113,6 +115,10 @@ class TEMdbClient:
     @property
     def lens_correction(self) -> LensCorrectionResource:
         return self._lens_correction
+
+    @property
+    def substrate_layout(self) -> SubstrateLayoutResource:
+        return self._substrate_layout
 
     @retry(
         stop=stop_after_attempt(3),

@@ -22,6 +22,7 @@ from temdb.server.api.v2.section import section_api
 from temdb.server.api.v2.specimen import specimen_api
 from temdb.server.api.v2.substrate import substrate_api
 from temdb.server.api.v2.tasks import acquisition_task_api
+from temdb.server.api.v2.layout import substrate_layout_api
 from temdb.server.config import config, is_debug_traceback_enabled
 from temdb.server.database import DatabaseManager
 from temdb.server.exception_handlers import register_exception_handlers
@@ -157,6 +158,7 @@ def create_app():
     app.include_router(cutting_session_api, prefix=v2_prefix)
     app.include_router(section_api, prefix=v2_prefix)
     app.include_router(substrate_api, prefix=v2_prefix)
+    app.include_router(substrate_layout_api, prefix=v2_prefix)
     app.include_router(roi_api, prefix=v2_prefix)
     app.include_router(acquisition_task_api, prefix=v2_prefix)
     app.include_router(acquisition_api, prefix=v2_prefix)

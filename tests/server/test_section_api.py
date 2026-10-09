@@ -47,16 +47,14 @@ async def test_list_sections_filtered(
 
 
 @pytest.mark.asyncio
-async def test_create_section(async_client: AsyncClient, test_cutting_session):
+async def test_create_section(async_client: AsyncClient, test_cutting_session, test_layout):
     """Test creating a new section."""
 
     substrate_id_hr = f"TEST_SUB_CREATE_{int(datetime.now(timezone.utc).timestamp())}"
     substrate_data = {
         "media_id": substrate_id_hr,
-        "media_type": "wafer",
-        "status": "new",
-        "metadata": {"name": "Test Wafer Create"},
-        "apertures": [{"uid": "A1", "index": 0, "status": "available"}],
+        "substrate_layout_id": test_layout.layout_id,
+        "condition": {"0": "ok"},
     }
 
     response = await async_client.post("/api/v2/substrates", json=substrate_data)
@@ -69,6 +67,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 99,
         "media_id": substrate_id_hr,
+        "aperture_id": 0,
         "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
         "barcode": "BC123456789",
         "run_parameters": {"cutting_thickness_um": 45.5, "water_added": True},
@@ -87,7 +86,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
 
 
 @pytest.mark.asyncio
-async def test_create_sections_batch(async_client: AsyncClient, test_cutting_session):
+async def test_create_sections_batch(async_client: AsyncClient, test_cutting_session, test_layout):
     """Test creating multiple sections in a batch request."""
     timestamp = int(datetime.now(timezone.utc).timestamp())
     media_base = f"TEST_SUB_BATCH_{timestamp}"
@@ -98,11 +97,8 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
         substrates_data.append(
             {
                 "media_id": substrate_id,
-                "media_type": test_cutting_session.media_type,
-                "status": "new",
-                "uid": f"SUBSTRATE_{i}",
-                "metadata": {"name": f"Test Substrate Batch {i}"},
-                "apertures": [{"uid": f"A{j}", "index": j, "status": "available"} for j in range(3)],
+                "substrate_layout_id": test_layout.layout_id,
+                "condition": {str(j): "ok" for j in range(3)},
             }
         )
 
@@ -119,6 +115,7 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
                 "cutting_session_id": test_cutting_session.cutting_session_id,
                 "section_number": section_number,
                 "media_id": f"{media_base}_{substrate_idx}",
+                "aperture_id": i % 3,
                 "optical_image": {"inspection": {"image_path": f"http://example.com/image_{i}.png"}},
                 "barcode": f"BATCH{timestamp}_{i}",
             }
@@ -170,6 +167,7 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
             "cutting_session_id": "NON_EXISTENT_SESSION_ID",
             "section_number": 1,
             "media_id": test_substrate.media_id,
+            "aperture_id": 0,
             "optical_image": {"inspection": {"image_path": "http://foobar.com/image.png"}},
         }
     ]
@@ -188,6 +186,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": "NON_EXISTENT_MEDIA_ID",
+            "aperture_id": 0,
             "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
         }
     ]
@@ -199,17 +198,15 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, test_cutting_session):
+async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, test_cutting_session, test_layout):
     """Test creating sections with duplicate IDs in the same batch."""
     timestamp = int(datetime.now(timezone.utc).timestamp())
     media_id = f"TEST_SUB_DUP_{timestamp}"
 
     substrate_data = {
         "media_id": media_id,
-        "media_type": test_cutting_session.media_type,
-        "status": "new",
-        "metadata": {"name": "Test Substrate Duplicate"},
-        "apertures": [{"uid": "A1", "index": 0, "status": "available"}],
+        "substrate_layout_id": test_layout.layout_id,
+        "condition": {"0": "ok"},
     }
 
     substrate_response = await async_client.post("/api/v2/substrates", json=substrate_data)
@@ -220,12 +217,14 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
+            "aperture_id": 0,
             "optical_image": {"inspection": {"image_path": "http://image.server.com/image1.png"}},
         },
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
+            "aperture_id": 0,
             "optical_image": {"inspection": {"image_path": "http://some.other.place.com/image2.png"}},
         },
     ]
@@ -279,6 +278,7 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 100,
         "media_id": test_substrate.media_id,
+        "aperture_id": 0,
     }
 
     section_id_hr = f"{test_substrate.media_id}_S100"

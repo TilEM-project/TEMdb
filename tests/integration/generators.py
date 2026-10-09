@@ -65,11 +65,8 @@ def generate_cutting_session(specimen: SpecimenSQLModel, block: BlockSQLModel, *
 def generate_substrate(cutting_session: CuttingSessionSQLModel, **kwargs) -> SubstrateSQLModel:
     defaults = {
         "media_id": f"MEDIA_{cutting_session.cutting_session_id}_{fake.unique.random_number(digits=4)}",
-        "media_type": cutting_session.media_type,
-        "metadata_json": {
-            "cutting_session_id": cutting_session.cutting_session_id,
-            "block_id": cutting_session.block_id,
-        },
+        "substrate_layout_id": kwargs.pop("substrate_layout_id", "TEST_LAYOUT"),
+        "condition": {0: "ok"},
         "created_at": datetime.now(timezone.utc),
     }
     defaults.update(kwargs)
@@ -106,6 +103,7 @@ def generate_section(
             else None
         ),
         "media_id": substrate.media_id,
+        "aperture_id": 0,
         "barcode": fake.ean13() if fake.boolean() else None,
         "created_at": datetime.now(timezone.utc),
     }
