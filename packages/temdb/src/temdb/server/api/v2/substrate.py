@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import SectionResponse, SubstrateCreate, SubstrateResponse, SubstrateUpdate
 from temdb.server.dependencies import get_async_session
-from temdb.server.sqlmodels import SectionSQLModel, SubstrateSQLModel, SubstrateLayoutSQLModel
+from temdb.server.sqlmodels import SectionSQLModel, SubstrateLayoutSQLModel, SubstrateSQLModel
 
 substrate_api = APIRouter(
     tags=["Substrates"],

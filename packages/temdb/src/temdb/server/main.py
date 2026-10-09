@@ -14,6 +14,7 @@ from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
 from temdb.server.api.v2.dataset import dataset_api
+from temdb.server.api.v2.layout import substrate_layout_api
 from temdb.server.api.v2.lens_correction import lens_correction_api
 from temdb.server.api.v2.microscope import microscope_api
 from temdb.server.api.v2.quality_control import qc_api
@@ -22,7 +23,6 @@ from temdb.server.api.v2.section import section_api
 from temdb.server.api.v2.specimen import specimen_api
 from temdb.server.api.v2.substrate import substrate_api
 from temdb.server.api.v2.tasks import acquisition_task_api
-from temdb.server.api.v2.layout import substrate_layout_api
 from temdb.server.config import config, is_debug_traceback_enabled
 from temdb.server.database import DatabaseManager
 from temdb.server.exception_handlers import register_exception_handlers

@@ -5,8 +5,13 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import SubstrateLayoutCreate, SubstrateLayoutUpdate, SubstrateLayoutResponse, SubstrateType, SubstrateResponse
-
+from temdb.models import (
+    SubstrateLayoutCreate,
+    SubstrateLayoutResponse,
+    SubstrateLayoutUpdate,
+    SubstrateResponse,
+    SubstrateType,
+)
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SubstrateLayoutSQLModel, SubstrateSQLModel
 
@@ -25,7 +30,9 @@ def _to_json_compatible(value):
 
 @substrate_layout_api.get("/layouts", response_model=list[SubstrateLayoutResponse])
 async def list_layouts(
-    media_type: SubstrateType | None = Query(None, description="Filter by substrate media type (e.g., 'wafer', 'tape')"),
+    media_type: SubstrateType | None = Query(
+        None, description="Filter by substrate media type (e.g., 'wafer', 'tape')"
+    ),
     skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
     limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
     session: AsyncSession = Depends(get_async_session),
@@ -69,7 +76,9 @@ async def create_layout(
 @substrate_layout_api.get("/layouts/{layout_id}", response_model=SubstrateLayoutResponse)
 async def get_layout(layout_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific substrate layout by its unique layout_id."""
-    layout = await session.scalars(select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id))
+    layout = await session.scalars(
+        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id)
+    )
     layout_obj = layout.one_or_none()
     if layout_obj is None:
         raise HTTPException(
@@ -86,7 +95,9 @@ async def update_layout(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific substrate identified by layout_id."""
-    layout = await session.scalars(select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id))
+    layout = await session.scalars(
+        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id)
+    )
     layout_obj = layout.one_or_none()
     if layout_obj is None:
         raise HTTPException(
@@ -114,14 +125,18 @@ async def update_layout(
 @substrate_layout_api.delete("/layouts/{layout_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_layout(layout_id: str, session: AsyncSession = Depends(get_async_session)):
     """Delete a specific substrate layout by its layout_id."""
-    layout = await session.scalars(select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id))
+    layout = await session.scalars(
+        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id)
+    )
     layout_obj = layout.one_or_none()
     if layout_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate layout with layout_id '{layout_id}' not found",
         )
-    substrate_count = await session.scalars(select(SubstrateSQLModel).where(SubstrateSQLModel.substrate_layout_id == layout_id))
+    substrate_count = await session.scalars(
+        select(SubstrateSQLModel).where(SubstrateSQLModel.substrate_layout_id == layout_id)
+    )
     if len(substrate_count.all()) > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -140,7 +155,9 @@ async def get_layout_substrates(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve substrates with a specific layout."""
-    layout = await session.scalars(select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id))
+    layout = await session.scalars(
+        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id)
+    )
     layout_obj = layout.one_or_none()
     if layout_obj is None:
         raise HTTPException(
@@ -148,9 +165,6 @@ async def get_layout_substrates(
             detail=f"Substrate layout with layout_id '{layout_id}' not found",
         )
     substrates = await session.scalars(
-        select(SubstrateSQLModel)
-        .where(SubstrateSQLModel.substrate_layout_id == layout_id)
-        .offset(skip)
-        .limit(limit)
+        select(SubstrateSQLModel).where(SubstrateSQLModel.substrate_layout_id == layout_id).offset(skip).limit(limit)
     )
     return substrates.all()
