@@ -1,7 +1,6 @@
 from datetime import datetime
-from typing import Any
 
-from pydantic import AliasChoices, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from .base import TEMDBModel
 from .enums import ApertureCondition
@@ -10,7 +9,9 @@ from .enums import ApertureCondition
 class SubstrateBase(TEMDBModel):
     """Base substrate fields."""
 
-    condition: dict[int, ApertureCondition] | None = Field(None, description="A mapping of aperture indicies to aperture conditions")
+    condition: dict[int, ApertureCondition] | None = Field(
+        None, description="A mapping of aperture indicies to aperture conditions"
+    )
 
 
 class SubstrateCreate(SubstrateBase):

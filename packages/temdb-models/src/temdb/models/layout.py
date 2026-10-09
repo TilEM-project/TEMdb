@@ -32,14 +32,20 @@ class TriangleParams(TEMDBModel):
 
 class CircleArrayParams(TEMDBModel):
     radius: float = Field(..., description="Radius of the circle array in mm")
-    count: int | tuple[int, int] = Field(..., description="Count of circles in the array; can be a single integer or a tuple for rows and columns")
-    pitch: float | tuple[float, float] = Field(..., description="Pitch of the circles in the array; can be a single float or a tuple for X and Y pitch")
+    count: int | tuple[int, int] = Field(
+        ..., description="Count of circles in the array; can be a single integer or a tuple for rows and columns"
+    )
+    pitch: float | tuple[float, float] = Field(
+        ..., description="Pitch of the circles in the array; can be a single float or a tuple for X and Y pitch"
+    )
     angle: float = Field(0, description="Angle of the circle array in degrees (default: 0)")
 
 
 class Shape(TEMDBModel):
     shape_type: ShapeType = Field(..., description="The type of shape")
-    shape_params: CircleParams | SlotParams | RectangleParams | TriangleParams | CircleArrayParams = Field(..., description="Parameters of the shape")
+    shape_params: CircleParams | SlotParams | RectangleParams | TriangleParams | CircleArrayParams = Field(
+        ..., description="Parameters of the shape"
+    )
     centroid: tuple[float, float] = Field(..., description="Centroid of the shape (X, Y) in mm")
 
     @model_validator(mode="before")
@@ -72,7 +78,9 @@ class Shape(TEMDBModel):
 class Fiducial(Shape):
     """Represents a fiducial on a substrate."""
 
-    through_shape: bool = Field(..., description="Whether the fiducial is a through shape (e.g.,light or electrons can pass through)")
+    through_shape: bool = Field(
+        ..., description="Whether the fiducial is a through shape (e.g.,light or electrons can pass through)"
+    )
 
 
 class Aperture(Shape):

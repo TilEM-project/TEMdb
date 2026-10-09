@@ -52,14 +52,10 @@ def app() -> FastAPI:
 
 
 @pytest.fixture(scope="function")
-async def async_client(
-    app: FastAPI, test_db_manager: DatabaseManager, init_db
-) -> AsyncClient:
+async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db) -> AsyncClient:
     app.dependency_overrides[get_db_manager] = lambda: test_db_manager
     try:
-        async with AsyncClient(
-            base_url="http://test", transport=ASGITransport(app=app)
-        ) as client:
+        async with AsyncClient(base_url="http://test", transport=ASGITransport(app=app)) as client:
             yield client
     finally:
         app.dependency_overrides = {}
@@ -86,9 +82,7 @@ async def test_specimen(init_db, test_db_manager: DatabaseManager):
 
 
 @pytest.fixture(scope="function")
-async def test_dataset(
-    init_db, test_db_manager: DatabaseManager, test_specimen: SpecimenSQLModel
-):
+async def test_dataset(init_db, test_db_manager: DatabaseManager, test_specimen: SpecimenSQLModel):
     return await _seed(
         test_db_manager,
         DatasetSQLModel(
@@ -102,9 +96,7 @@ async def test_dataset(
 
 
 @pytest.fixture(scope="function")
-async def test_block(
-    init_db, test_db_manager: DatabaseManager, test_specimen: SpecimenSQLModel
-):
+async def test_block(init_db, test_db_manager: DatabaseManager, test_specimen: SpecimenSQLModel):
     return await _seed(
         test_db_manager,
         BlockSQLModel(
@@ -216,9 +208,7 @@ async def test_roi(
 
 
 @pytest.fixture(scope="function")
-async def test_roi2(
-    init_db, test_db_manager: DatabaseManager, test_section: SectionSQLModel
-):
+async def test_roi2(init_db, test_db_manager: DatabaseManager, test_section: SectionSQLModel):
     return await _seed(
         test_db_manager,
         ROISQLModel(

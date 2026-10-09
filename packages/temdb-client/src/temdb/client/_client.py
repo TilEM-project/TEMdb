@@ -17,6 +17,7 @@ from .resources.acquisition import AcquisitionResource
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
 from .resources.dataset import DatasetResource
+from .resources.layout import SubstrateLayoutResource
 from .resources.lens_correction import LensCorrectionResource
 from .resources.microscope import MicroscopeResource
 from .resources.roi import ROIResource
@@ -24,7 +25,6 @@ from .resources.section import SectionResource
 from .resources.specimen import SpecimenResource
 from .resources.substrate import SubstrateResource
 from .resources.task import AcquisitionTaskResource
-from .resources.layout import SubstrateLayoutResource
 
 
 class TEMdbClient:

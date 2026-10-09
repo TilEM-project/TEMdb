@@ -64,5 +64,7 @@ class SubstrateLayoutResource(BaseResource):
         params = {"skip": skip, "limit": limit}
         response_data = await self._get(endpoint, params=params)
         return (
-            [SubstrateResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+            [SubstrateResponse.model_validate(item) for item in response_data]
+            if isinstance(response_data, list)
+            else []
         )

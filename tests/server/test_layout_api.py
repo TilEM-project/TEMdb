@@ -61,9 +61,7 @@ async def test_layout_create_get_list_update_delete(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_layout_cannot_be_deleted_when_it_has_substrates(
-    async_client: AsyncClient, test_layout, test_substrate
-):
+async def test_layout_cannot_be_deleted_when_it_has_substrates(async_client: AsyncClient, test_layout, test_substrate):
     response = await async_client.delete(f"/api/v2/layouts/{test_layout.layout_id}")
     assert response.status_code == 400
     assert "associated substrates" in response.json()["detail"].lower()

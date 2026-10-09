@@ -32,9 +32,7 @@ async def test_layout_create_posts_and_returns_model():
     resource, request = _layout_resource()
     request.return_value = _layout_payload()
 
-    layout = await resource.create(
-        SubstrateLayoutCreate(layout_id="LAYOUT001", name="Test layout", media_type="wafer")
-    )
+    layout = await resource.create(SubstrateLayoutCreate(layout_id="LAYOUT001", name="Test layout", media_type="wafer"))
 
     assert request.await_args.args[:2] == ("POST", "layouts")
     assert request.await_args.kwargs["json"]["layout_id"] == "LAYOUT001"
