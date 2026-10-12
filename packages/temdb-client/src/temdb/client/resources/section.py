@@ -7,7 +7,7 @@ from temdb.models import (
     SectionUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, accepts_keywords
 
 
 class SectionResource(BaseResource):
@@ -54,6 +54,7 @@ class SectionResource(BaseResource):
             [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
         )
 
+    @accepts_keywords(SectionCreate)
     async def create(self, section_data: SectionCreate) -> SectionResponse:
         """Create a new section."""
         response_data = await self._post("sections", data=section_data.model_dump(mode="json", exclude_unset=True))
@@ -65,6 +66,7 @@ class SectionResource(BaseResource):
         response_data = await self._get(endpoint)
         return SectionResponse.model_validate(response_data)
 
+    @accepts_keywords(SectionUpdate)
     async def update(self, cutting_session_id: str, section_id: str, section_data: SectionUpdate) -> SectionResponse:
         """Update an existing section."""
         endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}"
