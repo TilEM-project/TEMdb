@@ -1,4 +1,5 @@
 import logging
+import math
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -12,7 +13,8 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, any_, bindparam, delete, func, select, update
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,8 +26,11 @@ from temdb.models import (
     AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
+    TileBulkDeleteResult,
     TileCreate,
+    TileDeleteAllResult,
     TileResponse,
+    TileUpdate,
 )
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
@@ -81,6 +86,7 @@ def _tile_payload(
         "supertile_id": tile.supertile_id,
         "supertile_raster_position": tile.supertile_raster_position,
         "created_at": tile.created_at,
+        "updated_at": tile.updated_at,
     }
     if acquisition_internal_id is not None:
         payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
@@ -93,17 +99,29 @@ def _column_value(value: Any) -> Any:
     return value.value if hasattr(value, "value") else value
 
 
+def _has_non_finite(value: Any) -> bool:
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_has_non_finite(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_non_finite(item) for item in value)
+    return False
+
+
 def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, Any]:
     """Translate the dict-shaped wire model into flattened tile columns."""
+    if _has_non_finite(tile_data.model_dump()):
+        raise HTTPException(422, f"Tile {tile_data.raster_index} has a NaN or infinite value")
     return {
         "dataset_id": dataset_id,
         "run_id": run_id,
         "raster_index": tile_data.raster_index,
         "tile_id": tile_data.tile_id if tile_data.tile_id is not None else uuid7(),
-        "stage_x_nm": tile_data.stage_position["x"],
-        "stage_y_nm": tile_data.stage_position["y"],
-        "montage_row": tile_data.raster_position["row"],
-        "montage_col": tile_data.raster_position["col"],
+        "stage_x_nm": tile_data.stage_position.x,
+        "stage_y_nm": tile_data.stage_position.y,
+        "montage_row": tile_data.raster_position.row,
+        "montage_col": tile_data.raster_position.col,
         "focus_score": tile_data.focus_score,
         "min_value": tile_data.min_value,
         "max_value": tile_data.max_value,
@@ -112,7 +130,9 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "image_path": str(tile_data.image_path),
         "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
         "supertile_id": tile_data.supertile_id,
-        "supertile_raster_position": tile_data.supertile_raster_position,
+        "supertile_raster_position": (
+            tile_data.supertile_raster_position.model_dump() if tile_data.supertile_raster_position else None
+        ),
     }
 
 
@@ -501,7 +521,7 @@ async def delete_acquisition(
 ):
     """Delete a specific acquisition."""
     acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id).with_for_update()
     )
     acq_obj = acquisition.first()
     if acq_obj is None:
@@ -528,7 +548,10 @@ async def delete_acquisition(
     return None
 
 
-async def _ensure_leaf_dataset(session: AsyncSession, dataset_id: uuid.UUID) -> None:
+async def _ensure_dataset_accepts_tiles(session: AsyncSession, dataset_id: uuid.UUID) -> None:
+    status = await session.scalar(select(DatasetSQLModel.status).where(DatasetSQLModel.dataset_id == dataset_id))
+    if status == "archived":
+        raise HTTPException(status_code=409, detail=f"Dataset '{dataset_id}' is archived; it accepts no tiles")
     has_children = (
         await session.scalars(
             select(DatasetSQLModel.dataset_id).where(DatasetSQLModel.parent_dataset_id == dataset_id).limit(1)
@@ -559,8 +582,10 @@ async def add_tile_to_acquisition(
         raise HTTPException(
             status_code=409, detail=f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles"
         )
-    await _ensure_leaf_dataset(session, acq_obj.dataset_id)
+    await _ensure_dataset_accepts_tiles(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
+    # Creating a partition locks acquisitions against writes (through the tiles foreign key) until commit.
+    await session.commit()
     stmt = (
         pg_insert(TileSQLModel)
         .values(_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
@@ -614,17 +639,31 @@ async def add_tiles_to_acquisition(
     acq_obj, specimen_ref, roi_ref, task_ref = row
     if acq_obj.dataset_id is None:
         raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
-    await _ensure_leaf_dataset(session, acq_obj.dataset_id)
+    supplied_ids = [tile.tile_id for tile in tiles if tile.tile_id is not None]
+    if len(supplied_ids) != len(set(supplied_ids)):
+        raise HTTPException(422, "Duplicate tile IDs in request")
+    await _ensure_dataset_accepts_tiles(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
+    # Creating a partition locks acquisitions against writes (through the tiles foreign key) until commit.
+    await session.commit()
     total_tiles = len(tiles)
     inserted = 0
     if tiles:
         # Retried batches are expected (at-least-once ingest): ON CONFLICT DO
         # NOTHING keeps the write-once rows and reports duplicates as skipped.
         rows = [_tile_sql_kwargs(tile, acq_obj.dataset_id, acq_obj.run_id) for tile in tiles]
+        columns = TileSQLModel.__table__.c
+        # One bound array per column: one value per cell exceeds asyncpg's 32,767-argument limit at 1,928 tiles.
+        # dimensions=1 keeps each matcher list as one jsonb element.
+        unnested = select(
+            *(
+                func.unnest(bindparam(key, [row[key] for row in rows], type_=ARRAY(columns[key].type, dimensions=1)))
+                for key in rows[0]
+            )
+        )
         result = await session.execute(
             pg_insert(TileSQLModel)
-            .values(rows)
+            .from_select(list(rows[0]), unnested)
             .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
         )
         await session.commit()
@@ -639,7 +678,6 @@ async def add_tiles_to_acquisition(
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=dict[str, Any])
 async def get_tiles_from_acquisition(
-    response: Response,
     acquisition_id: str,
     cursor: int | None = Query(None, description="Last raster_index seen"),
     limit: int = Query(100, ge=1, le=1000),
@@ -675,7 +713,6 @@ async def get_tiles_from_acquisition(
             trimmed.append(entry)
         payloads = trimmed
     next_cursor = tiles[-1].raster_index if tiles else None
-    response.headers["Cache-Control"] = "private, max-age=300"
     return {
         "tiles": payloads,
         "metadata": {
@@ -849,6 +886,189 @@ async def get_tile_count(
     return {"tile_count": tile_count}
 
 
+def _tile_sql_patch_kwargs(updated_fields: TileUpdate):
+    if not updated_fields.model_fields_set:
+        raise HTTPException(422, "A tile update must set at least one field")
+    if _has_non_finite(updated_fields.model_dump(exclude_unset=True)):
+        raise HTTPException(422, "A tile update has a NaN or infinite value")
+    update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
+    stage_position = update_data.pop("stage_position", None)
+    if stage_position is not None:
+        update_data["stage_x_nm"] = stage_position["x"]
+        update_data["stage_y_nm"] = stage_position["y"]
+    raster_position = update_data.pop("raster_position", None)
+    if raster_position is not None:
+        update_data["montage_row"] = raster_position["row"]
+        update_data["montage_col"] = raster_position["col"]
+    return update_data
+
+
+@acquisition_api.patch(
+    "/acquisitions/{acquisition_id}/tiles/bulk",
+    response_model=list[TileResponse],
+)
+async def update_tile_from_acquisition_bulk(
+    acquisition_id: str,
+    updates: dict[str, TileUpdate] = Body(..., min_length=1),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Update several tiles of an acquisition; nothing is applied if any tile is missing."""
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    keyed_updates = {}
+    for tile_id, tile_update in updates.items():
+        try:
+            keyed_updates[uuid.UUID(tile_id)] = tile_update
+        except ValueError:
+            raise HTTPException(422, f"Tile ID '{tile_id}' is not a UUID")
+    if len(keyed_updates) != len(updates):
+        raise HTTPException(422, "Duplicate tile IDs in request")
+    # One bound array: an IN (...) list binds one argument per ID, and asyncpg allows 32,767.
+    tile_keys = bindparam("tile_keys", list(keyed_updates), type_=ARRAY(TileSQLModel.tile_id.type))
+    tiles = (
+        await session.scalars(
+            select(TileSQLModel)
+            .where(
+                TileSQLModel.tile_id == any_(tile_keys),
+                TileSQLModel.dataset_id == acq_obj.dataset_id,
+                TileSQLModel.run_id == acq_obj.run_id,
+            )
+            .with_for_update()
+        )
+    ).all()
+    missing_ids = set(keyed_updates.keys()) - {tile.tile_id for tile in tiles}
+    if missing_ids:
+        listed = ", ".join(sorted(str(tile_id) for tile_id in missing_ids))
+        raise HTTPException(404, f"Unable to find tiles [{listed}] in acquisition '{acquisition_id}'")
+    for tile_obj in tiles:
+        update_data = _tile_sql_patch_kwargs(keyed_updates[tile_obj.tile_id])
+        for field, value in update_data.items():
+            setattr(tile_obj, field, value)
+        session.add(tile_obj)
+    await session.commit()
+    tiles = (
+        await session.scalars(
+            select(TileSQLModel)
+            .where(
+                TileSQLModel.tile_id == any_(tile_keys),
+                TileSQLModel.dataset_id == acq_obj.dataset_id,
+                TileSQLModel.run_id == acq_obj.run_id,
+            )
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    return [_tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id) for tile_obj in tiles]
+
+
+@acquisition_api.patch(
+    "/acquisitions/{acquisition_id}/tiles/{tile_id}",
+    response_model=TileResponse,
+)
+async def update_tile_from_acquisition(
+    acquisition_id: str,
+    tile_id: str,
+    updated_fields: TileUpdate = Body(...),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Update details of a specific tile."""
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.first()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_key = _tile_uuid_or_404(tile_id)
+    tile = await session.scalars(
+        select(TileSQLModel)
+        .where(
+            TileSQLModel.tile_id == tile_key,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+        .with_for_update()
+    )
+    tile_obj = tile.first()
+    if tile_obj is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    update_data = _tile_sql_patch_kwargs(updated_fields)
+    for field, value in update_data.items():
+        setattr(tile_obj, field, value)
+    session.add(tile_obj)
+    await session.commit()
+    await session.refresh(tile_obj)
+    return _tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id)
+
+
+async def _lock_acquisition_for_tile_delete(session: AsyncSession, acquisition_id: str) -> AcquisitionSQLModel:
+    acq_obj = (
+        await session.scalars(
+            select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id).with_for_update()
+        )
+    ).first()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    if acq_obj.status == "complete":
+        raise HTTPException(
+            409,
+            (
+                f"Acquisition '{acquisition_id}' is marked 'complete'; its tiles cannot be "
+                "deleted. Consider archiving instead."
+            ),
+        )
+    return acq_obj
+
+
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/bulk", response_model=TileBulkDeleteResult)
+async def delete_tiles_from_acquisition_bulk(
+    acquisition_id: str,
+    tile_ids: list[uuid.UUID] = Body(..., min_length=1),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete the listed tiles of an acquisition; IDs with no tile in it are returned in not_found.
+
+    Error if the acquisition is marked 'complete'.
+    """
+    acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
+    requested = list(dict.fromkeys(tile_ids))
+    result = await session.execute(
+        delete(TileSQLModel)
+        .where(
+            TileSQLModel.tile_id == any_(bindparam("tile_keys", requested, type_=ARRAY(TileSQLModel.tile_id.type))),
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+        .returning(TileSQLModel.tile_id)
+    )
+    deleted = result.scalars().all()
+    await session.commit()
+    return TileBulkDeleteResult(
+        requested=len(requested),
+        deleted=len(deleted),
+        not_found=[str(tile_id) for tile_id in requested if tile_id not in set(deleted)],
+    )
+
+
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/all", response_model=TileDeleteAllResult)
+async def delete_tiles_from_acquisition_all(
+    acquisition_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete all tiles belonging to the specified acquisition. 409 if the acquisition is complete."""
+    acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
+    result = await session.execute(
+        delete(TileSQLModel).where(
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+    )
+    await session.commit()
+    return TileDeleteAllResult(deleted=result.rowcount)
+
+
 @acquisition_api.delete(
     "/acquisitions/{acquisition_id}/tiles/{tile_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -858,13 +1078,8 @@ async def delete_tile_from_acquisition(
     tile_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a specific tile, ensuring it belongs to the specified acquisition."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.first()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    """Delete a specific tile of an acquisition. Error if the acquisition is complete."""
+    acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
     tile_key = _tile_uuid_or_404(tile_id)
     tile = await session.scalars(
         select(TileSQLModel).where(

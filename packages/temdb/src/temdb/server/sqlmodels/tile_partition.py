@@ -49,11 +49,6 @@ def partition_name(dataset_id: uuid.UUID) -> str:
     return f"tile_d_{dataset_id.hex}"
 
 
-def lock_key(dataset_id: uuid.UUID) -> int:
-    """Stable signed 64-bit advisory-lock key derived from the dataset UUID."""
-    return int.from_bytes(dataset_id.bytes[:8], "big", signed=True)
-
-
 async def _resolve_and_freeze_modulus(session: AsyncSession, dataset_id: uuid.UUID) -> int:
     """Return the dataset's frozen hash modulus, computing+freezing it once.
 
@@ -90,13 +85,14 @@ async def partition_exists(session: AsyncSession, dataset_id: uuid.UUID) -> bool
 async def ensure_tile_partition(session: AsyncSession, dataset_id: uuid.UUID) -> None:
     """Create the LIST partition (and its HASH children) for a dataset.
 
-    Idempotent. Call before inserting any tile row for the dataset. A
-    transaction-scoped advisory lock serializes partition creation per dataset
-    so concurrent writers cannot race the non-atomic CREATE ... IF NOT EXISTS.
+    Idempotent. Call before inserting any tile row for the dataset. One
+    transaction-scoped advisory lock, keyed by the tiles table's OID, serializes
+    partition creation for all datasets: each creation updates datasets and then
+    takes ACCESS EXCLUSIVE on tiles, so two datasets created at once deadlock.
     """
     if await partition_exists(session, dataset_id):
         return  # fast path: partition (and its hash children) already created
-    await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key(dataset_id)})
+    await session.execute(text("SELECT pg_advisory_xact_lock('tiles'::regclass::oid::bigint)"))
     modulus = await _resolve_and_freeze_modulus(session, dataset_id)
     name = partition_name(dataset_id)
     await session.execute(

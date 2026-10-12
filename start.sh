@@ -26,12 +26,8 @@ echo "=========================="
 
 uv run alembic -c packages/temdb/alembic.ini upgrade head
 
-exec python -m uvicorn "$APP_MODULE" \
+exec uv run uvicorn "$APP_MODULE" \
     --host $HOST \
     --port $PORT \
     --workers $WORKERS \
-    --log-level $LOG_LEVEL \
-    --access-logfile - \
-    --error-logfile - \
-    --reload \
-    "$APP_MODULE"
+    --log-level $LOG_LEVEL
