@@ -5,7 +5,6 @@ from httpx import AsyncClient
 
 MINIMAL_ACQ_PAYLOAD = {
     "hardware_settings": {
-        "scope_id": "TEST_SCOPE_001",
         "camera_model": "Test Camera",
         "camera_serial": "12345",
         "camera_bit_depth": 16,

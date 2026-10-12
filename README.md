@@ -40,7 +40,7 @@ Acquisitions carry three orthogonal status axes instead of a single lifecycle en
 - `qc_state` - QC review axis: `pending` / `qc_pass` / `qc_fail` / `needs_review`.
 - `transfer_state` - data transfer axis: `not_started` / `in_progress` / `complete` / `error`.
 
-`qc_state` and `transfer_state` changes are stamped with `*_updated_at` / `*_updated_by`. For migrating consumers (PyTEM, roi-sandbox-v2) from the old `AcquisitionStatus` enum, see the mapping table in `docs/superpowers/plans/2026-06-10-pg18-unified-adoption/00-overview.md`.
+`qc_state` and `transfer_state` changes are stamped with `*_updated_at` / `*_updated_by`.
 
 ### Lens Corrections
 
@@ -72,6 +72,17 @@ async with AsyncTEMdbClient("https://temdb.example.com") as client:
     specimens = await client.specimen.list()
     await client.acquisition.add_tiles_bulk("ACQ001", [TileCreate(...)])
 ```
+
+Create and update methods take either the model or its fields as keywords:
+
+```python
+await client.specimen.create(SpecimenCreate(specimen_id="S1", description="cortex"))
+await client.specimen.create(specimen_id="S1", description="cortex")  # same request
+await client.specimen.update("S1", description="new")  # sends only description
+```
+
+Passing both a model and keywords raises `TypeError`; a misspelled field raises a pydantic `ValidationError`
+before any request is sent.
 
 ### temdb (`packages/temdb/`)
 

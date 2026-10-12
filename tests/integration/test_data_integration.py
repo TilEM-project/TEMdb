@@ -189,7 +189,6 @@ class TestDataIntegration:
                 acquisition_task_id=task.task_id,
                 dataset_id=dataset.dataset_id,
                 hardware_settings={
-                    "scope_id": "SEM_1",
                     "camera_model": "CamA",
                     "camera_serial": "SERIAL",
                     "camera_bit_depth": 16,
