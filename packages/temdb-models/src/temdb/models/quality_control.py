@@ -8,7 +8,7 @@ class TileFocusScore(TEMDBModel):
 
     tile_id: str = Field(..., description="Unique ID of the tile.")
     raster_index: int = Field(..., description="Sequential index of the tile within the acquisition raster.")
-    focus_score: float = Field(..., description="Calculated focus score for the tile.")
+    focus_score: float | None = Field(..., description="Calculated focus score for the tile.")
 
 
 class AcquisitionFocusScoresResponse(TEMDBModel):

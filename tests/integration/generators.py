@@ -184,7 +184,6 @@ def generate_acquisition(
         "roi_id": roi.roi_id,
         "acquisition_task_id": task.task_id,
         "hardware_settings": {
-            "scope_id": f"SEM_{fake.random_int(min=1, max=3)}",
             "camera_model": fake.random_element(elements=["CamA", "CamB", "CamX"]),
             "camera_serial": fake.uuid4(),
             "camera_bit_depth": 16,

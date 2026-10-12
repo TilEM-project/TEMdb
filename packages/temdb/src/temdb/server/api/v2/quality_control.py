@@ -127,7 +127,7 @@ async def get_acquisition_focus_scores(
         ).all()
     tiles_data = [
         TileFocusScore(
-            tile_id=tile.tile_id,
+            tile_id=str(tile.tile_id),
             raster_index=tile.raster_index,
             focus_score=tile.focus_score,
         )

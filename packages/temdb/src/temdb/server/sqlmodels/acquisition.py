@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
     Uuid,
     func,
     text,
@@ -25,7 +26,6 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "acquisitions"
     __table_args__ = (
-        Index("ix_acquisitions_dataset_id_nn", "dataset_id", postgresql_where=text("dataset_id IS NOT NULL")),
         Index(
             "ix_acquisitions_montage_set_name_nn",
             "montage_set_name",
@@ -38,6 +38,7 @@ class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
         ),
         Index("ix_acquisitions_lc_id_nn", "lc_id", postgresql_where=text("lc_id IS NOT NULL")),
         Index("ix_acquisitions_dataset_kind_qc", "dataset_id", "kind", "qc_state"),
+        UniqueConstraint("dataset_id", "run_id", name="uq_acquisitions_dataset_run"),
         CheckConstraint("status IS NULL OR status IN ('complete', 'aborted', 'failed')", name="status_vocab"),
         CheckConstraint("(status IS NULL) = (end_time IS NULL)", name="status_terminal_consistency"),
         CheckConstraint("qc_state IN ('pending', 'qc_pass', 'qc_fail', 'needs_review')", name="qc_state_vocab"),
