@@ -1,12 +1,12 @@
 from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate
 
-from .base import BaseResource, kwargs2model
+from .base import BaseResource, accepts_keywords
 
 
 class LensCorrectionResource(BaseResource):
     """Resource class for interacting with Lens Correction endpoints."""
 
-    @kwargs2model(LensCorrectionCreate)
+    @accepts_keywords(LensCorrectionCreate)
     async def create(self, data: LensCorrectionCreate) -> LensCorrectionResponse:
         """Record a completed lens-correction solve."""
         payload = await self._post("lens-corrections", data=data.model_dump(exclude_unset=True, mode="json"))
@@ -38,7 +38,7 @@ class LensCorrectionResource(BaseResource):
         data = await self._get("lens-corrections", params=params)
         return [LensCorrectionResponse.model_validate(i) for i in data] if isinstance(data, list) else []
 
-    @kwargs2model(LensCorrectionUpdate)
+    @accepts_keywords(LensCorrectionUpdate)
     async def update(self, lc_id: str, data: LensCorrectionUpdate) -> LensCorrectionResponse:
         """Backfill artifacts on a lens correction."""
         payload = await self._patch(f"lens-corrections/{lc_id}", data=data.model_dump(exclude_unset=True, mode="json"))

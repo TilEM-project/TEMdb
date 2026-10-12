@@ -55,7 +55,7 @@ async def test_create_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.create(SpecimenCreate(specimen_id="SPEC001"), description="conflict")
 
 
@@ -91,7 +91,7 @@ async def test_update_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_update_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.update("SPEC001", SpecimenUpdate(description="a"), functional_imaging_metadata={})
 
 

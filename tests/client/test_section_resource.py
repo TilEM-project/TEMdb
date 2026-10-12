@@ -52,7 +52,7 @@ async def test_create_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.create(
             SectionCreate(cutting_session_id="CUT001", section_number=1, media_id="MEDIA001"),
             barcode="conflict",
@@ -82,5 +82,5 @@ async def test_update_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_update_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.update("CUT001", "MEDIA001_S00001", SectionUpdate(condition="ok"), condition_reason="conflict")

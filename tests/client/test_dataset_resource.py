@@ -48,7 +48,7 @@ async def test_create_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.create(DatasetCreate(name="d1", size_class="small"), status="collecting")
 
 

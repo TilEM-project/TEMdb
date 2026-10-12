@@ -19,7 +19,7 @@ from temdb.models import (
     TileUpdate,
 )
 
-from .base import BaseResource, kwargs2model
+from .base import BaseResource, accepts_keywords
 
 
 class PaginatedAcquisitionResponse(BaseModel):
@@ -73,7 +73,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get("acquisitions", params=params)
         return PaginatedAcquisitionResponse.model_validate(response_data)
 
-    @kwargs2model(AcquisitionCreate)
+    @accepts_keywords(AcquisitionCreate)
     async def create(self, acquisition_data: AcquisitionCreate) -> AcquisitionResponse:
         response_data = await self._post("acquisitions", data=acquisition_data.model_dump(exclude_unset=True))
         return AcquisitionResponse.model_validate(response_data)
@@ -82,7 +82,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(f"acquisitions/{acquisition_id}")
         return AcquisitionResponse.model_validate(response_data)
 
-    @kwargs2model(AcquisitionUpdate)
+    @accepts_keywords(AcquisitionUpdate)
     async def update(self, acquisition_id: str, acquisition_data: AcquisitionUpdate) -> AcquisitionResponse:
         update_payload = acquisition_data.model_dump(exclude_unset=True)
         response_data = await self._patch(f"acquisitions/{acquisition_id}", data=update_payload)
@@ -91,7 +91,7 @@ class AcquisitionResource(BaseResource):
     async def delete(self, acquisition_id: str) -> None:
         await self._delete(f"acquisitions/{acquisition_id}")
 
-    @kwargs2model(TileCreate)
+    @accepts_keywords(TileCreate)
     async def add_tile(self, acquisition_id: str, tile_data: TileCreate) -> TileResponse:
         response_data = await self._post(
             f"acquisitions/{acquisition_id}/tiles",
@@ -140,6 +140,7 @@ class AcquisitionResource(BaseResource):
         payload = [tile.model_dump(exclude_unset=True) for tile in tiles_data]
         return await self._post(endpoint, data=payload)
 
+    @accepts_keywords(TileUpdate)
     async def update_tile(self, acquisition_id: str, tile_id: str, tile_data: TileUpdate) -> TileResponse:
         """Updates a tile from an acquisition."""
         endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
@@ -180,7 +181,7 @@ class AcquisitionResource(BaseResource):
         endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
         return TileBulkDeleteResult.model_validate(await self._request("DELETE", endpoint, json=tile_ids))
 
-    @kwargs2model(StorageLocationCreate)
+    @accepts_keywords(StorageLocationCreate)
     async def add_storage_location(
         self, acquisition_id: str, location_data: StorageLocationCreate
     ) -> AcquisitionResponse:

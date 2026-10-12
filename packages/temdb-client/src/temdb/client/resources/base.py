@@ -25,15 +25,22 @@ class BaseResource:
         await self._request("DELETE", endpoint, **kwargs)
 
 
-def kwargs2model(model):
-    def model_wrapper(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            if isinstance(args[-1], model):
-                assert not kwargs, f"If a {model.__name__} object is provided, no keyword arguments may be provided!"
-                return await func(*args)
-            return await func(*args, model(**kwargs))
+def accepts_keywords(model):
+    """Let a create/update method take the model's fields as keywords instead of a built model."""
 
+    def decorate(method):
+        @wraps(method)
+        async def wrapper(self, *args, **kwargs):
+            named = [key for key, value in kwargs.items() if isinstance(value, model)]
+            if named:
+                args = (*args, kwargs.pop(named[0]))
+            if args and isinstance(args[-1], model):
+                if kwargs:
+                    raise TypeError(f"Pass a {model.__name__} or its fields as keywords, not both")
+                return await method(self, *args)
+            return await method(self, *args, model(**kwargs))
+
+        wrapper.__doc__ = f"{method.__doc__ or ''}\n\nTakes a {model.__name__} or its fields as keywords, not both."
         return wrapper
 
-    return model_wrapper
+    return decorate

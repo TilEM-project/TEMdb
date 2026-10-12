@@ -132,7 +132,7 @@ async def test_lc_create_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_lc_create_rejects_model_plus_kwargs():
     res, _ = _lc_resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.create(
             LensCorrectionCreate(microscope_id=SCOPE_ID, magnification=20000, started_at=NOW),
             correction_x_uri="s3://bucket/lc/x.tiff",

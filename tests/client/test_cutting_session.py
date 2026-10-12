@@ -64,7 +64,7 @@ async def test_create_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.create(
             CuttingSessionCreate(
                 cutting_session_id="CUT001",
@@ -100,7 +100,7 @@ async def test_update_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_update_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.update("CUT001", CuttingSessionUpdate(operator="cam"), end_time=NOW)
 
 

@@ -19,7 +19,6 @@ def _resource():
 
 def _hardware_settings() -> dict:
     return {
-        "scope_id": "scope-1",
         "camera_model": "cam-x",
         "camera_serial": "123",
         "camera_bit_depth": 16,
@@ -65,7 +64,7 @@ def _tile_payload(**extra) -> dict:
         "tile_id": str(uuid4()),
         "acquisition_id": "ACQ001",
         "raster_index": 0,
-        "stage_position": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "stage_position": {"x": 0.0, "y": 0.0},
         "raster_position": {"row": 0, "col": 0},
         "focus_score": 0.95,
         "min_value": 5.0,
@@ -106,7 +105,7 @@ async def test_create_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.create(
             AcquisitionCreate(
                 acquisition_id="ACQ001",
@@ -137,7 +136,7 @@ async def test_update_accepts_kwargs_via_decorator():
 @pytest.mark.asyncio
 async def test_update_rejects_model_plus_kwargs():
     res, _ = _resource()
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         await res.update("ACQ001", AcquisitionUpdate(status="failed"), error_message="conflict")
 
 
@@ -148,7 +147,7 @@ async def test_add_tile_accepts_kwargs_via_decorator():
     out = await res.add_tile(
         "ACQ001",
         raster_index=0,
-        stage_position={"x": 0.0, "y": 0.0, "z": 0.0},
+        stage_position={"x": 0.0, "y": 0.0},
         raster_position={"row": 0, "col": 0},
         focus_score=0.95,
         min_value=5.0,
@@ -160,6 +159,16 @@ async def test_add_tile_accepts_kwargs_via_decorator():
     assert request.await_args.args[:2] == ("POST", "acquisitions/ACQ001/tiles")
     assert request.await_args.kwargs["json"]["raster_index"] == 0
     assert out.acquisition_id == "ACQ001"
+
+
+@pytest.mark.asyncio
+async def test_update_tile_accepts_kwargs_via_decorator():
+    res, request = _resource()
+    request.return_value = _tile_payload(focus_score=0.5)
+    out = await res.update_tile("ACQ001", "T1", focus_score=0.5)
+    assert request.await_args.args[:2] == ("PATCH", "acquisitions/ACQ001/tiles/T1")
+    assert request.await_args.kwargs["json"] == {"focus_score": 0.5}
+    assert out.focus_score == 0.5
 
 
 @pytest.mark.asyncio

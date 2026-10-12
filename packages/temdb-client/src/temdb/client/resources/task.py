@@ -8,7 +8,7 @@ from temdb.models import (
     AcquisitionTaskUpdate,
 )
 
-from .base import BaseResource, kwargs2model
+from .base import BaseResource, accepts_keywords
 
 
 class AcquisitionTaskResource(BaseResource):
@@ -60,7 +60,7 @@ class AcquisitionTaskResource(BaseResource):
             else []
         )
 
-    @kwargs2model(AcquisitionTaskCreate)
+    @accepts_keywords(AcquisitionTaskCreate)
     async def create(self, task_data: AcquisitionTaskCreate) -> AcquisitionTaskResponse:
         """Create a new acquisition task."""
         response_data = await self._post(
@@ -73,7 +73,7 @@ class AcquisitionTaskResource(BaseResource):
         response_data = await self._get(f"acquisition-tasks/{task_id}")
         return AcquisitionTaskResponse.model_validate(response_data)
 
-    @kwargs2model(AcquisitionTaskUpdate)
+    @accepts_keywords(AcquisitionTaskUpdate)
     async def update(self, task_id: str, update_data: AcquisitionTaskUpdate) -> AcquisitionTaskResponse:
         """Update an existing acquisition task."""
         endpoint = f"acquisition-tasks/{task_id}"
@@ -81,7 +81,7 @@ class AcquisitionTaskResource(BaseResource):
         response_data = await self._patch(endpoint, data=update_payload)
         return AcquisitionTaskResponse.model_validate(response_data)
 
-    @kwargs2model(AcquisitionTaskCreate)
+    @accepts_keywords(AcquisitionTaskCreate)
     async def supersede(self, task_id: str, new_task: AcquisitionTaskCreate) -> AcquisitionTaskResponse:
         """Replace a task with a corrected plan; the old task is marked superseded."""
         response_data = await self._post(

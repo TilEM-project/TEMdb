@@ -7,7 +7,7 @@ from temdb.models import (
     SectionResponse,
 )
 
-from .base import BaseResource, kwargs2model
+from .base import BaseResource, accepts_keywords
 
 
 class CuttingSessionResource(BaseResource):
@@ -59,7 +59,7 @@ class CuttingSessionResource(BaseResource):
             else []
         )
 
-    @kwargs2model(CuttingSessionCreate)
+    @accepts_keywords(CuttingSessionCreate)
     async def create(self, session_data: CuttingSessionCreate) -> CuttingSessionResponse:
         """Create a new cutting session."""
         response_data = await self._post(
@@ -74,7 +74,7 @@ class CuttingSessionResource(BaseResource):
         response_data = await self._get(endpoint)
         return CuttingSessionResponse.model_validate(response_data)
 
-    @kwargs2model(CuttingSessionUpdate)
+    @accepts_keywords(CuttingSessionUpdate)
     async def update(self, cutting_session_id: str, session_data: CuttingSessionUpdate) -> CuttingSessionResponse:
         """Update an existing cutting session."""
         endpoint = f"cutting-sessions/{cutting_session_id}"
