@@ -19,13 +19,11 @@ from temdb.models import (
 class TestHardwareParams:
     def test_valid_hardware_params(self):
         params = HardwareParams(
-            scope_id="SCOPE001",
             camera_model="Test Camera",
             camera_serial="12345",
             camera_bit_depth=16,
             media_type="tape",
         )
-        assert params.scope_id == "SCOPE001"
         assert params.camera_model == "Test Camera"
         assert params.camera_bit_depth == 16
 
@@ -36,7 +34,6 @@ class TestHardwareParams:
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
             HardwareParams(
-                scope_id="SCOPE001",
                 camera_model="Test Camera",
                 camera_serial="12345",
                 camera_bit_depth=16,
@@ -104,7 +101,6 @@ class TestStorageLocationCreate:
 
 def _hardware_params() -> HardwareParams:
     return HardwareParams(
-        scope_id="SCOPE001",
         camera_model="Test Camera",
         camera_serial="12345",
         camera_bit_depth=16,

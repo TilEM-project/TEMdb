@@ -8,6 +8,16 @@ from .enums import MatchPosition
 from .utils.uri import URI
 
 
+class StagePosition(TEMDBModel):
+    x: float = Field(..., description="X axis stage position in nm")
+    y: float = Field(..., description="Y axis stage position in nm")
+
+
+class RasterPosition(TEMDBModel):
+    row: int = Field(..., description="Raster scan row index")
+    col: int = Field(..., description="Raster scan column index")
+
+
 class Matcher(TEMDBModel):
     row: int = Field(..., description="Row index of the tile")
     col: int = Field(..., description="Column index of the tile")
@@ -28,10 +38,10 @@ class Matcher(TEMDBModel):
 class TileBase(TEMDBModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    stage_position: dict[str, float] | None = Field(
+    stage_position: StagePosition | None = Field(
         None, description="Stage position of the tile in stage coordinates in nm"
     )
-    raster_position: dict[str, int] | None = Field(None, description="Row, column raster position of the tile")
+    raster_position: RasterPosition | None = Field(None, description="Row, column raster position of the tile")
     focus_score: float | None = Field(None, description="Focus score of the tile")
     min_value: float | None = Field(None, description="Minimum pixel value of the tile")
     max_value: float | None = Field(None, description="Maximum pixel value of the tile")
@@ -40,7 +50,7 @@ class TileBase(TEMDBModel):
     image_path: URI.Type | None = Field(None, description="URL to the image of the tile")
     matcher: list[Matcher] | None = Field(None, description="List of matchers for the tile")
     supertile_id: str | None = Field(None, description="ID of the supertile the tile belongs to")
-    supertile_raster_position: dict[str, int] | None = Field(
+    supertile_raster_position: RasterPosition | None = Field(
         None, description="Row, column raster position of the supertile"
     )
 
@@ -48,18 +58,15 @@ class TileBase(TEMDBModel):
 class TileCreate(TileBase):
     tile_id: uuid.UUID | None = Field(None, description="Unique tile identifier (minted server-side if omitted)")
     raster_index: int = Field(..., description="Index of the tile in the raster")
-    stage_position: dict[str, float] = Field(..., description="Stage position of the tile in stage coordinates in nm")
-    raster_position: dict[str, int] = Field(..., description="Row, column raster position of the tile")
-    focus_score: float = Field(..., description="Focus score of the tile")
-    min_value: float = Field(..., description="Minimum pixel value of the tile")
-    max_value: float = Field(..., description="Maximum pixel value of the tile")
-    mean_value: float = Field(..., description="Mean pixel value of the tile")
-    std_value: float = Field(..., description="Standard deviation of pixel values of the tile")
+    stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
+    raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
     image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
 
 class TileUpdate(TileBase):
-    pass
+    stage_position: StagePosition = Field(None, description="Stage position of the tile in stage coordinates in nm")
+    raster_position: RasterPosition = Field(None, description="Row, column raster position of the tile")
+    image_path: URI.Type = Field(None, description="URL to the image of the tile")
 
 
 class TileResponse(TileBase):
@@ -68,15 +75,20 @@ class TileResponse(TileBase):
     tile_id: str = Field(..., description="Unique tile identifier")
     acquisition_id: str = Field(..., description="Parent acquisition ID")
     raster_index: int = Field(..., description="Index of the tile in the raster")
-    stage_position: dict[str, float] = Field(..., description="Stage position of the tile in stage coordinates in nm")
-    raster_position: dict[str, int] = Field(..., description="Row, column raster position of the tile")
-    focus_score: float = Field(..., description="Focus score of the tile")
-    min_value: float = Field(..., description="Minimum pixel value of the tile")
-    max_value: float = Field(..., description="Maximum pixel value of the tile")
-    mean_value: float = Field(..., description="Mean pixel value of the tile")
-    std_value: float = Field(..., description="Standard deviation of pixel values of the tile")
+    stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
+    raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
     image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
     version: int | None = Field(None, description="Document version number")
+
+
+class TileBulkDeleteResult(TEMDBModel):
+    requested: int = Field(..., description="Distinct tile IDs in the request")
+    deleted: int = Field(..., description="Tiles deleted")
+    not_found: list[str] = Field(..., description="Requested IDs with no tile in this acquisition")
+
+
+class TileDeleteAllResult(TEMDBModel):
+    deleted: int = Field(..., description="Tiles deleted")
