@@ -404,6 +404,15 @@ async def test_get_tiles_from_acquisition_bbox_invalid_range_returns_422(async_c
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bound", ["nan", "inf", "-inf"])
+async def test_get_tiles_from_acquisition_bbox_rejects_non_finite_bounds(
+    async_client: AsyncClient, test_acquisition, bound
+):
+    response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles?x_min={bound}")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_get_tile_from_acquisition(async_client: AsyncClient, test_acquisition, test_tile):
     """Test retrieving a specific tile from an acquisition."""
     response = await async_client.get(

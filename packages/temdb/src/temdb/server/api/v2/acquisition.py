@@ -682,10 +682,18 @@ async def get_tiles_from_acquisition(
     cursor: int | None = Query(None, description="Last raster_index seen"),
     limit: int = Query(100, ge=1, le=1000),
     fields: list[str] | None = Query(None),
-    x_min: float | None = Query(None, description="The min X axis stage coordinate value in nanometers"),
-    x_max: float | None = Query(None, description="The max X axis stage coordinate value in nanometers"),
-    y_min: float | None = Query(None, description="The min Y axis stage coordinate value in nanometers"),
-    y_max: float | None = Query(None, description="The max Y axis stage coordinate value in nanometers"),
+    x_min: float | None = Query(
+        None, allow_inf_nan=False, description="The min X axis stage coordinate value in nanometers"
+    ),
+    x_max: float | None = Query(
+        None, allow_inf_nan=False, description="The max X axis stage coordinate value in nanometers"
+    ),
+    y_min: float | None = Query(
+        None, allow_inf_nan=False, description="The min Y axis stage coordinate value in nanometers"
+    ),
+    y_max: float | None = Query(
+        None, allow_inf_nan=False, description="The max Y axis stage coordinate value in nanometers"
+    ),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve tiles associated with a specific acquisition."""
