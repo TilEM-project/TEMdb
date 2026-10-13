@@ -9,11 +9,15 @@ from .utils.uri import URI
 
 
 class StagePosition(TEMDBModel):
+    model_config = ConfigDict(extra="forbid")
+
     x: float = Field(..., description="X axis stage position in nm")
     y: float = Field(..., description="Y axis stage position in nm")
 
 
 class RasterPosition(TEMDBModel):
+    model_config = ConfigDict(extra="forbid")
+
     row: int = Field(..., description="Raster scan row index")
     col: int = Field(..., description="Raster scan column index")
 
