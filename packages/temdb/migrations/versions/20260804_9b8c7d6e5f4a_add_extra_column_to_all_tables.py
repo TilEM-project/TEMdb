@@ -1,7 +1,7 @@
 """add extra column to all tables
 
 Revision ID: 9b8c7d6e5f4a
-Revises: a1d2f3e4b5c6
+Revises: 4de2dea3b066
 Create Date: 2026-08-04 13:50:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "9b8c7d6e5f4a"
-down_revision: str | Sequence[str] | None = "a1d2f3e4b5c6"
+down_revision: str | Sequence[str] | None = "4de2dea3b066"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

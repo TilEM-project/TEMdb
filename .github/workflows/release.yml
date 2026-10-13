@@ -30,6 +30,12 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Check LICENSE copies are in sync
+        run: |
+          for p in temdb-models temdb-client temdb; do
+            diff -q LICENSE "packages/$p/LICENSE" || exit 1
+          done
+
       - name: Lint
         run: uv run ruff check .
 
@@ -99,6 +105,54 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/temdb-models/dist/
+
+  publish-server:
+    runs-on: ubuntu-latest
+    needs: [release, publish-models]
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/temdb/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pull latest
+        run: git pull origin main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build temdb
+        run: python -m build packages/temdb
+
+      - name: Verify migrations are in the wheel
+        run: |
+          python - <<'EOF'
+          import glob, zipfile, sys
+          whl = glob.glob("packages/temdb/dist/*.whl")[0]
+          names = zipfile.ZipFile(whl).namelist()
+          missing = []
+          if not any(n.endswith("temdb/alembic.ini") for n in names):
+              missing.append("temdb/alembic.ini")
+          if not any("temdb/migrations/versions/" in n and n.endswith(".py") for n in names):
+              missing.append("temdb/migrations/versions/*.py")
+          if missing:
+              sys.exit("wheel is missing: " + ", ".join(missing))
+          print("wheel contains alembic.ini and migrations")
+          EOF
+
+      - name: Publish temdb
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/temdb/dist/
 
   publish-client:
     runs-on: ubuntu-latest

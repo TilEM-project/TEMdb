@@ -35,7 +35,7 @@ async def test_tiles_is_partitioned_by_list(init_db, test_db_manager):
 async def _make_dataset(session, size_class="small"):
     ds = DatasetSQLModel(
         dataset_id=uuid7(),
-        name=f"ds_{uuid7().hex[:8]}",
+        name=f"ds_{uuid7().hex}",
         size_class=size_class,
         created_at=datetime.now(timezone.utc),
     )
@@ -62,7 +62,10 @@ async def test_ensure_creates_nested_partitions_and_freezes_modulus(init_db, tes
 
         assert await _child_count(session, partition_name(ds_id)) == 4
         frozen = (
-            await session.execute(text("SELECT tile_hash_modulus FROM datasets WHERE dataset_id = :id"), {"id": ds_id})
+            await session.execute(
+                text("SELECT tile_hash_modulus FROM datasets WHERE dataset_id = :id"),
+                {"id": ds_id},
+            )
         ).scalar()
         assert frozen == 4
 
@@ -121,6 +124,68 @@ async def test_drop_recovers_detached_but_not_dropped(init_db, test_db_manager):
     assert await _partition_oid(engine, name) is None
 
 
+async def _detach_pending(engine, name):
+    """inhdetachpending for a partition: True/False attached.
+    https://www.postgresql.org/docs/current/catalog-pg-inherits.html"""
+    async with engine.connect() as conn:
+        return (
+            await conn.execute(
+                text("SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = to_regclass(:n)"),
+                {"n": name},
+            )
+        ).scalar()
+
+
+@pytest.mark.asyncio
+async def test_drop_finalizes_a_partition_left_detach_pending(init_db, test_db_manager):
+    ds_id = await _seed_partitioned_dataset(test_db_manager)
+    engine = test_db_manager.sql_engine
+    name = partition_name(ds_id)
+
+    blocker = await engine.connect()
+    await blocker.execute(text("LOCK TABLE tiles IN ACCESS SHARE MODE"))
+
+    async def detach():
+        async with engine.connect() as conn:
+            ac = await conn.execution_options(isolation_level="AUTOCOMMIT")
+            await ac.execute(text(f"ALTER TABLE tiles DETACH PARTITION {name} CONCURRENTLY"))
+
+    async def wait_until_pending():
+        while await _detach_pending(engine, name) is not True:
+            await asyncio.sleep(0.05)
+
+    task = asyncio.create_task(detach())
+    try:
+        await asyncio.wait_for(wait_until_pending(), timeout=10.0)
+    except asyncio.TimeoutError:
+        pytest.fail("DETACH CONCURRENTLY never reached the detach-pending state")
+    finally:
+        task.cancel()  # the process dies between the two transactions
+        await asyncio.gather(task, return_exceptions=True)
+        await blocker.close()
+
+    assert await _detach_pending(engine, name) is True, "precondition: partition is stranded"
+
+    await drop_tile_partition(engine, ds_id)  # the retry must FINALIZE, then drop
+
+    assert await _partition_oid(engine, name) is None
+    assert await _detach_pending(engine, name) is None
+    async with test_db_manager.async_session_factory() as session:
+        recovered = _uuid.uuid4()
+        session.add(
+            DatasetSQLModel(
+                dataset_id=recovered,
+                name=f"ds_recovered_{recovered.hex[:8]}",
+                size_class="small",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+        await ensure_tile_partition(session, recovered)
+        await session.commit()
+    assert await _partition_oid(engine, partition_name(recovered)) is not None
+
+
 @pytest.mark.asyncio
 async def test_per_acquisition_read_prunes_to_one_child(init_db, test_db_manager):
     async with test_db_manager.async_session_factory() as session:
@@ -157,6 +222,22 @@ async def test_concurrent_ensure_does_not_error(init_db, test_db_manager):
 
     async with test_db_manager.async_session_factory() as session:
         assert await _child_count(session, partition_name(ds_id)) == 4
+
+
+@pytest.mark.asyncio
+async def test_concurrent_ensure_for_different_datasets_does_not_deadlock(init_db, test_db_manager):
+    async def worker(ds_id):
+        async with test_db_manager.async_session_factory() as session:
+            await ensure_tile_partition(session, ds_id)
+            await session.commit()
+
+    async with test_db_manager.async_session_factory() as session:
+        ds_ids = [await _make_dataset(session, size_class="small") for _ in range(8)]
+
+    await asyncio.gather(*(worker(ds_id) for ds_id in ds_ids))
+
+    async with test_db_manager.async_session_factory() as session:
+        assert [await _child_count(session, partition_name(ds_id)) for ds_id in ds_ids] == [4] * 8
 
 
 @pytest.mark.asyncio

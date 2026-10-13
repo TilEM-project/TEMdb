@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from functools import wraps
 from typing import Any
 
 
@@ -22,3 +23,24 @@ class BaseResource:
 
     async def _delete(self, endpoint: str, **kwargs) -> None:
         await self._request("DELETE", endpoint, **kwargs)
+
+
+def accepts_keywords(model):
+    """Let a create/update method take the model's fields as keywords instead of a built model."""
+
+    def decorate(method):
+        @wraps(method)
+        async def wrapper(self, *args, **kwargs):
+            named = [key for key, value in kwargs.items() if isinstance(value, model)]
+            if named:
+                args = (*args, kwargs.pop(named[0]))
+            if args and isinstance(args[-1], model):
+                if kwargs:
+                    raise TypeError(f"Pass a {model.__name__} or its fields as keywords, not both")
+                return await method(self, *args)
+            return await method(self, *args, model(**kwargs))
+
+        wrapper.__doc__ = f"{method.__doc__ or ''}\n\nTakes a {model.__name__} or its fields as keywords, not both."
+        return wrapper
+
+    return decorate

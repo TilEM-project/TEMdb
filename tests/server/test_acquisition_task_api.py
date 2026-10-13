@@ -150,7 +150,6 @@ async def test_list_acquisition_tasks_skip_completed(
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
             hardware_settings={
-                "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
                 "camera_serial": "12345",
                 "camera_bit_depth": 16,
@@ -176,7 +175,6 @@ async def test_list_acquisition_tasks_skip_completed(
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
             hardware_settings={
-                "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
                 "camera_serial": "12345",
                 "camera_bit_depth": 16,

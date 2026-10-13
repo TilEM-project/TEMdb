@@ -12,11 +12,14 @@ from temdb.models import (
     AcquisitionUpdate,
     StorageLocation,
     StorageLocationCreate,
+    TileBulkDeleteResult,
     TileCreate,
+    TileDeleteAllResult,
     TileResponse,
+    TileUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, accepts_keywords
 
 
 class PaginatedAcquisitionResponse(BaseModel):
@@ -70,6 +73,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get("acquisitions", params=params)
         return PaginatedAcquisitionResponse.model_validate(response_data)
 
+    @accepts_keywords(AcquisitionCreate)
     async def create(self, acquisition_data: AcquisitionCreate) -> AcquisitionResponse:
         response_data = await self._post("acquisitions", data=acquisition_data.model_dump(exclude_unset=True))
         return AcquisitionResponse.model_validate(response_data)
@@ -78,6 +82,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(f"acquisitions/{acquisition_id}")
         return AcquisitionResponse.model_validate(response_data)
 
+    @accepts_keywords(AcquisitionUpdate)
     async def update(self, acquisition_id: str, acquisition_data: AcquisitionUpdate) -> AcquisitionResponse:
         update_payload = acquisition_data.model_dump(exclude_unset=True)
         response_data = await self._patch(f"acquisitions/{acquisition_id}", data=update_payload)
@@ -86,6 +91,7 @@ class AcquisitionResource(BaseResource):
     async def delete(self, acquisition_id: str) -> None:
         await self._delete(f"acquisitions/{acquisition_id}")
 
+    @accepts_keywords(TileCreate)
     async def add_tile(self, acquisition_id: str, tile_data: TileCreate) -> TileResponse:
         response_data = await self._post(
             f"acquisitions/{acquisition_id}/tiles",
@@ -99,10 +105,22 @@ class AcquisitionResource(BaseResource):
         cursor: str | None = None,
         limit: int = 100,
         fields: builtins.list[str] | None = None,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_min: float | None = None,
+        y_max: float | None = None,
     ) -> PaginatedTileResponse:
         """Retrieve tiles for an acquisition with pagination."""
         endpoint = f"acquisitions/{acquisition_id}/tiles"
-        params = {"limit": limit, "cursor": cursor, "fields": fields}
+        params = {
+            "limit": limit,
+            "cursor": cursor,
+            "fields": fields,
+            "x_min": x_min,
+            "x_max": x_max,
+            "y_min": y_min,
+            "y_max": y_max,
+        }
         params = {k: v for k, v in params.items() if v is not None}
         response_data = await self._get(endpoint, params=params)
         return PaginatedTileResponse.model_validate(response_data)
@@ -122,11 +140,48 @@ class AcquisitionResource(BaseResource):
         payload = [tile.model_dump(exclude_unset=True) for tile in tiles_data]
         return await self._post(endpoint, data=payload)
 
+    @accepts_keywords(TileUpdate)
+    async def update_tile(self, acquisition_id: str, tile_id: str, tile_data: TileUpdate) -> TileResponse:
+        """Updates a tile from an acquisition."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
+        payload = tile_data.model_dump(exclude_unset=True)
+        response_data = await self._patch(endpoint, data=payload)
+        return TileResponse.model_validate(response_data)
+
+    async def update_tiles_bulk(
+        self, acquisition_id: str, tile_updates: dict[str, TileUpdate]
+    ) -> builtins.list[TileResponse]:
+        """Updates multiple tiles from an acquisition."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
+        payload = {tile_id: tile_data.model_dump(exclude_unset=True) for tile_id, tile_data in tile_updates.items()}
+        response_data = await self._patch(endpoint, data=payload)
+        return [TileResponse.model_validate(tile) for tile in response_data]
+
     async def delete_tile(self, acquisition_id: str, tile_id: str) -> None:
-        """Delete a specific tile from an acquisition."""
+        """Delete a specific tile from an acquisition.
+
+        Raises TEMdbConflictError if the acquisition is marked 'complete'.
+        """
         endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
         await self._delete(endpoint)
 
+    async def delete_all_tiles(self, acquisition_id: str) -> TileDeleteAllResult:
+        """Deletes all tiles from an acquisition.
+
+        Raises TEMdbConflictError if the acquisition is marked 'complete'.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/all"
+        return TileDeleteAllResult.model_validate(await self._request("DELETE", endpoint))
+
+    async def delete_tiles_bulk(self, acquisition_id: str, tile_ids: builtins.list[str]) -> TileBulkDeleteResult:
+        """Deletes specified tiles from an acquisition; IDs with no tile are listed in not_found.
+
+        Raises TEMdbConflictError if the acquisition is marked 'complete'.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
+        return TileBulkDeleteResult.model_validate(await self._request("DELETE", endpoint, json=tile_ids))
+
+    @accepts_keywords(StorageLocationCreate)
     async def add_storage_location(
         self, acquisition_id: str, location_data: StorageLocationCreate
     ) -> AcquisitionResponse:
@@ -141,12 +196,14 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(endpoint)
         return StorageLocation.model_validate(response_data) if response_data else None
 
-    async def get_all_tiles(self, acquisition_id: str, *, page_limit: int = 1000) -> builtins.list[TileResponse]:
+    async def get_all_tiles(
+        self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
+    ) -> builtins.list[TileResponse]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
         all_tiles: builtins.list[TileResponse] = []
         cursor: int | None = None
         while True:
-            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit)
+            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
             all_tiles.extend(page.tiles)
             if not page.metadata.get("has_more"):
                 break

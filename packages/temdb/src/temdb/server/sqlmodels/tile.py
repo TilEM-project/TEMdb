@@ -1,16 +1,15 @@
 import uuid
-from datetime import datetime
 from typing import Any
 
-from sqlalchemy import REAL, DateTime, ForeignKey, Index, Integer, String, Uuid, func, text
+from sqlalchemy import REAL, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Uuid, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, ModelDumpMixin
+from .base import Base, ModelDumpMixin, TimestampMixin
 
 
-class TileSQLModel(ModelDumpMixin, Base):
+class TileSQLModel(ModelDumpMixin, TimestampMixin, Base):
     __tablename__ = "tiles"
     __table_args__ = (
         Index("ix_tiles_supertile_id_nn", "supertile_id", postgresql_where=text("supertile_id IS NOT NULL")),
@@ -19,6 +18,11 @@ class TileSQLModel(ModelDumpMixin, Base):
             "dataset_id",
             "focus_score",
             postgresql_where=text("focus_score IS NOT NULL"),
+        ),
+        ForeignKeyConstraint(
+            ["dataset_id", "run_id"],
+            ["acquisitions.dataset_id", "acquisitions.run_id"],
+            name="fk_tiles_dataset_id_acquisitions",
         ),
         {"postgresql_partition_by": "LIST (dataset_id)"},
     )
@@ -49,5 +53,3 @@ class TileSQLModel(ModelDumpMixin, Base):
     matcher: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     supertile_id: Mapped[str | None] = mapped_column(String, nullable=True)
     supertile_raster_position: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    # Write-once table: created_at only, no updated_at.
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
