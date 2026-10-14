@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import ConfigDict, Field, field_validator
 from pydantic_core import PydanticCustomError
 
-from temdb.models.base import TEMDBModel
+from temdb.models.base import TEMDBModel, TEMDBRecord
 from temdb.models.enums import QC_STATES, RUN_STATUSES, TASK_KINDS, TRANSFER_STATES
 
 
@@ -62,7 +62,7 @@ class StorageLocationCreate(TEMDBModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata of storage location")
 
 
-class AcquisitionBase(TEMDBModel):
+class AcquisitionBase(TEMDBRecord):
     hardware_settings: HardwareParams | None = None
     acquisition_settings: AcquisitionParams | None = None
     calibration_info: Calibration | None = None
@@ -131,7 +131,7 @@ class AcquisitionUpdate(AcquisitionBase):
 
 
 class AcquisitionResponse(AcquisitionBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     id: int = Field(..., description="Internal database ID")
     acquisition_id: str = Field(..., description="Unique acquisition identifier")
@@ -171,7 +171,7 @@ class AcquisitionResponse(AcquisitionBase):
 class AcquisitionFullMetadata(TEMDBModel):
     """Acquisition with complete hierarchy metadata."""
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
 
     acquisition: AcquisitionResponse
     task: dict[str, Any] | None = Field(None, alias="acquisition_task")

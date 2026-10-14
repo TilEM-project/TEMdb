@@ -3,21 +3,17 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .enums import MatchPosition
 from .utils.uri import URI
 
 
 class StagePosition(TEMDBModel):
-    model_config = ConfigDict(extra="forbid")
-
     x: float = Field(..., description="X axis stage position in nm")
     y: float = Field(..., description="Y axis stage position in nm")
 
 
 class RasterPosition(TEMDBModel):
-    model_config = ConfigDict(extra="forbid")
-
     row: int = Field(..., description="Raster scan row index")
     col: int = Field(..., description="Raster scan column index")
 
@@ -39,7 +35,7 @@ class Matcher(TEMDBModel):
     qY: list[float] = Field(..., description="Y position of the points in the reference tile")
 
 
-class TileBase(TEMDBModel):
+class TileBase(TEMDBRecord):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     stage_position: StagePosition | None = Field(
@@ -74,7 +70,7 @@ class TileUpdate(TileBase):
 
 
 class TileResponse(TileBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     tile_id: str = Field(..., description="Unique tile identifier")
     acquisition_id: str = Field(..., description="Parent acquisition ID")

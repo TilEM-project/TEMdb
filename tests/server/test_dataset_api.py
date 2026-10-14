@@ -57,38 +57,38 @@ async def test_dataset_extra_fields_round_trip(async_client, test_specimen):
             "name": dataset_name,
             "specimen_id": test_specimen.specimen_id,
             "size_class": "small",
-            "unknown_create_key": {"created": True},
+            "extra": {"unknown_create_key": {"created": True}},
         },
     )
     assert create_response.status_code == 201
     created = create_response.json()
-    assert created["unknown_create_key"] == {"created": True}
+    assert created["extra"]["unknown_create_key"] == {"created": True}
 
     patch_response = await async_client.patch(
         f"/api/v2/datasets/{created['dataset_id']}",
         json={
             "status": "collected",
-            "unknown_patch_key": "patched-extra",
+            "extra": {"unknown_patch_key": "patched-extra"},
         },
     )
     assert patch_response.status_code == 200
-    assert patch_response.json()["unknown_patch_key"] == "patched-extra"
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patched-extra"
 
     get_response = await async_client.get(f"/api/v2/datasets/{created['dataset_id']}")
     assert get_response.status_code == 200
-    assert get_response.json()["unknown_create_key"] == {"created": True}
-    assert get_response.json()["unknown_patch_key"] == "patched-extra"
+    assert get_response.json()["extra"]["unknown_create_key"] == {"created": True}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patched-extra"
 
     by_name_response = await async_client.get(f"/api/v2/datasets/by-name/{dataset_name}")
     assert by_name_response.status_code == 200
-    assert by_name_response.json()["unknown_create_key"] == {"created": True}
-    assert by_name_response.json()["unknown_patch_key"] == "patched-extra"
+    assert by_name_response.json()["extra"]["unknown_create_key"] == {"created": True}
+    assert by_name_response.json()["extra"]["unknown_patch_key"] == "patched-extra"
 
     list_response = await async_client.get(f"/api/v2/datasets?specimen_id={test_specimen.specimen_id}")
     assert list_response.status_code == 200
     listed = next(ds for ds in list_response.json() if ds["dataset_id"] == created["dataset_id"])
-    assert listed["unknown_create_key"] == {"created": True}
-    assert listed["unknown_patch_key"] == "patched-extra"
+    assert listed["extra"]["unknown_create_key"] == {"created": True}
+    assert listed["extra"]["unknown_patch_key"] == "patched-extra"
 
 
 @pytest.mark.asyncio

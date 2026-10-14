@@ -9,7 +9,7 @@ from temdb.models import SectionResponse, SubstrateCreate, SubstrateResponse, Su
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SectionSQLModel, SubstrateSQLModel
 
-from ..utils import include_extra
+from ..utils import drop_null_keys, merge_extra
 
 substrate_api = APIRouter(
     tags=["Substrates"],
@@ -25,7 +25,6 @@ def _to_json_compatible(value):
 
 
 @substrate_api.get("/substrates", response_model=list[SubstrateResponse])
-@include_extra
 async def list_substrates(
     media_type: str | None = Query(None, description="Filter by substrate media type (e.g., 'wafer', 'tape')"),
     status: str | None = Query(None, description="Filter by substrate status (e.g., 'new', 'used')"),
@@ -44,7 +43,6 @@ async def list_substrates(
 
 
 @substrate_api.post("/substrates", status_code=status.HTTP_201_CREATED, response_model=SubstrateResponse)
-@include_extra
 async def create_substrate(
     substrate_data: SubstrateCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -85,7 +83,7 @@ async def create_substrate(
             else None
         ),
         created_at=substrate_data.created_at or datetime.now(timezone.utc),
-        extra=substrate_data.model_extra,
+        extra=drop_null_keys(substrate_data.extra),
     )
     session.add(new_substrate)
     await session.commit()
@@ -94,7 +92,6 @@ async def create_substrate(
 
 
 @substrate_api.get("/substrates/{media_id}", response_model=SubstrateResponse)
-@include_extra
 async def get_substrate(media_id: str, session: AsyncSession = Depends(get_async_session)):
     """Retrieve a specific substrate by its unique media_id."""
     substrate = await session.scalars(select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id))
@@ -108,7 +105,6 @@ async def get_substrate(media_id: str, session: AsyncSession = Depends(get_async
 
 
 @substrate_api.patch("/substrates/{media_id}", response_model=SubstrateResponse)
-@include_extra
 async def update_substrate(
     media_id: str,
     updated_fields: SubstrateUpdate = Body(...),
@@ -124,10 +120,10 @@ async def update_substrate(
         )
     update_data = updated_fields.model_dump(
         exclude_unset=True,
-        extra=False,
     )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     if "metadata" in update_data:
         substrate_obj.metadata_json = _to_json_compatible(update_data.pop("metadata"))
     for field in ("refpoint", "refpoint_world", "apertures"):
@@ -137,8 +133,8 @@ async def update_substrate(
         update_data["source_path"] = str(update_data["source_path"])  # URI.Type -> String column
     for field, value in update_data.items():
         setattr(substrate_obj, field, value)
-    if updated_fields.model_extra:
-        substrate_obj.extra = {**(substrate_obj.extra or {}), **updated_fields.model_extra}
+    if extra_changes is not None:
+        substrate_obj.extra = merge_extra(SubstrateSQLModel.extra, extra_changes)
     substrate_obj.updated_at = datetime.now(timezone.utc)
     session.add(substrate_obj)
     await session.commit()
@@ -168,7 +164,6 @@ async def delete_substrate(media_id: str, session: AsyncSession = Depends(get_as
 
 
 @substrate_api.get("/substrates/{media_id}/sections", response_model=list[SectionResponse])
-@include_extra
 async def get_substrate_sections(
     media_id: str,
     skip: int = Query(0, ge=0),

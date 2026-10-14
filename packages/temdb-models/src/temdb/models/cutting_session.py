@@ -2,10 +2,10 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 
 
-class CuttingSessionBase(TEMDBModel):
+class CuttingSessionBase(TEMDBRecord):
     """Base cutting session fields."""
 
     start_time: datetime | None = Field(None, description="Time when cutting session started")
@@ -37,7 +37,7 @@ class CuttingSessionUpdate(CuttingSessionBase):
 class CuttingSessionResponse(CuttingSessionBase):
     """Schema for cutting session API responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     id: int
     cutting_session_id: str = Field(..., description="Unique cutting session identifier")

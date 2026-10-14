@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .enums import SECTION_CONDITIONS, SectionQuality
 from .utils.uri import URI
 
@@ -66,7 +66,7 @@ class OpticalImage(TEMDBModel):
     metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
 
 
-class SectionBase(TEMDBModel):
+class SectionBase(TEMDBRecord):
     """Base section fields."""
 
     section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
@@ -126,7 +126,7 @@ class SectionUpdate(SectionBase):
 class SectionResponse(SectionBase):
     """Schema for section API responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     id: int
     section_id: str = Field(..., description="Unique, system-generated ID for the section")

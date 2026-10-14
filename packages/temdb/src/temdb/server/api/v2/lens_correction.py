@@ -10,7 +10,7 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
-from ..utils import include_extra
+from ..utils import drop_null_keys, merge_extra
 
 lens_correction_api = APIRouter(tags=["Lens Corrections"])
 
@@ -31,7 +31,6 @@ async def _get_by_id(session: AsyncSession, lc_id: str) -> LensCorrectionSQLMode
 @lens_correction_api.post(
     "/lens-corrections", status_code=status.HTTP_201_CREATED, response_model=LensCorrectionResponse
 )
-@include_extra
 async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSession = Depends(get_async_session)):
     microscope = (
         await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id))
@@ -50,7 +49,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
         correction_y_uri=data.correction_y_uri,
         solver_params=data.solver_params,
         created_at=data.created_at or datetime.now(timezone.utc),
-        extra=data.model_extra,
+        extra=drop_null_keys(data.extra),
     )
     session.add(lc)
     await session.commit()
@@ -59,7 +58,6 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
 
 
 @lens_correction_api.get("/lens-corrections", response_model=list[LensCorrectionResponse])
-@include_extra
 async def list_lens_corrections(
     microscope_id: uuid.UUID | None = Query(None),
     magnification: int | None = Query(None),
@@ -80,7 +78,6 @@ async def list_lens_corrections(
 
 # NOTE: /current must be declared before /{lc_id} so the literal path wins.
 @lens_correction_api.get("/lens-corrections/current", response_model=LensCorrectionResponse)
-@include_extra
 async def get_current_lens_correction(
     microscope_id: uuid.UUID = Query(...),
     magnification: int = Query(...),
@@ -104,13 +101,11 @@ async def get_current_lens_correction(
 
 
 @lens_correction_api.get("/lens-corrections/{lc_id}", response_model=LensCorrectionResponse)
-@include_extra
 async def get_lens_correction(lc_id: str, session: AsyncSession = Depends(get_async_session)):
     return await _get_by_id(session, lc_id)
 
 
 @lens_correction_api.patch("/lens-corrections/{lc_id}", response_model=LensCorrectionResponse)
-@include_extra
 async def update_lens_correction(
     lc_id: str,
     updated: LensCorrectionUpdate = Body(...),
@@ -119,14 +114,14 @@ async def update_lens_correction(
     lc = await _get_by_id(session, lc_id)
     data = updated.model_dump(
         exclude_unset=True,
-        extra=False,
     )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
+    extra_changes = data.pop("extra", None)
     for field, value in data.items():
         setattr(lc, field, value)
-    if updated.model_extra:
-        lc.extra = {**(lc.extra or {}), **updated.model_extra}
+    if extra_changes is not None:
+        lc.extra = merge_extra(LensCorrectionSQLModel.extra, extra_changes)
     lc.updated_at = datetime.now(timezone.utc)
     session.add(lc)
     await session.commit()

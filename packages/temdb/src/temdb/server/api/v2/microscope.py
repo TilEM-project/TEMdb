@@ -10,7 +10,7 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import MicroscopeSQLModel
 
-from ..utils import include_extra
+from ..utils import drop_null_keys, merge_extra
 
 microscope_api = APIRouter(tags=["Microscopes"])
 
@@ -29,7 +29,6 @@ async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQL
 
 
 @microscope_api.post("/microscopes", status_code=status.HTTP_201_CREATED, response_model=MicroscopeResponse)
-@include_extra
 async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (
         await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == data.label))
@@ -44,7 +43,7 @@ async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depe
         location=data.location,
         notes=data.notes,
         created_at=data.created_at or datetime.now(timezone.utc),
-        extra=data.model_extra,
+        extra=drop_null_keys(data.extra),
     )
     session.add(scope)
     await session.commit()
@@ -53,7 +52,6 @@ async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depe
 
 
 @microscope_api.get("/microscopes", response_model=list[MicroscopeResponse])
-@include_extra
 async def list_microscopes(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -66,7 +64,6 @@ async def list_microscopes(
 
 
 @microscope_api.get("/microscopes/{id_or_label}", response_model=MicroscopeResponse)
-@include_extra
 async def get_microscope(id_or_label: str, session: AsyncSession = Depends(get_async_session)):
     try:
         key = uuid.UUID(id_or_label)
@@ -81,7 +78,6 @@ async def get_microscope(id_or_label: str, session: AsyncSession = Depends(get_a
 
 
 @microscope_api.patch("/microscopes/{microscope_id}", response_model=MicroscopeResponse)
-@include_extra
 async def update_microscope(
     microscope_id: str,
     updated: MicroscopeUpdate = Body(...),
@@ -90,14 +86,14 @@ async def update_microscope(
     scope = await _get_by_id(session, microscope_id)
     data = updated.model_dump(
         exclude_unset=True,
-        extra=False,
     )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
+    extra_changes = data.pop("extra", None)
     for field, value in data.items():
         setattr(scope, field, value)
-    if updated.model_extra:
-        scope.extra = {**(scope.extra or {}), **updated.model_extra}
+    if extra_changes is not None:
+        scope.extra = merge_extra(MicroscopeSQLModel.extra, extra_changes)
     scope.updated_at = datetime.now(timezone.utc)
     session.add(scope)
     await session.commit()

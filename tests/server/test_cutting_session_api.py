@@ -111,36 +111,36 @@ async def test_cutting_session_extra_fields_round_trip(async_client: AsyncClient
             "sectioning_device": "Extra Device",
             "media_type": "tape",
             "block_id": test_block.block_id,
-            "unknown_create_key": {"roundtrip": "create"},
+            "extra": {"unknown_create_key": {"roundtrip": "create"}},
         },
     )
     assert create_response.status_code == 201
     created = create_response.json()
-    assert created["unknown_create_key"] == {"roundtrip": "create"}
+    assert created["extra"]["unknown_create_key"] == {"roundtrip": "create"}
 
     patch_response = await async_client.patch(
         f"/api/v2/cutting-sessions/{cutting_session_id}",
         json={
             "operator": "Extra Patch Operator",
-            "unknown_patch_key": "patch-roundtrip",
+            "extra": {"unknown_patch_key": "patch-roundtrip"},
         },
     )
     assert patch_response.status_code == 200
-    assert patch_response.json()["unknown_patch_key"] == "patch-roundtrip"
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patch-roundtrip"
 
     get_response = await async_client.get(
         f"/api/v2/cutting-sessions/specimens/{created['specimen_id']}"
         f"/blocks/{created['block_id']}/sessions/{cutting_session_id}"
     )
     assert get_response.status_code == 200
-    assert get_response.json()["unknown_create_key"] == {"roundtrip": "create"}
-    assert get_response.json()["unknown_patch_key"] == "patch-roundtrip"
+    assert get_response.json()["extra"]["unknown_create_key"] == {"roundtrip": "create"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patch-roundtrip"
 
     list_response = await async_client.get(f"/api/v2/cutting-sessions?block_id={test_block.block_id}")
     assert list_response.status_code == 200
     listed = next(session for session in list_response.json() if session["cutting_session_id"] == cutting_session_id)
-    assert listed["unknown_create_key"] == {"roundtrip": "create"}
-    assert listed["unknown_patch_key"] == "patch-roundtrip"
+    assert listed["extra"]["unknown_create_key"] == {"roundtrip": "create"}
+    assert listed["extra"]["unknown_patch_key"] == "patch-roundtrip"
 
 
 @pytest.mark.asyncio

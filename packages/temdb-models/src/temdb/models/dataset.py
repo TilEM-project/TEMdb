@@ -4,13 +4,13 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 
 SizeClass = Literal["small", "medium", "large", "xlarge"]
 DatasetStatus = Literal["collecting", "collected", "archived"]
 
 
-class DatasetBase(TEMDBModel):
+class DatasetBase(TEMDBRecord):
     description: str | None = Field(None, description="Human description of the dataset")
     specimen_id: str | None = Field(None, description="Specimen this dataset belongs to")
     size_class: SizeClass | None = Field(None, description="Planner size class; drives tile partitioning")
@@ -24,7 +24,7 @@ class DatasetCreate(DatasetBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class DatasetUpdate(TEMDBModel):
+class DatasetUpdate(TEMDBRecord):
     description: str | None = None
     status: DatasetStatus | None = None
     size_class: SizeClass | None = None
@@ -32,7 +32,7 @@ class DatasetUpdate(TEMDBModel):
 
 
 class DatasetResponse(DatasetBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     dataset_id: uuid.UUID = Field(..., description="UUIDv7 primary key")
     name: str = Field(..., description="Unique human-readable dataset name")

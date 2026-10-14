@@ -8,7 +8,7 @@ from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSession
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
 
-from ..utils import include_extra
+from ..utils import drop_null_keys, merge_extra
 
 block_api = APIRouter(
     tags=["Blocks"],
@@ -16,7 +16,6 @@ block_api = APIRouter(
 
 
 @block_api.get("/blocks", response_model=list[BlockResponse])
-@include_extra
 async def list_blocks(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     skip: int = Query(0, ge=0),
@@ -34,7 +33,6 @@ async def list_blocks(
     "/blocks/specimens/{specimen_id}/blocks/{block_id}/cut-sessions",
     response_model=list[CuttingSessionResponse],
 )
-@include_extra
 async def get_block_cut_sessions(
     specimen_id: str,
     block_id: str,
@@ -81,7 +79,6 @@ async def get_block_cut_sessions(
 
 
 @block_api.post("/blocks", status_code=status.HTTP_201_CREATED, response_model=BlockResponse)
-@include_extra
 async def create_block(
     block_data: BlockCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -113,7 +110,7 @@ async def create_block(
         microCT_info=block_data.microCT_info,
         created_at=block_data.created_at or datetime.now(timezone.utc),
         description=block_data.description,
-        extra=block_data.model_extra,
+        extra=drop_null_keys(block_data.extra),
     )
     session.add(new_block)
     await session.commit()
@@ -122,7 +119,6 @@ async def create_block(
 
 
 @block_api.get("/blocks/specimens/{specimen_id}/blocks/{block_id}", response_model=BlockResponse)
-@include_extra
 async def get_block(
     specimen_id: str,
     block_id: str,
@@ -143,7 +139,6 @@ async def get_block(
 
 
 @block_api.patch("/blocks/specimens/{specimen_id}/blocks/{block_id}", response_model=BlockResponse)
-@include_extra
 async def update_block(
     specimen_id: str,
     block_id: str,
@@ -163,14 +158,14 @@ async def update_block(
         )
     update_data = updated_fields.model_dump(
         exclude_unset=True,
-        extra=False,
     )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(block_obj, field, value)
-    if updated_fields.model_extra:
-        block_obj.extra = {**(block_obj.extra or {}), **updated_fields.model_extra}
+    if extra_changes is not None:
+        block_obj.extra = merge_extra(BlockSQLModel.extra, extra_changes)
     block_obj.updated_at = datetime.now(timezone.utc)
     session.add(block_obj)
     await session.commit()
@@ -218,7 +213,6 @@ async def delete_block(
 
 
 @block_api.get("/blocks/specimens/{specimen_id}/blocks", response_model=list[BlockResponse])
-@include_extra
 async def list_specimen_blocks(
     specimen_id: str,
     skip: int = Query(0, ge=0),

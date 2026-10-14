@@ -65,32 +65,32 @@ async def test_specimen_extra_fields_round_trip(async_client: AsyncClient):
         json={
             "specimen_id": specimen_id_hr,
             "description": "Specimen with extra fields",
-            "unknown_create_key": {"source": "create"},
+            "extra": {"unknown_create_key": {"source": "create"}},
         },
     )
     assert create_response.status_code == 201
-    assert create_response.json()["unknown_create_key"] == {"source": "create"}
+    assert create_response.json()["extra"]["unknown_create_key"] == {"source": "create"}
 
     patch_response = await async_client.patch(
         f"/api/v2/specimens/{specimen_id_hr}",
         json={
             "description": "Specimen patched with extra fields",
-            "unknown_patch_key": ["from", "patch"],
+            "extra": {"unknown_patch_key": ["from", "patch"]},
         },
     )
     assert patch_response.status_code == 200
-    assert patch_response.json()["unknown_patch_key"] == ["from", "patch"]
+    assert patch_response.json()["extra"]["unknown_patch_key"] == ["from", "patch"]
 
     get_response = await async_client.get(f"/api/v2/specimens/{specimen_id_hr}")
     assert get_response.status_code == 200
-    assert get_response.json()["unknown_create_key"] == {"source": "create"}
-    assert get_response.json()["unknown_patch_key"] == ["from", "patch"]
+    assert get_response.json()["extra"]["unknown_create_key"] == {"source": "create"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == ["from", "patch"]
 
     list_response = await async_client.get(f"/api/v2/specimens?search={specimen_id_hr}")
     assert list_response.status_code == 200
     listed = next(spec for spec in list_response.json() if spec["specimen_id"] == specimen_id_hr)
-    assert listed["unknown_create_key"] == {"source": "create"}
-    assert listed["unknown_patch_key"] == ["from", "patch"]
+    assert listed["extra"]["unknown_create_key"] == {"source": "create"}
+    assert listed["extra"]["unknown_patch_key"] == ["from", "patch"]
 
 
 @pytest.mark.asyncio

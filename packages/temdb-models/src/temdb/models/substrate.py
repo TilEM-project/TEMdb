@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import AliasChoices, ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .utils.uri import URI
 
 
@@ -53,7 +53,7 @@ class SubstrateMetadata(TEMDBModel):
     )
 
 
-class SubstrateBase(TEMDBModel):
+class SubstrateBase(TEMDBRecord):
     """Base substrate fields."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -106,7 +106,7 @@ class SubstrateUpdate(SubstrateBase):
 class SubstrateResponse(SubstrateBase):
     """Schema for substrate API responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     id: int
     metadata: SubstrateMetadata | None = Field(

@@ -1,36 +1,23 @@
-from temdb.models.base import TEMDBModel
+import pytest
+from pydantic import ValidationError
+
+from temdb.models.base import TEMDBRecord
 
 
-class _ExampleModel(TEMDBModel):
+class Example(TEMDBRecord):
     name: str
-    count: int
 
 
-def test_model_dump_includes_extra_by_default():
-    model = _ExampleModel(name="demo", count=1, unknown_key="extra")
-    dumped = model.model_dump()
-    assert dumped["name"] == "demo"
-    assert dumped["count"] == 1
-    assert dumped["unknown_key"] == "extra"
+def test_free_form_fields_go_in_extra():
+    model = Example(name="demo", extra={"stain": "2Os_Agar_noUA"})
+    assert model.extra == {"stain": "2Os_Agar_noUA"}
 
 
-def test_model_dump_excludes_extra_when_extra_false():
-    model = _ExampleModel(name="demo", count=1, unknown_key="extra")
-    dumped = model.model_dump(extra=False)
-    assert dumped == {"name": "demo", "count": 1}
+def test_unknown_top_level_field_is_rejected():
+    with pytest.raises(ValidationError):
+        Example(name="demo", stain="2Os_Agar_noUA")
 
 
-def test_model_dump_extra_false_unions_include_sequence_with_model_fields():
-    model = _ExampleModel(name="demo", count=1, unknown_key="extra")
-    dumped = model.model_dump(extra=False, include=["name"])
-    assert dumped == {"name": "demo", "count": 1}
-
-
-def test_model_dump_extra_false_rejects_invalid_include_type():
-    model = _ExampleModel(name="demo", count=1, unknown_key="extra")
-    try:
-        model.model_dump(extra=False, include={"name": True})
-    except ValueError as error:
-        assert "include must be a list, set, or tuple" in str(error)
-    else:
-        raise AssertionError("Expected ValueError for invalid include type")
+def test_extra_key_that_is_a_field_is_rejected():
+    with pytest.raises(ValidationError, match="name"):
+        Example(name="demo", extra={"name": "other"})

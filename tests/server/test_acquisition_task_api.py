@@ -308,32 +308,32 @@ async def test_acquisition_task_extra_fields_round_trip(async_client: AsyncClien
             "specimen_id": test_specimen.specimen_id,
             "block_id": test_block.block_id,
             "roi_id": test_roi.roi_id,
-            "unknown_create_key": {"create": "task"},
+            "extra": {"unknown_create_key": {"create": "task"}},
         },
     )
     assert create_response.status_code == 201
-    assert create_response.json()["unknown_create_key"] == {"create": "task"}
+    assert create_response.json()["extra"]["unknown_create_key"] == {"create": "task"}
 
     patch_response = await async_client.patch(
         f"/api/v2/acquisition-tasks/{task_id_hr}",
         json={
             "metadata": {"patched": True},
-            "unknown_patch_key": "task-patch",
+            "extra": {"unknown_patch_key": "task-patch"},
         },
     )
     assert patch_response.status_code == 200
-    assert patch_response.json()["unknown_patch_key"] == "task-patch"
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "task-patch"
 
     get_response = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_hr}")
     assert get_response.status_code == 200
-    assert get_response.json()["unknown_create_key"] == {"create": "task"}
-    assert get_response.json()["unknown_patch_key"] == "task-patch"
+    assert get_response.json()["extra"]["unknown_create_key"] == {"create": "task"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "task-patch"
 
     list_response = await async_client.get(f"/api/v2/acquisition-tasks?roi_id={test_roi.roi_id}")
     assert list_response.status_code == 200
     listed = next(task for task in list_response.json() if task["task_id"] == task_id_hr)
-    assert listed["unknown_create_key"] == {"create": "task"}
-    assert listed["unknown_patch_key"] == "task-patch"
+    assert listed["extra"]["unknown_create_key"] == {"create": "task"}
+    assert listed["extra"]["unknown_patch_key"] == "task-patch"
 
 
 @pytest.mark.asyncio

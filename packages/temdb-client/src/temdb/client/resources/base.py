@@ -3,8 +3,6 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from pydantic import ValidationError
-
 
 class BaseResource:
     """Base class for API resources."""
@@ -40,16 +38,7 @@ def accepts_keywords(model):
                 if kwargs:
                     raise TypeError(f"Pass a {model.__name__} or its fields as keywords, not both")
                 return await method(self, *args)
-            built = model(**kwargs)
-            if built.model_extra:
-                raise ValidationError.from_exception_data(
-                    model.__name__,
-                    [
-                        {"type": "extra_forbidden", "loc": (key,), "input": value}
-                        for key, value in built.model_extra.items()
-                    ],
-                )
-            return await method(self, *args, built)
+            return await method(self, *args, model(**kwargs))
 
         wrapper.__doc__ = f"{method.__doc__ or ''}\n\nTakes a {model.__name__} or its fields as keywords, not both."
         return wrapper

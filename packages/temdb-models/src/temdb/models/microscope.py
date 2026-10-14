@@ -3,10 +3,10 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 
 
-class MicroscopeBase(TEMDBModel):
+class MicroscopeBase(TEMDBRecord):
     microscope_type: str = Field("TEM", description="Instrument type")
     model: str | None = Field(None, description="Manufacturer model")
     location: str | None = Field(None, description="Physical location")
@@ -19,7 +19,7 @@ class MicroscopeCreate(MicroscopeBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class MicroscopeUpdate(TEMDBModel):
+class MicroscopeUpdate(TEMDBRecord):
     microscope_type: str | None = None
     model: str | None = None
     location: str | None = None
@@ -27,7 +27,7 @@ class MicroscopeUpdate(TEMDBModel):
 
 
 class MicroscopeResponse(MicroscopeBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     microscope_id: uuid.UUID
     label: str = Field(..., description="Unique human handle, e.g. 'TEM-01'")

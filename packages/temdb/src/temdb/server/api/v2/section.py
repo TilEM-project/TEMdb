@@ -16,7 +16,7 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
-from ..utils import include_extra
+from ..utils import drop_null_keys, merge_extra
 
 section_api = APIRouter(
     tags=["Sections"],
@@ -30,7 +30,6 @@ def _dump_images(data):
 
 
 @section_api.get("/sections", response_model=list[SectionResponse])
-@include_extra
 async def list_sections(
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -88,7 +87,6 @@ async def count_sections(
 
 
 @section_api.get("/sections/sessions/{cutting_session_id}", response_model=list[SectionResponse])
-@include_extra
 async def list_cutting_session_sections(
     cutting_session_id: str,
     skip: int = Query(0, ge=0),
@@ -115,7 +113,6 @@ async def list_cutting_session_sections(
 
 
 @section_api.get("/sections/blocks/{block_id}", response_model=list[SectionResponse])
-@include_extra
 async def list_block_sections(
     block_id: str,
     skip: int = Query(0, ge=0),
@@ -134,7 +131,6 @@ async def list_block_sections(
 
 
 @section_api.get("/sections/specimens/{specimen_id}", response_model=list[SectionResponse])
-@include_extra
 async def list_specimen_sections(
     specimen_id: str,
     skip: int = Query(0, ge=0),
@@ -153,7 +149,6 @@ async def list_specimen_sections(
 
 
 @section_api.get("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
-@include_extra
 async def get_section(
     cutting_session_id: str,
     section_id: str,
@@ -192,7 +187,6 @@ async def get_section(
 
 
 @section_api.post("/sections", status_code=status.HTTP_201_CREATED, response_model=SectionResponse)
-@include_extra
 async def create_section(
     section_data: SectionCreate,
     session: AsyncSession = Depends(get_async_session),
@@ -249,7 +243,7 @@ async def create_section(
         aperture_index=section_data.aperture_index,
         barcode=section_data.barcode,
         created_at=section_data.created_at or datetime.now(timezone.utc),
-        extra=section_data.model_extra,
+        extra=drop_null_keys(section_data.extra),
     )
     session.add(new_section)
     await session.commit()
@@ -269,7 +263,6 @@ async def create_section(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": APIErrorResponse, "description": "Internal server error"},
     },
 )
-@include_extra
 async def create_sections_batch(
     sections_data: list[SectionCreate],
     session: AsyncSession = Depends(get_async_session),
@@ -344,7 +337,7 @@ async def create_sections_batch(
                 else None
             ),
             created_at=section_create.created_at or datetime.now(timezone.utc),
-            extra=section_create.model_extra,
+            extra=drop_null_keys(section_create.extra),
         )
         sections_to_insert.append(section_doc)
 
@@ -360,7 +353,6 @@ async def create_sections_batch(
 
 
 @section_api.patch("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
-@include_extra
 async def update_section(
     cutting_session_id: str,
     section_id: str,
@@ -382,10 +374,10 @@ async def update_section(
         )
     update_data = updated_fields.model_dump(
         exclude_unset=True,
-        extra=False,
     )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     metrics = update_data.pop("section_metrics", None)
     if metrics is not None:
         section_obj.section_metrics = jsonable_encoder(metrics)
@@ -397,8 +389,8 @@ async def update_section(
         section_obj.optical_image = jsonable_encoder(optical_image)
     for field, value in update_data.items():
         setattr(section_obj, field, value)
-    if updated_fields.model_extra:
-        section_obj.extra = {**(section_obj.extra or {}), **updated_fields.model_extra}
+    if extra_changes is not None:
+        section_obj.extra = merge_extra(SectionSQLModel.extra, extra_changes)
     section_obj.updated_at = datetime.now(timezone.utc)
     session.add(section_obj)
     await session.commit()
@@ -445,7 +437,6 @@ async def delete_section(
 
 
 @section_api.get("/sections/media/{media_id}", response_model=list[SectionResponse])
-@include_extra
 async def list_sections_by_media(
     media_id: str,
     skip: int = Query(0, ge=0),
@@ -462,7 +453,6 @@ async def list_sections_by_media(
 
 
 @section_api.get("/sections/barcode/{barcode}", response_model=list[SectionResponse])
-@include_extra
 async def get_sections_by_barcode(
     barcode: str,
     skip: int = Query(0, ge=0),

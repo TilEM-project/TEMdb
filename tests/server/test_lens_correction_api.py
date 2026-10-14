@@ -197,27 +197,27 @@ async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient
             "microscope_id": scope["microscope_id"],
             "magnification": 12000,
             "started_at": "2026-06-11T00:00:00Z",
-            "unknown_create_key": {"create": "ok"},
+            "extra": {"unknown_create_key": {"create": "ok"}},
         },
     )
     assert create_response.status_code == 201
     created = create_response.json()
-    assert created["unknown_create_key"] == {"create": "ok"}
+    assert created["extra"]["unknown_create_key"] == {"create": "ok"}
 
     patch_response = await async_client.patch(
         f"/api/v2/lens-corrections/{created['lc_id']}",
         json={
             "correction_x_uri": "s3://bucket/lc/extra-x.tiff",
-            "unknown_patch_key": "patch-ok",
+            "extra": {"unknown_patch_key": "patch-ok"},
         },
     )
     assert patch_response.status_code == 200
-    assert patch_response.json()["unknown_patch_key"] == "patch-ok"
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patch-ok"
 
     get_response = await async_client.get(f"/api/v2/lens-corrections/{created['lc_id']}")
     assert get_response.status_code == 200
-    assert get_response.json()["unknown_create_key"] == {"create": "ok"}
-    assert get_response.json()["unknown_patch_key"] == "patch-ok"
+    assert get_response.json()["extra"]["unknown_create_key"] == {"create": "ok"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patch-ok"
 
     list_response = await async_client.get(
         "/api/v2/lens-corrections",
@@ -225,8 +225,8 @@ async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient
     )
     assert list_response.status_code == 200
     listed = next(lc for lc in list_response.json() if lc["lc_id"] == created["lc_id"])
-    assert listed["unknown_create_key"] == {"create": "ok"}
-    assert listed["unknown_patch_key"] == "patch-ok"
+    assert listed["extra"]["unknown_create_key"] == {"create": "ok"}
+    assert listed["extra"]["unknown_patch_key"] == "patch-ok"
 
 
 @pytest.mark.asyncio
