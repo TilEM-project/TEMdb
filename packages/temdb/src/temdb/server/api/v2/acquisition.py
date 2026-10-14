@@ -50,6 +50,8 @@ from temdb.server.sqlmodels import (
 )
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 
+from ..utils import drop_null_keys, merge_extra
+
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
 )
@@ -87,6 +89,7 @@ def _tile_payload(
         "supertile_raster_position": tile.supertile_raster_position,
         "created_at": tile.created_at,
         "updated_at": tile.updated_at,
+        "extra": tile.extra,
     }
     if acquisition_internal_id is not None:
         payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
@@ -133,6 +136,7 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "supertile_raster_position": (
             tile_data.supertile_raster_position.model_dump() if tile_data.supertile_raster_position else None
         ),
+        "extra": drop_null_keys(tile_data.extra),
     }
 
 
@@ -383,6 +387,7 @@ async def create_acquisition(
         montage_set_name=acq_data.montage_set_name,
         sub_region=acq_data.sub_region.model_dump(mode="json") if acq_data.sub_region else None,
         replaces_acquisition_id=replacement_id,
+        extra=drop_null_keys(acq_data.extra),
     )
     session.add(acquisition)
     await session.commit()
@@ -460,9 +465,12 @@ async def update_acquisition(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
     acq_obj, _specimen_ref, _roi_ref, _task_ref = row
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(400, "No update data provided")
+    extra_changes = update_data.pop("extra", None)
     updated_by = update_data.pop("updated_by", None)
     now = datetime.now(timezone.utc)
     if "end_time" in update_data and "status" not in update_data:
@@ -481,6 +489,8 @@ async def update_acquisition(
         values = {
             field: _column_value(value) for field, value in update_data.items() if hasattr(AcquisitionSQLModel, field)
         }
+        if extra_changes is not None:
+            values["extra"] = merge_extra(AcquisitionSQLModel.extra, extra_changes)
         result = await session.execute(
             update(AcquisitionSQLModel)
             .where(
@@ -508,6 +518,8 @@ async def update_acquisition(
     for field, value in update_data.items():
         if hasattr(acq_obj, field):
             setattr(acq_obj, field, _column_value(value))
+    if extra_changes is not None:
+        acq_obj.extra = merge_extra(AcquisitionSQLModel.extra, extra_changes)
     session.add(acq_obj)
     await session.commit()
     await session.refresh(acq_obj)
@@ -918,6 +930,9 @@ def _tile_sql_patch_kwargs(updated_fields: TileUpdate):
     if _has_non_finite(updated_fields.model_dump(exclude_unset=True)):
         raise HTTPException(422, "A tile update has a NaN or infinite value")
     update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
+    extra_changes = update_data.pop("extra", None)
+    if extra_changes is not None:
+        update_data["extra"] = merge_extra(TileSQLModel.extra, extra_changes)
     stage_position = update_data.pop("stage_position", None)
     if stage_position is not None:
         update_data["stage_x_nm"] = stage_position["x"]

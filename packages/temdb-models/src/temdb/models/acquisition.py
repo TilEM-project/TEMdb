@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import ConfigDict, Field, field_validator
 from pydantic_core import PydanticCustomError
 
-from temdb.models.base import TEMDBModel
+from temdb.models.base import TEMDBModel, TEMDBRecord
 from temdb.models.enums import QC_STATES, RUN_STATUSES, TASK_KINDS, TRANSFER_STATES
 
 
@@ -62,7 +62,7 @@ class StorageLocationCreate(TEMDBModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata of storage location")
 
 
-class AcquisitionBase(TEMDBModel):
+class AcquisitionBase(TEMDBRecord):
     hardware_settings: HardwareParams | None = None
     acquisition_settings: AcquisitionParams | None = None
     calibration_info: Calibration | None = None

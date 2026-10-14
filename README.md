@@ -185,7 +185,23 @@ The server does not depend on the client. Both import from `temdb-models`.
 
 ### Natural keys are immutable
 
-Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable once children reference them. Renames are rejected by the `ON UPDATE NO ACTION` foreign keys — this is by design, not a bug. If an id is wrong, create a new entity via the CRUD endpoints rather than renaming an existing one.
+Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable once children reference them. Renames are rejected by the `ON UPDATE NO ACTION` foreign key. If an id is wrong, create a new entity via the CRUD endpoints rather than renaming an existing one.
+
+### Extra fields
+
+Every stored record (specimen, block, cutting session, section, substrate, ROI, task, acquisition, tile, dataset, microscope, lens correction) has an `extra` object for fields outside the schema. Unknown top-level fields are still rejected, so a typo fails instead of landing in `extra`.
+
+```python
+await client.block.create(block_id="B1", specimen_id="S1", extra={"foo": "bar", "batch": 7})
+await client.block.update("S1", "B1", extra={"batch": 8, "foo": None})  # extra == {"batch": 8}
+```
+
+- **Create** stores the object as sent, dropping keys whose value is `null`.
+- **Update** merges at the top level: sent keys are set, `null` removes a key, keys not sent are kept, and a nested value is replaced whole. Sending `"extra": null` or `{}` changes nothing; clear keys one by one with `null`.
+- **Read** returns `extra` as its own field. There is no filtering by `extra` keys yet.
+- A key that names one of the record's fields (e.g. `extra={"description": ...}`) is rejected; set the field directly.
+
+`extra` is a staging area, and ideally not a permanent storage for shared data. When a key becomes something services depend on, it should be promoted to a column. Then a migration copies the key into the new column and removes it from `extra`, and clients switch to the field.
 
 ### All writers go through the API
 

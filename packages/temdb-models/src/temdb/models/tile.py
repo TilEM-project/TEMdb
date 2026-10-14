@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .enums import MatchPosition
 from .utils.uri import URI
 
@@ -35,7 +35,7 @@ class Matcher(TEMDBModel):
     qY: list[float] = Field(..., description="Y position of the points in the reference tile")
 
 
-class TileBase(TEMDBModel):
+class TileBase(TEMDBRecord):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     stage_position: StagePosition | None = Field(

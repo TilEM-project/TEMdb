@@ -10,6 +10,8 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import MicroscopeSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 microscope_api = APIRouter(tags=["Microscopes"])
 
 
@@ -41,6 +43,7 @@ async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depe
         location=data.location,
         notes=data.notes,
         created_at=data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(data.extra),
     )
     session.add(scope)
     await session.commit()
@@ -81,11 +84,16 @@ async def update_microscope(
     session: AsyncSession = Depends(get_async_session),
 ):
     scope = await _get_by_id(session, microscope_id)
-    data = updated.model_dump(exclude_unset=True)
+    data = updated.model_dump(
+        exclude_unset=True,
+    )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
+    extra_changes = data.pop("extra", None)
     for field, value in data.items():
         setattr(scope, field, value)
+    if extra_changes is not None:
+        scope.extra = merge_extra(MicroscopeSQLModel.extra, extra_changes)
     scope.updated_at = datetime.now(timezone.utc)
     session.add(scope)
     await session.commit()

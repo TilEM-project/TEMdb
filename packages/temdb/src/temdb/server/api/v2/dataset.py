@@ -11,6 +11,8 @@ from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
 
+from ..utils import drop_null_keys, merge_extra
+
 dataset_api = APIRouter(tags=["Datasets"])
 
 
@@ -57,6 +59,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
         estimated_tile_count=data.estimated_tile_count,
         metadata_json=data.metadata_json,
         created_at=data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(data.extra),
     )
     session.add(ds)
     await session.commit()
@@ -117,9 +120,12 @@ async def update_dataset(
     session: AsyncSession = Depends(get_async_session),
 ):
     ds = await _get_by_id(session, dataset_id)
-    data = updated.model_dump(exclude_unset=True)
+    data = updated.model_dump(
+        exclude_unset=True,
+    )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
+    extra_changes = data.pop("extra", None)
     now = datetime.now(timezone.utc)
     status_changed = "status" in data and data["status"] != ds.status
     for field, value in data.items():
@@ -132,6 +138,8 @@ async def update_dataset(
             ds.collected_at = now
         if ds.status == "archived" and ds.archived_at is None:
             ds.archived_at = now
+    if extra_changes is not None:
+        ds.extra = merge_extra(DatasetSQLModel.extra, extra_changes)
     ds.updated_at = now
     session.add(ds)
     await session.commit()

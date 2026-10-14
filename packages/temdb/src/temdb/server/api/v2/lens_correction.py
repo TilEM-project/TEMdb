@@ -10,6 +10,8 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 lens_correction_api = APIRouter(tags=["Lens Corrections"])
 
 
@@ -47,6 +49,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
         correction_y_uri=data.correction_y_uri,
         solver_params=data.solver_params,
         created_at=data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(data.extra),
     )
     session.add(lc)
     await session.commit()
@@ -109,11 +112,16 @@ async def update_lens_correction(
     session: AsyncSession = Depends(get_async_session),
 ):
     lc = await _get_by_id(session, lc_id)
-    data = updated.model_dump(exclude_unset=True)
+    data = updated.model_dump(
+        exclude_unset=True,
+    )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
+    extra_changes = data.pop("extra", None)
     for field, value in data.items():
         setattr(lc, field, value)
+    if extra_changes is not None:
+        lc.extra = merge_extra(LensCorrectionSQLModel.extra, extra_changes)
     lc.updated_at = datetime.now(timezone.utc)
     session.add(lc)
     await session.commit()

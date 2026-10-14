@@ -5,11 +5,11 @@ from typing import Any
 from pydantic import AliasChoices, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
-from temdb.models.base import TEMDBModel
+from temdb.models.base import TEMDBRecord
 from temdb.models.enums import TASK_KINDS
 
 
-class AcquisitionTaskBase(TEMDBModel):
+class AcquisitionTaskBase(TEMDBRecord):
     """Base acquisition task fields."""
 
     kind: str | None = Field(None, description="Task kind: montage or lens_correction")

@@ -189,6 +189,47 @@ async def test_lc_create_honors_client_lc_id(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-09")
+    create_response = await async_client.post(
+        "/api/v2/lens-corrections",
+        json={
+            "microscope_id": scope["microscope_id"],
+            "magnification": 12000,
+            "started_at": "2026-06-11T00:00:00Z",
+            "extra": {"unknown_create_key": {"create": "ok"}},
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["extra"]["unknown_create_key"] == {"create": "ok"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/lens-corrections/{created['lc_id']}",
+        json={
+            "correction_x_uri": "s3://bucket/lc/extra-x.tiff",
+            "extra": {"unknown_patch_key": "patch-ok"},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patch-ok"
+
+    get_response = await async_client.get(f"/api/v2/lens-corrections/{created['lc_id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"create": "ok"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patch-ok"
+
+    list_response = await async_client.get(
+        "/api/v2/lens-corrections",
+        params={"microscope_id": scope["microscope_id"], "magnification": 12000},
+    )
+    assert list_response.status_code == 200
+    listed = next(lc for lc in list_response.json() if lc["lc_id"] == created["lc_id"])
+    assert listed["extra"]["unknown_create_key"] == {"create": "ok"}
+    assert listed["extra"]["unknown_patch_key"] == "patch-ok"
+
+
+@pytest.mark.asyncio
 async def test_acquisition_create_carries_lc_id(
     async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope
 ):

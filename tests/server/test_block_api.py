@@ -77,6 +77,43 @@ async def test_update_block(async_client: AsyncClient, test_specimen, test_block
 
 
 @pytest.mark.asyncio
+async def test_block_extra_fields_round_trip(async_client: AsyncClient, test_specimen):
+    block_id_hr = "TEST_BLOCK_EXTRA_001"
+    create_response = await async_client.post(
+        "/api/v2/blocks",
+        json={
+            "block_id": block_id_hr,
+            "specimen_id": test_specimen.specimen_id,
+            "microCT_info": {"resolution": 1.5},
+            "extra": {"unknown_create_key": "create-extra"},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["extra"]["unknown_create_key"] == "create-extra"
+
+    patch_response = await async_client.patch(
+        f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}",
+        json={
+            "description": "Updated block with patch extra",
+            "extra": {"unknown_patch_key": {"patched": True}},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == {"patched": True}
+
+    get_response = await async_client.get(f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == "create-extra"
+    assert get_response.json()["extra"]["unknown_patch_key"] == {"patched": True}
+
+    list_response = await async_client.get(f"/api/v2/blocks?specimen_id={test_specimen.specimen_id}")
+    assert list_response.status_code == 200
+    listed = next(block for block in list_response.json() if block["block_id"] == block_id_hr)
+    assert listed["extra"]["unknown_create_key"] == "create-extra"
+    assert listed["extra"]["unknown_patch_key"] == {"patched": True}
+
+
+@pytest.mark.asyncio
 async def test_delete_block(async_client: AsyncClient, test_specimen):
     """Test deleting a block successfully (when it has no dependencies)."""
     block_id_hr = "TEST_BLOCK_DELETE_001"
@@ -134,3 +171,45 @@ async def test_get_block_cut_sessions(async_client: AsyncClient, test_specimen, 
     assert response_data[0]["specimen_id"] == test_specimen.specimen_id
     assert response_data[0]["cutting_session_id"] == test_cutting_session.cutting_session_id
     # assert response_data[0]["block_ref"]["$id"] == str(test_block.id)
+
+
+@pytest.mark.asyncio
+async def test_block_extra_patch_merges_and_null_removes_a_key(async_client: AsyncClient, test_specimen):
+    block_id_hr = "TEST_BLOCK_EXTRA_002"
+    url = f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}"
+    create_response = await async_client.post(
+        "/api/v2/blocks",
+        json={
+            "block_id": block_id_hr,
+            "specimen_id": test_specimen.specimen_id,
+            "extra": {"keep": 1, "drop": 2, "never": None},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["extra"] == {"keep": 1, "drop": 2}
+
+    patch_response = await async_client.patch(url, json={"extra": {"drop": None, "added": 3}})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"] == {"keep": 1, "added": 3}
+
+
+@pytest.mark.asyncio
+async def test_block_unknown_top_level_field_is_a_422(async_client: AsyncClient, test_specimen):
+    response = await async_client.post(
+        "/api/v2/blocks",
+        json={"block_id": "TEST_BLOCK_EXTRA_003", "specimen_id": test_specimen.specimen_id, "descriptoin": "typo"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_block_extra_key_that_is_a_response_field_is_a_422(async_client: AsyncClient, test_specimen):
+    block_id_hr = "TEST_BLOCK_EXTRA_004"
+    create_response = await async_client.post(
+        "/api/v2/blocks", json={"block_id": block_id_hr, "specimen_id": test_specimen.specimen_id}
+    )
+    assert create_response.status_code == 201
+    response = await async_client.patch(
+        f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}", json={"extra": {"id": 1}}
+    )
+    assert response.status_code == 422
