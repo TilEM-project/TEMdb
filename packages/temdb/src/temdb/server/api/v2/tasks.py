@@ -23,6 +23,8 @@ from temdb.server.sqlmodels import (
     SpecimenSQLModel,
 )
 
+from ..utils import drop_null_keys, merge_extra
+
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
 )
@@ -131,6 +133,7 @@ def _task_from_create(
         tags=task_data.tags,
         metadata_json=task_data.metadata,
         created_at=task_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(task_data.extra),
     )
 
 
@@ -336,13 +339,19 @@ async def update_task(
     if row is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     task_obj, _specimen_ref, _block_ref, _roi_ref = row
-    update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        mode="json",
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(400, "No update fields provided")
+    extra_changes = update_data.pop("extra", None)
     if "metadata" in update_data:
         task_obj.metadata_json = update_data.pop("metadata")
     for field, value in update_data.items():
         setattr(task_obj, field, value)
+    if extra_changes is not None:
+        task_obj.extra = merge_extra(AcquisitionTaskSQLModel.extra, extra_changes)
     task_obj.updated_at = datetime.now(timezone.utc)
     session.add(task_obj)
     await session.commit()

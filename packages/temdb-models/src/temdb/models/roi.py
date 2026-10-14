@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .utils.uri import URI
 
 
@@ -40,7 +40,7 @@ class ROIPayload(TEMDBModel):
     vertices: list[Any] | None = Field(None, description="Vertices of the ROI polygon")
 
 
-class ROICreate(TEMDBModel):
+class ROICreate(TEMDBRecord):
     roi_number: int = Field(..., description="Sequential number for this ROI within its parent context")
     section_id: str = Field(..., description="ID of section")
     specimen_id: str = Field(..., description="ID of specimen")
@@ -70,11 +70,11 @@ class ROICreate(TEMDBModel):
         return v
 
 
-class ROIUpdate(TEMDBModel):
+class ROIUpdate(TEMDBRecord):
     payload: ROIPayload = Field(default_factory=ROIPayload, description="Domain attributes to merge into the ROI")
 
 
-class ROIResponse(TEMDBModel):
+class ROIResponse(TEMDBRecord):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     id: int

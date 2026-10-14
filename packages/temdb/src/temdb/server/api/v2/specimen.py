@@ -9,6 +9,8 @@ from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, Specim
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 specimen_api = APIRouter(
     tags=["Specimens"],
 )
@@ -95,6 +97,7 @@ async def create_specimen(
         specimen_images=sorted(specimen_data.specimen_images or []),
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=specimen_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(specimen_data.extra),
     )
     session.add(specimen)
     await session.commit()
@@ -133,6 +136,7 @@ async def update_specimen(
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
 
     needs_save = False
     if "description" in update_data and specimen.description != update_data["description"]:
@@ -148,6 +152,10 @@ async def update_specimen(
         and specimen.functional_imaging_metadata != update_data["functional_imaging_metadata"]
     ):
         specimen.functional_imaging_metadata = update_data["functional_imaging_metadata"]
+        needs_save = True
+
+    if extra_changes is not None:
+        specimen.extra = merge_extra(SpecimenSQLModel.extra, extra_changes)
         needs_save = True
 
     if needs_save:

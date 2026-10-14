@@ -17,6 +17,8 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
+from ..utils import drop_null_keys, merge_extra
+
 roi_api = APIRouter(
     tags=["ROIs"],
 )
@@ -136,6 +138,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
         roi_payload=roi_data.payload.model_dump(mode="json"),
         created_at=roi_data.created_at or datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
+        extra=drop_null_keys(roi_data.extra),
     )
     session.add(new_roi)
     await session.commit()
@@ -215,6 +218,7 @@ async def create_rois_batch(
                 roi_payload=roi_create.payload.model_dump(mode="json"),
                 created_at=roi_create.created_at or datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
+                extra=drop_null_keys(roi_create.extra),
             )
         )
 
@@ -279,11 +283,13 @@ async def update_roi(
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
     update_data = updated_fields.payload.model_dump(mode="json", exclude_unset=True)
-    if not update_data:
+    if not update_data and updated_fields.extra is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     payload = dict(roi_obj.roi_payload or {})
     payload.update(update_data)
     roi_obj.roi_payload = payload
+    if updated_fields.extra is not None:
+        roi_obj.extra = merge_extra(ROISQLModel.extra, updated_fields.extra)
     roi_obj.updated_at = datetime.now(timezone.utc)
     session.add(roi_obj)
     await session.commit()

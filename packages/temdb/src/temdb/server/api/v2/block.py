@@ -8,6 +8,8 @@ from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSession
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 block_api = APIRouter(
     tags=["Blocks"],
 )
@@ -108,6 +110,7 @@ async def create_block(
         microCT_info=block_data.microCT_info,
         created_at=block_data.created_at or datetime.now(timezone.utc),
         description=block_data.description,
+        extra=drop_null_keys(block_data.extra),
     )
     session.add(new_block)
     await session.commit()
@@ -153,11 +156,16 @@ async def update_block(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(block_obj, field, value)
+    if extra_changes is not None:
+        block_obj.extra = merge_extra(BlockSQLModel.extra, extra_changes)
     block_obj.updated_at = datetime.now(timezone.utc)
     session.add(block_obj)
     await session.commit()

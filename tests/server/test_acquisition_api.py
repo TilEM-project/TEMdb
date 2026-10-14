@@ -193,6 +193,63 @@ async def test_update_acquisition(async_client: AsyncClient, test_acquisition):
 
 
 @pytest.mark.asyncio
+async def test_acquisition_extra_fields_round_trip(
+    async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope
+):
+    acq_id_hr = f"ACQ_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    montage_id_hr = f"MONTAGE_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/acquisitions",
+        json={
+            "acquisition_id": acq_id_hr,
+            "montage_id": montage_id_hr,
+            "roi_id": test_roi.roi_id,
+            "acquisition_task_id": test_acquisition_task.task_id,
+            "microscope_id": str(test_microscope.microscope_id),
+            "hardware_settings": {
+                "camera_model": "Test Camera Extra",
+                "camera_serial": "EX12345",
+                "camera_bit_depth": 16,
+                "media_type": "tape",
+            },
+            "acquisition_settings": {
+                "magnification": 2000,
+                "spot_size": 2,
+                "exposure_time": 120,
+                "tile_size": [4096, 4096],
+                "tile_overlap": 0.1,
+                "saved_bit_depth": 8,
+            },
+            "tilt_angle_deg": 2.0,
+            "extra": {"unknown_create_key": {"create": "acq"}},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["extra"]["unknown_create_key"] == {"create": "acq"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/acquisitions/{acq_id_hr}",
+        json={
+            "tilt_angle_deg": 3.0,
+            "extra": {"unknown_patch_key": "acq-patch"},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "acq-patch"
+
+    get_response = await async_client.get(f"/api/v2/acquisitions/{acq_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"create": "acq"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "acq-patch"
+
+    list_response = await async_client.get(f"/api/v2/acquisitions?acquisition_task_id={test_acquisition_task.task_id}")
+    assert list_response.status_code == 200
+    listed = next(acq for acq in list_response.json()["acquisitions"] if acq["acquisition_id"] == acq_id_hr)
+    assert listed["extra"]["unknown_create_key"] == {"create": "acq"}
+    assert listed["extra"]["unknown_patch_key"] == "acq-patch"
+
+
+@pytest.mark.asyncio
 async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope):
     """Test deleting an acquisition successfully (when it has no Tiles)."""
     acq_id_hr = f"ACQ_DELETE_{int(datetime.now(timezone.utc).timestamp())}"
@@ -1439,3 +1496,19 @@ async def test_non_finite_tile_values_are_a_422_and_change_nothing(
     assert await _tile_count(async_client, test_acquisition.acquisition_id) == 1
     stored = (await async_client.get(f"{base}/{tile_id}")).json()
     assert (stored["focus_score"], stored["mean_value"]) == (pytest.approx(0.8), 100)
+
+
+@pytest.mark.asyncio
+async def test_tile_extra_patch_merges_and_null_removes_a_key(async_client: AsyncClient, test_acquisition):
+    tile_id_hr = str(uuid7())
+    tiles_url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    body = _tile_payload(tile_id_hr, 3) | {"extra": {"keep": 1, "drop": 2}}
+    assert (await async_client.post(tiles_url, json=body)).status_code == 201
+
+    patched = await async_client.patch(f"{tiles_url}/{tile_id_hr}", json={"extra": {"drop": None, "added": 3}})
+    assert patched.status_code == 200
+    assert patched.json()["extra"] == {"keep": 1, "added": 3}
+
+    bulk = await async_client.patch(f"{tiles_url}/bulk", json={tile_id_hr: {"extra": {"bulk": True}}})
+    assert bulk.status_code == 200
+    assert bulk.json()[0]["extra"] == {"keep": 1, "added": 3, "bulk": True}

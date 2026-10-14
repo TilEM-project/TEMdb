@@ -16,6 +16,8 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
+from ..utils import drop_null_keys, merge_extra
+
 section_api = APIRouter(
     tags=["Sections"],
 )
@@ -240,6 +242,7 @@ async def create_section(
         aperture_id=section_data.aperture_id,
         barcode=section_data.barcode,
         created_at=section_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(section_data.extra),
     )
     session.add(new_section)
     await session.commit()
@@ -332,6 +335,7 @@ async def create_sections_batch(
                 else None
             ),
             created_at=section_create.created_at or datetime.now(timezone.utc),
+            extra=drop_null_keys(section_create.extra),
         )
         sections_to_insert.append(section_doc)
 
@@ -366,9 +370,12 @@ async def update_section(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     metrics = update_data.pop("section_metrics", None)
     if metrics is not None:
         section_obj.section_metrics = jsonable_encoder(metrics)
@@ -380,6 +387,8 @@ async def update_section(
         section_obj.optical_image = jsonable_encoder(optical_image)
     for field, value in update_data.items():
         setattr(section_obj, field, value)
+    if extra_changes is not None:
+        section_obj.extra = merge_extra(SectionSQLModel.extra, extra_changes)
     section_obj.updated_at = datetime.now(timezone.utc)
     session.add(section_obj)
     await session.commit()

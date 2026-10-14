@@ -87,6 +87,24 @@ async def test_update_substrate_condition(async_client: AsyncClient, test_substr
 
 
 @pytest.mark.asyncio
+async def test_substrate_extra_fields_round_trip(async_client: AsyncClient, test_layout):
+    media_id = f"TEST_SUB_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/substrates",
+        json={"media_id": media_id, "substrate_layout_id": test_layout.layout_id, "extra": {"made": "create"}},
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["extra"] == {"made": "create"}
+
+    patch_response = await async_client.patch(f"/api/v2/substrates/{media_id}", json={"extra": {"patched": True}})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"] == {"made": "create", "patched": True}
+
+    get_response = await async_client.get(f"/api/v2/substrates/{media_id}")
+    assert get_response.json()["extra"] == {"made": "create", "patched": True}
+
+
+@pytest.mark.asyncio
 async def test_delete_substrate(async_client: AsyncClient, test_layout):
     media_id = f"TEST_SUB_DELETE_{int(datetime.now(timezone.utc).timestamp())}"
     create_response = await async_client.post(

@@ -3,10 +3,10 @@ from typing import Any
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 
 
-class BlockBase(TEMDBModel):
+class BlockBase(TEMDBRecord):
     microCT_info: dict[str, Any] | None = Field(None, description="MicroCT information of block")
     description: str | None = Field(None, description="Description of block")
 

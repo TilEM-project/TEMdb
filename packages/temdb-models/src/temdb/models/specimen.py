@@ -3,11 +3,11 @@ from typing import Any
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 from .utils.uri import URI
 
 
-class SpecimenBase(TEMDBModel):
+class SpecimenBase(TEMDBRecord):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     description: str | None = Field(None, description="Description of specimen, used for additional notes.")

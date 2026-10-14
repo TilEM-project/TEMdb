@@ -9,6 +9,8 @@ from temdb.models import SectionResponse, SubstrateCreate, SubstrateResponse, Su
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SectionSQLModel, SubstrateLayoutSQLModel, SubstrateSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 substrate_api = APIRouter(
     tags=["Substrates"],
 )
@@ -57,6 +59,7 @@ async def create_substrate(
         substrate_layout_id=substrate_data.substrate_layout_id,
         condition=_to_json_compatible(substrate_data.condition),
         created_at=substrate_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(substrate_data.extra),
     )
     session.add(new_substrate)
     await session.commit()
@@ -91,14 +94,19 @@ async def update_substrate(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate with media_id '{media_id}' not found",
         )
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     if "condition" in update_data:
         updated_condition = _to_json_compatible(update_data.pop("condition"))
         substrate_obj.condition = {**(substrate_obj.condition or {}), **(updated_condition or {})}
     for field, value in update_data.items():
         setattr(substrate_obj, field, value)
+    if extra_changes is not None:
+        substrate_obj.extra = merge_extra(SubstrateSQLModel.extra, extra_changes)
     substrate_obj.updated_at = datetime.now(timezone.utc)
     session.add(substrate_obj)
     await session.commit()

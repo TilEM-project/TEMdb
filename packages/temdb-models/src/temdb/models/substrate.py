@@ -2,11 +2,11 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 from .enums import ApertureCondition
 
 
-class SubstrateBase(TEMDBModel):
+class SubstrateBase(TEMDBRecord):
     """Base substrate fields."""
 
     condition: dict[int, ApertureCondition] | None = Field(
