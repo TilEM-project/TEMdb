@@ -15,6 +15,7 @@ from temdb.client.exceptions import (
     TEMdbUnprocessableError,
 )
 from temdb.models import SpecimenCreate
+from temdb.server.main import create_app
 
 
 @pytest.mark.asyncio
@@ -161,3 +162,15 @@ def test_validation_errors_reach_the_caller():
     assert "body.tile_count: Input should be a valid integer" in str(mapped)
     assert mapped.error_code == "VALIDATION_ERROR"
     assert len(mapped.context["errors"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_health_check_and_api_info_reach_the_server_root():
+    client = TEMdbClient("http://test")
+    await client._http_client.aclose()
+    client._http_client = httpx.AsyncClient(base_url=client.api_url, transport=httpx.ASGITransport(app=create_app()))
+    try:
+        assert await client.health_check() == {"status": "ok"}
+        assert (await client.get_api_info())["message"].startswith("TEMdb API version")
+    finally:
+        await client.close()
