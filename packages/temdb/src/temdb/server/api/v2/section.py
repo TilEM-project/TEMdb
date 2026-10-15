@@ -476,6 +476,7 @@ async def get_sections_by_barcode(
     )
     return sections.all()
 
+
 @section_api.post(
     "/sections/sessions/{cutting_session_id}/sections/{section_id}/image",
     response_model=FileObjectResponse,
@@ -500,9 +501,7 @@ async def image_put_url(
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
         )
     existing_image = (
-        FileObject.model_validate(section_obj.optical_image)
-        if section_obj.optical_image is not None
-        else None
+        FileObject.model_validate(section_obj.optical_image) if section_obj.optical_image is not None else None
     )
     if storage_location is None and section_obj.optical_image is None:
         raise HTTPException(
@@ -514,11 +513,7 @@ async def image_put_url(
             **existing_image.model_dump(exclude={"key"}),
             key=f"/{existing_image.key}",
         )
-    if any(
-        value is None
-        for key, value in storage_location.model_dump().items()
-        if key != "server"
-    ):
+    if any(value is None for key, value in storage_location.model_dump().items() if key != "server"):
         cutting_session = await session.scalars(
             select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
         )
@@ -538,9 +533,7 @@ async def image_put_url(
                 detail=f"Block '{cutting_session_obj.block_id}' not found",
             )
         if block_obj.default_storage is not None:
-            storage_location = storage_location.apply_defaults(
-                StorageDefault.model_validate(block_obj.default_storage)
-            )
+            storage_location = storage_location.apply_defaults(StorageDefault.model_validate(block_obj.default_storage))
 
         if config.default_storage is not None:
             storage_location = storage_location.apply_defaults(config.default_storage)
@@ -636,9 +629,7 @@ async def image_get_url(
         )
     storage_location = FileObject.model_validate(section_obj.optical_image)
     if expiration is None:
-        block = await session.scalars(
-            select(BlockSQLModel).where(BlockSQLModel.block_id == section_obj.block_id)
-        )
+        block = await session.scalars(select(BlockSQLModel).where(BlockSQLModel.block_id == section_obj.block_id))
         block_obj = block.one_or_none()
         if block_obj is None:
             raise HTTPException(
@@ -646,9 +637,7 @@ async def image_get_url(
                 detail=f"Block '{section_obj.block_id}' not found",
             )
         block_storage = (
-            StorageDefault.model_validate(block_obj.default_storage)
-            if block_obj.default_storage is not None
-            else None
+            StorageDefault.model_validate(block_obj.default_storage) if block_obj.default_storage is not None else None
         )
         expiration = block_storage.expiration if block_storage is not None else None
     if expiration is None and config.default_storage is not None:

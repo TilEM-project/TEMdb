@@ -292,8 +292,7 @@ async def test_put_section_image_url_uploads_to_minio(
     minio_s3,
 ):
     path = (
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}"
-        f"/sections/{test_section.section_id}/image"
+        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}/image"
     )
     location = {
         "protocol": "s3",
@@ -359,8 +358,7 @@ async def test_get_section_image_url_downloads_from_minio(
         await session.commit()
 
     path = (
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}"
-        f"/sections/{test_section.section_id}/image"
+        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}/image"
     )
     response = await async_client.get(path, params={"expiration": 600})
 

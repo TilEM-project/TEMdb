@@ -90,9 +90,7 @@ async def test_put_image_uploads_bytes_to_presigned_url():
 @pytest.mark.asyncio
 async def test_put_image_propagates_upload_failure():
     resource, _ = _resource()
-    put_image_url = AsyncMock(
-        return_value=FileObjectResponse.model_validate(_file_object_response())
-    )
+    put_image_url = AsyncMock(return_value=FileObjectResponse.model_validate(_file_object_response()))
     resource.put_image_url = put_image_url
     upload_response = Mock()
     upload_response.raise_for_status.side_effect = requests.HTTPError("upload failed")
@@ -150,9 +148,7 @@ async def test_get_image_streams_presigned_response():
 @pytest.mark.asyncio
 async def test_get_image_closes_response_when_download_fails():
     resource, _ = _resource()
-    resource.get_image_url = AsyncMock(
-        return_value=FileObjectResponse.model_validate(_file_object_response())
-    )
+    resource.get_image_url = AsyncMock(return_value=FileObjectResponse.model_validate(_file_object_response()))
     response = Mock()
     response.raw = io.BytesIO(b"")
     response.raise_for_status.side_effect = requests.HTTPError("download failed")

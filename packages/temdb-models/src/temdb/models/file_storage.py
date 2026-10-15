@@ -1,21 +1,30 @@
+from pydantic import Field, model_validator
+
 from .base import TEMDBModel
 from .enums import StorageProtocol
-from pydantic import Field, model_validator
 
 
 class FileObject(TEMDBModel):
-    protocol: StorageProtocol = Field(..., description="Storage protocol used for the file, or None to use the default.")
+    protocol: StorageProtocol = Field(
+        ..., description="Storage protocol used for the file, or None to use the default."
+    )
     server: str = Field(..., description="Server address or None for protocol default.")
     bucket: str = Field(..., description="Bucket where the file is stored.")
     key: str = Field(..., description="Key to the file within the bucket.")
 
 
 class FileObjectRequest(TEMDBModel):
-    protocol: StorageProtocol | None = Field(None, description="Storage protocol used for the file, or None to use the default.")
+    protocol: StorageProtocol | None = Field(
+        None, description="Storage protocol used for the file, or None to use the default."
+    )
     server: str | None = Field(None, description="Server address or None for protocol default.")
     bucket: str | None = Field(None, description="Bucket where the file is stored, or None to use the default.")
-    key: str = Field(..., description="Key to the file within the bucket. Use a leading slash to ignore the default key prefix.")
-    expiration: int | None = Field(None, description="Expiration time in seconds for the presigned URL, or None to use the default.")
+    key: str = Field(
+        ..., description="Key to the file within the bucket. Use a leading slash to ignore the default key prefix."
+    )
+    expiration: int | None = Field(
+        None, description="Expiration time in seconds for the presigned URL, or None to use the default."
+    )
 
     @model_validator(mode="after")
     def validate_location(self) -> "FileObjectRequest":
@@ -24,7 +33,9 @@ class FileObjectRequest(TEMDBModel):
         if self.protocol is not None and self.bucket is None:
             raise ValueError("If protocol is specified, bucket must also be specified.")
         if self.bucket is not None and not self.key.startswith("/"):
-            raise ValueError("If bucket is specified, key must start with a leading slash to ignore the default key prefix.")
+            raise ValueError(
+                "If bucket is specified, key must start with a leading slash to ignore the default key prefix."
+            )
         return self
 
     def apply_defaults(self, *defaults: "StorageDefault") -> "FileObjectRequest":
