@@ -66,6 +66,11 @@ class OpticalImage(TEMDBModel):
     metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
 
 
+class SectionPosition(TEMDBModel):
+    x: float = Field(..., description="X position in mm, in layout coordinates")
+    y: float = Field(..., description="Y position in mm, in layout coordinates")
+
+
 class SectionBase(TEMDBRecord):
     """Base section fields."""
 
@@ -76,6 +81,10 @@ class SectionBase(TEMDBRecord):
         description="Optical image collected before imaging",
     )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
+    aperture_index: int | None = Field(
+        None, ge=0, description="Index of the layout aperture holding this section; empty for a section on a blank"
+    )
+    position: SectionPosition | None = Field(None, description="Where the section sits on the substrate, if known")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
@@ -90,7 +99,6 @@ class SectionCreate(SectionBase):
         ...,
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
-    aperture_id: int = Field(..., description="ID of the aperture on the substrate this section is placed on")
     section_number: int = Field(..., gt=0, description="Sequential section number")
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
@@ -128,7 +136,6 @@ class SectionResponse(SectionBase):
     block_id: str = Field(..., description="ID of the block")
     specimen_id: str = Field(..., description="ID of the specimen")
     media_id: str = Field(..., description="ID of the substrate")
-    aperture_id: int = Field(..., description="ID of the aperture on the substrate")
     condition: str = Field("ok", description="Physical condition of the section")
     condition_reason: str | None = Field(None, description="Reason for the current condition")
 

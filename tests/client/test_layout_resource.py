@@ -20,7 +20,7 @@ def _layout_payload(**extra):
         "layout_id": "LAYOUT001",
         "name": "Test layout",
         "media_type": "wafer",
-        "apertures": {},
+        "apertures": [],
         "fiducials": [],
         "created_at": NOW.isoformat(),
         **extra,
@@ -85,7 +85,7 @@ async def test_list_related_substrates_uses_layout_substrates_path():
             "id": 1,
             "media_id": "MEDIA001",
             "substrate_layout_id": "LAYOUT001",
-            "condition": {"0": "ok"},
+            "aperture_status": ["available"],
         }
     ]
 

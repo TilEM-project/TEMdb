@@ -15,6 +15,8 @@ from temdb.models import (
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SubstrateLayoutSQLModel, SubstrateSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 substrate_layout_api = APIRouter(
     tags=["Layouts"],
 )
@@ -41,7 +43,9 @@ async def list_layouts(
     statement = select(SubstrateLayoutSQLModel)
     if media_type:
         statement = statement.where(SubstrateLayoutSQLModel.media_type == media_type)
-    layouts = (await session.scalars(statement.offset(skip).limit(limit))).all()
+    layouts = (
+        await session.scalars(statement.order_by(SubstrateLayoutSQLModel.layout_id).offset(skip).limit(limit))
+    ).all()
     return layouts
 
 
@@ -66,6 +70,7 @@ async def create_layout(
         apertures=_to_json_compatible(layout_data.apertures),
         media_type=layout_data.media_type.value,
         created_at=layout_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(layout_data.extra),
     )
     session.add(new_layout)
     await session.commit()
@@ -107,14 +112,25 @@ async def update_layout(
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     if "fiducials" in update_data:
         layout_obj.fiducials = _to_json_compatible(update_data.pop("fiducials"))
     if "apertures" in update_data:
+        in_use = await session.scalar(
+            select(SubstrateSQLModel.media_id).where(SubstrateSQLModel.substrate_layout_id == layout_id).limit(1)
+        )
+        if in_use is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Layout '{layout_id}' is used by substrate '{in_use}'; its apertures cannot change",
+            )
         layout_obj.apertures = _to_json_compatible(update_data.pop("apertures"))
     if "media_type" in update_data:
         layout_obj.media_type = update_data.pop("media_type").value
     for field, value in update_data.items():
         setattr(layout_obj, field, value)
+    if extra_changes is not None:
+        layout_obj.extra = merge_extra(SubstrateLayoutSQLModel.extra, extra_changes)
     layout_obj.updated_at = datetime.now(timezone.utc)
     session.add(layout_obj)
     await session.commit()
@@ -165,6 +181,10 @@ async def get_layout_substrates(
             detail=f"Substrate layout with layout_id '{layout_id}' not found",
         )
     substrates = await session.scalars(
-        select(SubstrateSQLModel).where(SubstrateSQLModel.substrate_layout_id == layout_id).offset(skip).limit(limit)
+        select(SubstrateSQLModel)
+        .where(SubstrateSQLModel.substrate_layout_id == layout_id)
+        .order_by(SubstrateSQLModel.media_id)
+        .offset(skip)
+        .limit(limit)
     )
     return substrates.all()

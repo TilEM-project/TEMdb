@@ -26,14 +26,13 @@ class SubstrateType(str, Enum):
     STICK = "stick"
     GRID = "grid"
     WASHER = "washer"
+    UNKNOWN = "unknown"
 
 
-class ApertureCondition(str, Enum):
-    OK = "ok"
+class ApertureStatus(str, Enum):
+    AVAILABLE = "available"
+    USED = "used"
     DAMAGED = "damaged"
-    MISSING = "missing"
-    BURST = "burst"
-    CONTAMINATED = "contaminated"
 
 
 class ShapeType(str, Enum):
@@ -42,6 +41,7 @@ class ShapeType(str, Enum):
     RECTANGLE = "rectangle"
     TRIANGLE = "triangle"
     CIRCLE_ARRAY = "circle_array"
+    POLYGON = "polygon"
 
 
 RUN_STATUSES = ("complete", "aborted", "failed")

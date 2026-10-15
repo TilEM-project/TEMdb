@@ -7,7 +7,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
+from temdb.models import ApertureStatus, APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import (
     CuttingSessionSQLModel,
@@ -27,6 +27,39 @@ logger = logging.getLogger(__name__)
 
 def _dump_images(data):
     return {key: val.model_dump(mode="json") for key, val in data.items()}
+
+
+def check_aperture_index(aperture_index: int | None, aperture_count: int, media_id: str) -> None:
+    """Refuse an aperture index the substrate's layout does not have."""
+    if aperture_index is not None and aperture_index >= aperture_count:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Substrate '{media_id}' has no aperture {aperture_index}; its layout has {aperture_count}",
+        )
+
+
+async def mark_apertures_used(session: AsyncSession, media_id: str, aperture_indexes: list[int | None]) -> None:
+    """Mark the apertures sections were placed on as used; damaged or already used apertures are left as they are."""
+    indexes = {index for index in aperture_indexes if index is not None}
+    if not indexes:
+        return
+    substrate = await session.scalar(
+        select(SubstrateSQLModel)
+        .where(SubstrateSQLModel.media_id == media_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    statuses = list(substrate.aperture_status)
+    for index in indexes:
+        if statuses[index] == ApertureStatus.AVAILABLE.value:
+            statuses[index] = ApertureStatus.USED.value
+    if statuses != substrate.aperture_status:
+        substrate.aperture_status = statuses
+        substrate.updated_at = datetime.now(timezone.utc)
+
+
+def dump_position(position):
+    return position.model_dump(mode="json") if position is not None else None
 
 
 @section_api.get("/sections", response_model=list[SectionResponse])
@@ -197,7 +230,7 @@ async def create_section(
         await session.execute(
             select(
                 CuttingSessionSQLModel,
-                SubstrateSQLModel.id,
+                func.cardinality(SubstrateSQLModel.aperture_status),
                 SectionSQLModel.id,
             )
             .select_from(CuttingSessionSQLModel)
@@ -224,6 +257,8 @@ async def create_section(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
         )
+    if validation_row[1] is not None:
+        check_aperture_index(section_data.aperture_index, validation_row[1], section_data.media_id)
     new_section = SectionSQLModel(
         section_id=new_section_id,
         section_number=section_data.section_number,
@@ -239,12 +274,14 @@ async def create_section(
             section_data.run_parameters.model_dump(mode="json") if section_data.run_parameters is not None else None
         ),
         media_id=section_data.media_id,
-        aperture_id=section_data.aperture_id,
+        aperture_index=section_data.aperture_index,
+        position=dump_position(section_data.position),
         barcode=section_data.barcode,
         created_at=section_data.created_at or datetime.now(timezone.utc),
         extra=drop_null_keys(section_data.extra),
     )
     session.add(new_section)
+    await mark_apertures_used(session, section_data.media_id, [section_data.aperture_index])
     await session.commit()
     await session.refresh(new_section)
     return new_section
@@ -305,8 +342,9 @@ async def create_sections_batch(
                     detail=f"Substrate '{media_id}' not found for item {idx}.",
                 )
             substrate_cache[media_id] = substrate
+        check_aperture_index(section_create.aperture_index, len(substrate_cache[media_id].aperture_status), media_id)
 
-        section_id = f"{media_id}_S{section_create.section_number:05d}"
+        section_id = f"{media_id}_S{section_create.section_number}"
         if section_id in seen_ids:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="duplicate section IDs in batch")
         seen_ids.add(section_id)
@@ -322,7 +360,8 @@ async def create_sections_batch(
             optical_image=(
                 _dump_images(section_create.optical_image) if section_create.optical_image is not None else None
             ),
-            aperture_id=section_create.aperture_id,
+            aperture_index=section_create.aperture_index,
+            position=dump_position(section_create.position),
             barcode=section_create.barcode,
             section_metrics=(
                 section_create.section_metrics.model_dump(mode="json")
@@ -340,6 +379,10 @@ async def create_sections_batch(
         sections_to_insert.append(section_doc)
 
     session.add_all(sections_to_insert)
+    for media_id in sorted({item.media_id for item in sections_to_insert}):
+        await mark_apertures_used(
+            session, media_id, [item.aperture_index for item in sections_to_insert if item.media_id == media_id]
+        )
     try:
         await session.commit()
     except IntegrityError as error:
@@ -385,12 +428,20 @@ async def update_section(
     optical_image = update_data.pop("optical_image", None)
     if optical_image is not None:
         section_obj.optical_image = jsonable_encoder(optical_image)
+    if update_data.get("aperture_index") is not None:
+        aperture_count = await session.scalar(
+            select(func.cardinality(SubstrateSQLModel.aperture_status)).where(
+                SubstrateSQLModel.media_id == section_obj.media_id
+            )
+        )
+        check_aperture_index(update_data["aperture_index"], aperture_count, section_obj.media_id)
     for field, value in update_data.items():
         setattr(section_obj, field, value)
     if extra_changes is not None:
         section_obj.extra = merge_extra(SectionSQLModel.extra, extra_changes)
     section_obj.updated_at = datetime.now(timezone.utc)
     session.add(section_obj)
+    await mark_apertures_used(session, section_obj.media_id, [update_data.get("aperture_index")])
     await session.commit()
     await session.refresh(section_obj)
     return section_obj

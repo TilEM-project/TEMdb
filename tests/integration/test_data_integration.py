@@ -81,14 +81,14 @@ class TestDataIntegration:
                 layout_id=f"LAYOUT_{int(datetime.now(timezone.utc).timestamp())}",
                 name="integration layout",
                 media_type="tape",
-                apertures={0: {}},
+                apertures=[{"shape_type": "circle", "shape_params": {"diameter": 3.0}, "centroid": [0.0, 0.0]}],
             )
             session.add(layout)
             await session.flush()
             substrate = SubstrateSQLModel(
                 media_id=f"SUB_{int(datetime.now(timezone.utc).timestamp())}",
                 substrate_layout_id=layout.layout_id,
-                condition={0: "ok"},
+                aperture_status=["available"],
                 created_at=datetime.now(timezone.utc),
             )
             session.add(substrate)
@@ -111,7 +111,7 @@ class TestDataIntegration:
                 block_id=cutting_session.block_id,
                 specimen_id=cutting_session.specimen_id,
                 media_id=substrate.media_id,
-                aperture_id=0,
+                aperture_index=0,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(section)
@@ -265,7 +265,7 @@ class TestDataIntegration:
         substrate = await self.create_substrate()
         assert substrate.id is not None
         assert substrate.substrate_layout_id is not None
-        assert SubstrateResponse.model_validate(substrate).condition == {0: "ok"}
+        assert SubstrateResponse.model_validate(substrate).aperture_status == ["available"]
 
     @pytest.mark.asyncio
     async def test_section_creation(self):

@@ -54,7 +54,6 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
     substrate_data = {
         "media_id": substrate_id_hr,
         "substrate_layout_id": test_layout.layout_id,
-        "condition": {"0": "ok"},
     }
 
     response = await async_client.post("/api/v2/substrates", json=substrate_data)
@@ -67,7 +66,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 99,
         "media_id": substrate_id_hr,
-        "aperture_id": 0,
+        "aperture_index": 0,
         "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
         "barcode": "BC123456789",
         "run_parameters": {"cutting_thickness_um": 45.5, "water_added": True},
@@ -98,7 +97,6 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
             {
                 "media_id": substrate_id,
                 "substrate_layout_id": test_layout.layout_id,
-                "condition": {str(j): "ok" for j in range(3)},
             }
         )
 
@@ -115,7 +113,7 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
                 "cutting_session_id": test_cutting_session.cutting_session_id,
                 "section_number": section_number,
                 "media_id": f"{media_base}_{substrate_idx}",
-                "aperture_id": i % 3,
+                "aperture_index": i % 3,
                 "optical_image": {"inspection": {"image_path": f"http://example.com/image_{i}.png"}},
                 "barcode": f"BATCH{timestamp}_{i}",
             }
@@ -130,7 +128,7 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
     for i, section in enumerate(created_sections):
         substrate_idx = i % 2
         section_number = i + 1
-        expected_section_id = f"{media_base}_{substrate_idx}_S{section_number:05d}"
+        expected_section_id = f"{media_base}_{substrate_idx}_S{section_number}"
 
         assert section["section_id"] == expected_section_id
         assert section["cutting_session_id"] == test_cutting_session.cutting_session_id
@@ -167,7 +165,7 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
             "cutting_session_id": "NON_EXISTENT_SESSION_ID",
             "section_number": 1,
             "media_id": test_substrate.media_id,
-            "aperture_id": 0,
+            "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://foobar.com/image.png"}},
         }
     ]
@@ -186,7 +184,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": "NON_EXISTENT_MEDIA_ID",
-            "aperture_id": 0,
+            "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
         }
     ]
@@ -206,7 +204,6 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
     substrate_data = {
         "media_id": media_id,
         "substrate_layout_id": test_layout.layout_id,
-        "condition": {"0": "ok"},
     }
 
     substrate_response = await async_client.post("/api/v2/substrates", json=substrate_data)
@@ -217,14 +214,14 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
-            "aperture_id": 0,
+            "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://image.server.com/image1.png"}},
         },
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
-            "aperture_id": 0,
+            "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://some.other.place.com/image2.png"}},
         },
     ]
@@ -278,7 +275,7 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 100,
         "media_id": test_substrate.media_id,
-        "aperture_id": 0,
+        "aperture_index": 0,
     }
 
     section_id_hr = f"{test_substrate.media_id}_S100"
@@ -370,3 +367,109 @@ async def test_list_sections_by_media(async_client: AsyncClient, test_section):
 #     assert len(response_data) >= 1
 #     assert any(s["section_id"] == test_section.section_id for s in response_data)
 #     assert all(s["barcode"] == test_section.barcode for s in response_data)
+
+
+@pytest.mark.asyncio
+async def test_section_on_an_aperture_the_layout_does_not_have_is_422(
+    async_client: AsyncClient, test_cutting_session, test_substrate
+):
+    section = {
+        "cutting_session_id": test_cutting_session.cutting_session_id,
+        "media_id": test_substrate.media_id,
+        "section_number": 1,
+        "aperture_index": 3,
+    }
+    assert (await async_client.post("/api/v2/sections", json=section)).status_code == 422
+    assert (await async_client.post("/api/v2/sections/batch", json=[section])).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_section_cannot_move_to_an_aperture_the_layout_does_not_have(
+    async_client: AsyncClient, test_cutting_session, test_section
+):
+    response = await async_client.patch(
+        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}",
+        json={"aperture_index": 3},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_section_on_a_blank_has_no_aperture_and_keeps_its_position(
+    async_client: AsyncClient, test_cutting_session, test_substrate
+):
+    response = await async_client.post(
+        "/api/v2/sections",
+        json={
+            "cutting_session_id": test_cutting_session.cutting_session_id,
+            "media_id": test_substrate.media_id,
+            "section_number": 1,
+            "position": {"x": 12.5, "y": -3.0},
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["aperture_index"] is None
+    assert response.json()["position"] == {"x": 12.5, "y": -3.0}
+
+
+@pytest.mark.asyncio
+async def test_placing_a_section_marks_its_aperture_used_but_leaves_damaged_alone(
+    async_client: AsyncClient, test_cutting_session, test_layout
+):
+    media_id = "TEST_SUB_MARKS_USED"
+    created = await async_client.post(
+        "/api/v2/substrates",
+        json={
+            "media_id": media_id,
+            "substrate_layout_id": test_layout.layout_id,
+            "aperture_status": ["available", "damaged", "available"],
+        },
+    )
+    assert created.status_code == 201
+    session_id = test_cutting_session.cutting_session_id
+
+    for number, aperture in ((1, 0), (2, 1)):
+        response = await async_client.post(
+            "/api/v2/sections",
+            json={
+                "cutting_session_id": session_id,
+                "section_number": number,
+                "media_id": media_id,
+                "aperture_index": aperture,
+            },
+        )
+        assert response.status_code == 201
+    statuses = (await async_client.get(f"/api/v2/substrates/{media_id}")).json()["aperture_status"]
+    assert statuses == ["used", "damaged", "available"]
+
+    moved = await async_client.patch(
+        f"/api/v2/sections/sessions/{session_id}/sections/{media_id}_S1", json={"aperture_index": 2}
+    )
+    assert moved.status_code == 200
+    statuses = (await async_client.get(f"/api/v2/substrates/{media_id}")).json()["aperture_status"]
+    assert statuses == ["used", "damaged", "used"]
+
+
+@pytest.mark.asyncio
+async def test_batch_marks_each_substrates_apertures_used(async_client: AsyncClient, test_cutting_session, test_layout):
+    for media_id in ("TEST_SUB_BATCH_A", "TEST_SUB_BATCH_B"):
+        body = {
+            "media_id": media_id,
+            "substrate_layout_id": test_layout.layout_id,
+            "aperture_status": ["available", "damaged", "available"],
+        }
+        assert (await async_client.post("/api/v2/substrates", json=body)).status_code == 201
+    session_id = test_cutting_session.cutting_session_id
+    batch = [
+        {"cutting_session_id": session_id, "section_number": 10, "media_id": "TEST_SUB_BATCH_A", "aperture_index": 0},
+        {"cutting_session_id": session_id, "section_number": 11, "media_id": "TEST_SUB_BATCH_A", "aperture_index": 1},
+        {"cutting_session_id": session_id, "section_number": 12, "media_id": "TEST_SUB_BATCH_B", "aperture_index": 2},
+        {"cutting_session_id": session_id, "section_number": 13, "media_id": "TEST_SUB_BATCH_B"},
+    ]
+    assert (await async_client.post("/api/v2/sections/batch", json=batch)).status_code == 201
+
+    async def statuses(media_id: str) -> list[str]:
+        return (await async_client.get(f"/api/v2/substrates/{media_id}")).json()["aperture_status"]
+
+    assert await statuses("TEST_SUB_BATCH_A") == ["used", "damaged", "available"]
+    assert await statuses("TEST_SUB_BATCH_B") == ["available", "damaged", "used"]

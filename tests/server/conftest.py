@@ -138,7 +138,19 @@ async def test_layout(init_db, test_db_manager: DatabaseManager):
             layout_id="TEST_LAYOUT_001",
             name="Test layout",
             media_type="tape",
-            apertures={0: {}},
+            apertures=[
+                {"shape_type": "circle", "shape_params": {"diameter": 3.0}, "centroid": [x, 0.0]}
+                for x in (0.0, 4.0, 8.0)
+            ],
+            fiducials=[
+                {
+                    "name": "origin",
+                    "shape_type": "rectangle",
+                    "shape_params": {"width": 0.5, "height": 0.5},
+                    "centroid": [-3.0, 0.0],
+                    "through_shape": True,
+                }
+            ],
             created_at=datetime.now(timezone.utc),
         ),
     )
@@ -151,7 +163,7 @@ async def test_substrate(init_db, test_db_manager: DatabaseManager, test_layout:
         SubstrateSQLModel(
             media_id="SUB001",
             substrate_layout_id=test_layout.layout_id,
-            condition={0: "ok"},
+            aperture_status=["available", "available", "available"],
             created_at=datetime.now(timezone.utc),
         ),
     )
@@ -174,7 +186,7 @@ async def test_section(
             block_id=test_cutting_session.block_id,
             specimen_id=test_cutting_session.specimen_id,
             media_id=test_substrate.media_id,
-            aperture_id=0,
+            aperture_index=0,
             created_at=datetime.now(timezone.utc),
         ),
     )

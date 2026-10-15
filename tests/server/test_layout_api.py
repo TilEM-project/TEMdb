@@ -9,17 +9,22 @@ def _layout_payload(layout_id: str) -> dict:
         "layout_id": layout_id,
         "name": "Test wafer layout",
         "media_type": "wafer",
-        "apertures": {
-            "0": {
+        "apertures": [
+            {
                 "shape_type": "circle",
-                "shape_params": {"radius": 0.5},
+                "shape_params": {"diameter": 1.0},
                 "centroid": [1.0, 2.0],
-            }
-        },
+            },
+            {
+                "shape_type": "polygon",
+                "shape_params": {"vertices": [[-7.5, -7.5], [7.5, -7.5], [7.5, 7.5], [-7.5, 7.5]]},
+                "centroid": [20.0, 2.0],
+            },
+        ],
         "fiducials": [
             {
                 "shape_type": "circle",
-                "shape_params": {"radius": 0.2},
+                "shape_params": {"diameter": 0.4},
                 "centroid": [0.0, 0.0],
                 "through_shape": True,
             }
@@ -37,7 +42,8 @@ async def test_layout_create_get_list_update_delete(async_client: AsyncClient):
     assert created["layout_id"] == layout_id
     assert created["name"] == "Test wafer layout"
     assert created["media_type"] == "wafer"
-    assert created["apertures"]["0"]["shape_params"]["radius"] == 0.5
+    assert created["apertures"][0]["shape_params"]["diameter"] == 1.0
+    assert created["apertures"][1]["shape_type"] == "polygon"
     assert created["fiducials"][0]["through_shape"] is True
 
     get_response = await async_client.get(f"/api/v2/layouts/{layout_id}")
@@ -65,3 +71,37 @@ async def test_layout_cannot_be_deleted_when_it_has_substrates(async_client: Asy
     response = await async_client.delete(f"/api/v2/layouts/{test_layout.layout_id}")
     assert response.status_code == 400
     assert "associated substrates" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_layout_apertures_cannot_change_once_a_substrate_uses_it(
+    async_client: AsyncClient, test_layout, test_substrate
+):
+    response = await async_client.patch(
+        f"/api/v2/layouts/{test_layout.layout_id}",
+        json={"apertures": [{"shape_type": "circle", "shape_params": {"diameter": 18.0}, "centroid": [0.0, 0.0]}]},
+    )
+    assert response.status_code == 409
+    renamed = await async_client.patch(f"/api/v2/layouts/{test_layout.layout_id}", json={"name": "Renamed"})
+    assert renamed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_layout_media_type_and_fiducials_can_change_once_a_substrate_uses_it(
+    async_client: AsyncClient, test_layout, test_substrate
+):
+    fiducials = [
+        {
+            "name": "origin",
+            "shape_type": "circle",
+            "shape_params": {"diameter": 0},
+            "centroid": [1.0, 2.0],
+            "through_shape": False,
+        }
+    ]
+    response = await async_client.patch(
+        f"/api/v2/layouts/{test_layout.layout_id}", json={"media_type": "grid_disc", "fiducials": fiducials}
+    )
+    assert response.status_code == 200
+    assert response.json()["media_type"] == "grid_disc"
+    assert response.json()["fiducials"][0]["centroid"] == [1.0, 2.0]

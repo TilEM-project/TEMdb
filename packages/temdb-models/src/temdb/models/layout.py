@@ -2,12 +2,12 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field, model_validator
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .enums import ShapeType, SubstrateType
 
 
 class CircleParams(TEMDBModel):
-    radius: float = Field(..., description="Radius of the circle in mm")
+    diameter: float = Field(..., description="Diameter of the circle in mm")
 
 
 class SlotParams(TEMDBModel):
@@ -31,7 +31,7 @@ class TriangleParams(TEMDBModel):
 
 
 class CircleArrayParams(TEMDBModel):
-    radius: float = Field(..., description="Radius of the circle array in mm")
+    diameter: float = Field(..., description="Diameter of each circle in the array in mm")
     count: int | tuple[int, int] = Field(
         ..., description="Count of circles in the array; can be a single integer or a tuple for rows and columns"
     )
@@ -41,15 +41,23 @@ class CircleArrayParams(TEMDBModel):
     angle: float = Field(0, description="Angle of the circle array in degrees (default: 0)")
 
 
+class PolygonParams(TEMDBModel):
+    vertices: list[tuple[float, float]] = Field(
+        ..., min_length=3, description="Polygon vertices (X, Y) in mm, relative to the centroid"
+    )
+
+
 class Shape(TEMDBModel):
     shape_type: ShapeType = Field(..., description="The type of shape")
-    shape_params: CircleParams | SlotParams | RectangleParams | TriangleParams | CircleArrayParams = Field(
-        ..., description="Parameters of the shape"
+    shape_params: CircleParams | SlotParams | RectangleParams | TriangleParams | CircleArrayParams | PolygonParams = (
+        Field(..., description="Parameters of the shape")
     )
     centroid: tuple[float, float] = Field(..., description="Centroid of the shape (X, Y) in mm")
 
     @model_validator(mode="before")
     def validate_shape_params(cls, values):
+        if not isinstance(values, dict):
+            return values
         shape_type = values.get("shape_type")
         shape_params = values.get("shape_params")
 
@@ -57,26 +65,26 @@ class Shape(TEMDBModel):
             raise ValueError("shape_type is required")
         if shape_params is None:
             raise ValueError("shape_params are required")
+        if isinstance(shape_params, TEMDBModel):
+            shape_params = shape_params.model_dump()
 
-        match shape_type:
-            case ShapeType.CIRCLE:
-                values["shape_params"] = CircleParams(**shape_params)
-            case ShapeType.SLOT:
-                values["shape_params"] = SlotParams(**shape_params)
-            case ShapeType.RECTANGLE:
-                values["shape_params"] = RectangleParams(**shape_params)
-            case ShapeType.TRIANGLE:
-                values["shape_params"] = TriangleParams(**shape_params)
-            case ShapeType.CIRCLE_ARRAY:
-                values["shape_params"] = CircleArrayParams(**shape_params)
-            case _:
-                raise ValueError(f"Invalid shape_type: {shape_type}")
-
-        return values
+        params_model = {
+            ShapeType.CIRCLE: CircleParams,
+            ShapeType.SLOT: SlotParams,
+            ShapeType.RECTANGLE: RectangleParams,
+            ShapeType.TRIANGLE: TriangleParams,
+            ShapeType.CIRCLE_ARRAY: CircleArrayParams,
+            ShapeType.POLYGON: PolygonParams,
+        }.get(shape_type)
+        if params_model is None:
+            raise ValueError(f"Invalid shape_type: {shape_type}")
+        return {**values, "shape_params": params_model(**shape_params)}
 
 
 class Fiducial(Shape):
     """Represents a fiducial on a substrate."""
+
+    name: str | None = Field(None, description="Name of the fiducial, e.g. 'origin', 'end' or 'ref'")
 
     through_shape: bool = Field(
         ..., description="Whether the fiducial is a through shape (e.g.,light or electrons can pass through)"
@@ -87,14 +95,14 @@ class Aperture(Shape):
     """Represents a single aperture or slot on a substrate."""
 
 
-class SubstrateLayoutBase(TEMDBModel):
+class SubstrateLayoutBase(TEMDBRecord):
     """Base substrate layout fields."""
 
     name: str | None = Field(None, description="Human readable name of the substrate layout")
     fiducials: list[Fiducial] | None = Field(None, description="List of fiducials on the substrate")
-    apertures: dict[int, Aperture] | None = Field(
+    apertures: list[Aperture] | None = Field(
         None,
-        description="A mapping of aperture indicies to aperture definitions",
+        description="Apertures in index order: apertures[i] is aperture i",
     )
 
 
@@ -111,6 +119,8 @@ class SubstrateLayoutCreate(SubstrateLayoutBase):
 
 class SubstrateLayoutUpdate(SubstrateLayoutBase):
     """Schema for updating a substrate layout."""
+
+    media_type: SubstrateType | None = Field(None, description="Type of substrate")
 
 
 class SubstrateLayoutResponse(SubstrateLayoutBase):

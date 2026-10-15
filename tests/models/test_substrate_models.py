@@ -11,11 +11,15 @@ class TestSubstrateCreate:
         substrate = SubstrateCreate(
             media_id="MEDIA001",
             substrate_layout_id="LAYOUT001",
-            condition={0: "ok"},
+            aperture_status=["available", "used"],
         )
         assert substrate.media_id == "MEDIA001"
         assert substrate.substrate_layout_id == "LAYOUT001"
-        assert substrate.condition == {0: "ok"}
+        assert substrate.aperture_status == ["available", "used"]
+
+    def test_unknown_aperture_status_is_rejected(self):
+        with pytest.raises(ValidationError):
+            SubstrateCreate(media_id="MEDIA001", substrate_layout_id="LAYOUT001", aperture_status=["ok"])
 
     def test_required_fields(self):
         with pytest.raises(ValidationError):
@@ -29,11 +33,11 @@ class TestSubstrateCreate:
 class TestSubstrateUpdate:
     def test_all_fields_optional(self):
         update = SubstrateUpdate()
-        assert update.condition is None
+        assert update.aperture_status is None
 
-    def test_update_aperture_conditions(self):
-        update = SubstrateUpdate(condition={2: "damaged"})
-        assert update.condition == {2: "damaged"}
+    def test_update_aperture_status_by_index(self):
+        update = SubstrateUpdate(aperture_status={2: "damaged"})
+        assert update.aperture_status == {2: "damaged"}
 
 
 class TestSubstrateResponse:
@@ -42,9 +46,9 @@ class TestSubstrateResponse:
             id=1,
             media_id="MEDIA001",
             substrate_layout_id="LAYOUT001",
-            condition={0: "ok"},
+            aperture_status=["damaged"],
             created_at=datetime.now(),
         )
         assert response.media_id == "MEDIA001"
         assert response.substrate_layout_id == "LAYOUT001"
-        assert response.condition == {0: "ok"}
+        assert response.aperture_status == ["damaged"]

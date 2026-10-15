@@ -66,7 +66,7 @@ def generate_substrate(cutting_session: CuttingSessionSQLModel, **kwargs) -> Sub
     defaults = {
         "media_id": f"MEDIA_{cutting_session.cutting_session_id}_{fake.unique.random_number(digits=4)}",
         "substrate_layout_id": kwargs.pop("substrate_layout_id", "TEST_LAYOUT"),
-        "condition": {0: "ok"},
+        "aperture_status": ["available"],
         "created_at": datetime.now(timezone.utc),
     }
     defaults.update(kwargs)
@@ -103,7 +103,7 @@ def generate_section(
             else None
         ),
         "media_id": substrate.media_id,
-        "aperture_id": 0,
+        "aperture_index": 0,
         "barcode": fake.ean13() if fake.boolean() else None,
         "created_at": datetime.now(timezone.utc),
     }
