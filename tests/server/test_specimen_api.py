@@ -148,3 +148,20 @@ async def test_remove_specimen_image(async_client: AsyncClient, test_specimen):
     response_data = remove_response.json()
     assert "specimen_images" in response_data
     assert image_url_to_add_remove not in response_data["specimen_images"]
+
+
+@pytest.mark.asyncio
+async def test_list_specimens_ordered(async_client: AsyncClient):
+    ids = ["SPEC_C", "SPEC_A", "SPEC_B"]
+    for specimen_id in ids:
+        await async_client.post("/api/v2/specimens", json={"specimen_id": specimen_id})
+
+    response = await async_client.get("/api/v2/specimens")
+    assert [specimen["specimen_id"] for specimen in response.json()] == sorted(ids)
+
+
+@pytest.mark.asyncio
+async def test_get_specimen_blocks_past_last_page(async_client: AsyncClient, test_specimen, test_block):
+    response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks", params={"skip": 1})
+    assert response.status_code == 200
+    assert response.json() == []

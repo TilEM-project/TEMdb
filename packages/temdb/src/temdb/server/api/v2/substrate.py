@@ -198,7 +198,7 @@ async def get_substrate_sections(
     sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.media_id == media_id)
-        .order_by(SectionSQLModel.section_number)
+        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
         .offset(skip)
         .limit(limit)
     )
@@ -224,7 +224,7 @@ async def get_substrate_apertures(media_id: str, session: AsyncSession = Depends
     placed = await session.execute(
         select(SectionSQLModel.aperture_index, SectionSQLModel.section_id)
         .where(SectionSQLModel.media_id == media_id)
-        .order_by(SectionSQLModel.section_number)
+        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
     )
     sections_by_aperture: dict[int | None, list[str]] = {}
     for aperture_index, section_id in placed:

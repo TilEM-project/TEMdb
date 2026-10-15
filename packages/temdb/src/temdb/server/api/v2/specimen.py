@@ -32,7 +32,7 @@ async def list_specimens(
                 SpecimenSQLModel.description.ilike(like_pattern),
             )
         )
-    return (await session.scalars(statement.offset(skip).limit(limit))).all()
+    return (await session.scalars(statement.order_by(SpecimenSQLModel.specimen_id).offset(skip).limit(limit))).all()
 
 
 @specimen_api.get("/specimens/count", response_model=int)
@@ -59,22 +59,19 @@ async def get_specimen_blocks(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
-    rows = (
-        await session.execute(
-            select(SpecimenSQLModel.id, BlockSQLModel)
-            .select_from(SpecimenSQLModel)
-            .outerjoin(BlockSQLModel, BlockSQLModel.specimen_id == SpecimenSQLModel.specimen_id)
-            .where(SpecimenSQLModel.specimen_id == specimen_id)
-            .offset(skip)
-            .limit(limit)
-        )
-    ).all()
-    if not rows:
+    if await session.scalar(select(SpecimenSQLModel.id).where(SpecimenSQLModel.specimen_id == specimen_id)) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
-    return [block for _, block in rows if block is not None]
+    blocks = await session.scalars(
+        select(BlockSQLModel)
+        .where(BlockSQLModel.specimen_id == specimen_id)
+        .order_by(BlockSQLModel.block_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return blocks.all()
 
 
 @specimen_api.post("/specimens", status_code=status.HTTP_201_CREATED, response_model=SpecimenResponse)

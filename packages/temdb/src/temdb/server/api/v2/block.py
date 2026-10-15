@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSessionResponse
@@ -26,6 +26,7 @@ async def list_blocks(
     statement = select(BlockSQLModel)
     if specimen_id:
         statement = statement.where(BlockSQLModel.specimen_id == specimen_id)
+    statement = statement.order_by(BlockSQLModel.specimen_id, BlockSQLModel.block_id)
     return (await session.execute(statement.offset(skip).limit(limit))).scalars().all()
 
 
@@ -40,42 +41,23 @@ async def get_block_cut_sessions(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve cutting sessions associated with a specific block."""
-    rows = (
-        (
-            await session.execute(
-                select(CuttingSessionSQLModel)
-                .select_from(BlockSQLModel)
-                .outerjoin(
-                    CuttingSessionSQLModel,
-                    and_(
-                        CuttingSessionSQLModel.block_id == BlockSQLModel.block_id,
-                        CuttingSessionSQLModel.specimen_id == BlockSQLModel.specimen_id,
-                    ),
-                )
-                .where(
-                    BlockSQLModel.block_id == block_id,
-                    BlockSQLModel.specimen_id == specimen_id,
-                )
-                .offset(skip)
-                .limit(limit)
-            )
-        )
-        .scalars()
-        .all()
+    """Retrieve cutting sessions associated with a specific block, newest first."""
+    block = await session.scalar(
+        select(BlockSQLModel.id).where(BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id)
     )
-    if not rows:
+    if block is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
-    cutting_sessions = [c for c in rows if c is not None]
-    if not cutting_sessions:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No cutting sessions found for block '{block_id}' and specimen '{specimen_id}'",
-        )
-    return cutting_sessions
+    sessions = await session.scalars(
+        select(CuttingSessionSQLModel)
+        .where(CuttingSessionSQLModel.block_id == block_id, CuttingSessionSQLModel.specimen_id == specimen_id)
+        .order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return sessions.all()
 
 
 @block_api.post("/blocks", status_code=status.HTTP_201_CREATED, response_model=BlockResponse)
@@ -228,7 +210,11 @@ async def list_specimen_blocks(
     return (
         (
             await session.execute(
-                select(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id).offset(skip).limit(limit)
+                select(BlockSQLModel)
+                .where(BlockSQLModel.specimen_id == specimen_id)
+                .order_by(BlockSQLModel.block_id)
+                .offset(skip)
+                .limit(limit)
             )
         )
         .scalars()

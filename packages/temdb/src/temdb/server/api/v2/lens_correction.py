@@ -71,7 +71,11 @@ async def list_lens_corrections(
     if magnification is not None:
         stmt = stmt.where(LensCorrectionSQLModel.magnification == magnification)
     rows = (
-        await session.scalars(stmt.order_by(LensCorrectionSQLModel.started_at.desc()).offset(skip).limit(limit))
+        await session.scalars(
+            stmt.order_by(LensCorrectionSQLModel.started_at.desc(), LensCorrectionSQLModel.lc_id.desc())
+            .offset(skip)
+            .limit(limit)
+        )
     ).all()
     return rows
 

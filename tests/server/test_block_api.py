@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from httpx import AsyncClient
 
@@ -213,3 +215,38 @@ async def test_block_extra_key_that_is_a_response_field_is_a_422(async_client: A
         f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{block_id_hr}", json={"extra": {"id": 1}}
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_block_cut_sessions_newest_first(
+    async_client: AsyncClient, test_specimen, test_block, test_cutting_session
+):
+    later = {
+        "cutting_session_id": f"{test_cutting_session.cutting_session_id}_LATER",
+        "block_id": test_block.block_id,
+        "start_time": (test_cutting_session.start_time + timedelta(days=1)).isoformat(),
+        "operator": test_cutting_session.operator,
+        "sectioning_device": test_cutting_session.sectioning_device,
+        "media_type": test_cutting_session.media_type,
+    }
+    assert (await async_client.post("/api/v2/cutting-sessions", json=later)).status_code == 201
+
+    response = await async_client.get(
+        f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{test_block.block_id}/cut-sessions"
+    )
+    ids = [cutting_session["cutting_session_id"] for cutting_session in response.json()]
+    assert ids == [later["cutting_session_id"], test_cutting_session.cutting_session_id]
+
+
+@pytest.mark.asyncio
+async def test_get_block_cut_sessions_without_sessions(async_client: AsyncClient, test_specimen, test_block):
+    url = f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{test_block.block_id}/cut-sessions"
+    response = await async_client.get(url)
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_get_block_cut_sessions_unknown_block(async_client: AsyncClient, test_specimen):
+    url = f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/NO_SUCH_BLOCK/cut-sessions"
+    assert (await async_client.get(url)).status_code == 404

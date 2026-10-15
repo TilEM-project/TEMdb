@@ -83,14 +83,10 @@ async def list_sections(
         statement = statement.where(SectionSQLModel.cutting_session_id == cutting_session_id)
     if media_id:
         statement = statement.where(SectionSQLModel.media_id == media_id)
-    sections = (await session.scalars(statement.offset(skip).limit(limit))).all()
     if quality:
-        sections = [
-            section
-            for section in sections
-            if isinstance(section.section_metrics, dict) and section.section_metrics.get("quality") == quality.value
-        ]
-    return sections
+        statement = statement.where(SectionSQLModel.section_metrics["quality"].as_string() == quality.value)
+    statement = statement.order_by(SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
+    return (await session.scalars(statement.offset(skip).limit(limit))).all()
 
 
 @section_api.get("/sections/count", response_model=int)
@@ -497,6 +493,7 @@ async def list_sections_by_media(
     statement = select(SectionSQLModel).where(SectionSQLModel.media_id == media_id)
     if relative_position is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_position is not supported")
+    statement = statement.order_by(SectionSQLModel.section_number, SectionSQLModel.id)
     sections = await session.scalars(statement.offset(skip).limit(limit))
     return sections.all()
 
@@ -510,6 +507,10 @@ async def get_sections_by_barcode(
 ):
     """Retrieve sections by barcode."""
     sections = await session.scalars(
-        select(SectionSQLModel).where(SectionSQLModel.barcode == barcode).offset(skip).limit(limit)
+        select(SectionSQLModel)
+        .where(SectionSQLModel.barcode == barcode)
+        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
+        .offset(skip)
+        .limit(limit)
     )
     return sections.all()
