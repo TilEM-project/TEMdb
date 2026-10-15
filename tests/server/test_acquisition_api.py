@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -68,6 +68,86 @@ async def test_list_acquisitions_filtered(
     assert resp_status.status_code == 200
     assert all(a["status"] is None for a in resp_status.json()["acquisitions"])
     assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_status.json()["acquisitions"])
+
+
+@pytest.fixture
+async def acquisitions(test_db_manager, test_acquisition):
+    """test_acquisition (1000x) and two later runs of its task at 5000x, oldest first."""
+    later = [
+        AcquisitionSQLModel(
+            acquisition_id=f"{test_acquisition.acquisition_id}_{day}",
+            montage_id=f"{test_acquisition.montage_id}_{day}",
+            specimen_id=test_acquisition.specimen_id,
+            roi_id=test_acquisition.roi_id,
+            acquisition_task_id=test_acquisition.acquisition_task_id,
+            microscope_id=test_acquisition.microscope_id,
+            hardware_settings=test_acquisition.hardware_settings,
+            acquisition_settings={**test_acquisition.acquisition_settings, "magnification": 5000},
+            start_time=test_acquisition.start_time + timedelta(days=day),
+        )
+        for day in (1, 2)
+    ]
+    async with test_db_manager.async_session_factory() as session:
+        session.add_all(later)
+        await session.commit()
+    return [test_acquisition, *later]
+
+
+@pytest.fixture(params=["/api/v2/acquisitions", "/api/v2/aggregated/acquisitions"])
+def list_path(request):
+    return request.param
+
+
+def listed_ids(body: dict) -> list[str]:
+    return [item.get("acquisition", item)["acquisition_id"] for item in body["acquisitions"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sort_by, sort_order", [("start_time", -1), ("start_time", 1), ("acquisition_id", -1)])
+async def test_list_acquisitions_cursor(async_client: AsyncClient, acquisitions, list_path, sort_by, sort_order):
+    """Following next_cursor visits every acquisition once, in sort order."""
+    seen, params = [], {"limit": 2, "sort_by": sort_by, "sort_order": sort_order}
+    for _ in acquisitions:
+        body = (await async_client.get(list_path, params=params)).json()
+        seen += listed_ids(body)
+        params["cursor"] = body["metadata"]["next_cursor"]
+        if params["cursor"] is None:
+            break
+
+    expected = sorted(acquisitions, key=lambda acq: getattr(acq, sort_by), reverse=sort_order == -1)
+    assert seen == [acq.acquisition_id for acq in expected]
+    assert params["cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_acquisitions_total_count(async_client: AsyncClient, acquisitions, list_path):
+    """total_count counts every match, not just the page."""
+    response = await async_client.get(list_path, params={"limit": 1})
+    assert response.status_code == 200
+    assert response.json()["metadata"]["total_count"] == len(acquisitions)
+
+
+@pytest.mark.asyncio
+async def test_list_acquisitions_by_magnification(async_client: AsyncClient, acquisitions):
+    response = await async_client.get("/api/v2/acquisitions", params={"magnification": 5000})
+    assert response.status_code == 200
+    assert set(listed_ids(response.json())) == {acq.acquisition_id for acq in acquisitions[1:]}
+
+
+@pytest.mark.asyncio
+async def test_list_aggregated_acquisitions_by_substrate(async_client: AsyncClient, acquisitions, test_roi):
+    url = "/api/v2/aggregated/acquisitions"
+    response = await async_client.get(url, params={"substrate_media_id": test_roi.substrate_media_id})
+    missing = await async_client.get(url, params={"substrate_media_id": "NO_SUCH_SUBSTRATE"})
+    assert set(listed_ids(response.json())) == {acq.acquisition_id for acq in acquisitions}
+    assert listed_ids(missing.json()) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("params", [{"sort_by": "end_time"}, {"cursor": 999999}, {"cursor": "x"}])
+async def test_list_acquisitions_invalid_page(async_client: AsyncClient, acquisitions, list_path, params):
+    response = await async_client.get(list_path, params=params)
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

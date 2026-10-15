@@ -2,7 +2,7 @@ import logging
 import math
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -13,7 +13,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import and_, any_, bindparam, delete, func, select, update
+from sqlalchemy import and_, any_, bindparam, delete, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,15 +140,34 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
     }
 
 
+async def acquisition_page(
+    session: AsyncSession, statement, conditions: list, sort_by: str, sort_order: int, cursor: int | None, limit: int
+) -> tuple[list, int, str | None]:
+    """Return one page of the statement's rows, the number of acquisitions matching the conditions, and the next cursor.
+
+    Rows are ordered by the sort column and then by id. The cursor is the id of the last acquisition on the previous
+    page, and the next cursor is None on the last page.
+    """
+    total_count = await session.scalar(select(func.count()).select_from(AcquisitionSQLModel).where(*conditions))
+    keys = (getattr(AcquisitionSQLModel, sort_by), AcquisitionSQLModel.id)
+    ascending = sort_order == 1
+    if cursor is not None:
+        last = (await session.execute(select(*keys).where(AcquisitionSQLModel.id == cursor))).first()
+        if last is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"cursor {cursor} is not an acquisition")
+        statement = statement.where(tuple_(*keys) > tuple(last) if ascending else tuple_(*keys) < tuple(last))
+    order = [key.asc() if ascending else key.desc() for key in keys]
+    rows = (await session.execute(statement.where(*conditions).order_by(*order).limit(limit + 1))).all()
+    next_cursor = str(rows[limit - 1][0].id) if len(rows) > limit else None
+    return rows[:limit], total_count, next_cursor
+
+
 @acquisition_api.get("/acquisitions", response_model=dict[str, Any])
 async def list_acquisitions(
     response: Response,
-    cursor: str | None = Query(
-        None,
-        description="Cursor for pagination (e.g., last seen acquisition_id or _id)",
-    ),
+    cursor: int | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(50, ge=1, le=1000),
-    sort_by: str = Query("start_time", description="Field to sort by (e.g., start_time, acquisition_id)"),
+    sort_by: Literal["start_time", "acquisition_id"] = Query("start_time", description="Field to sort by"),
     sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
@@ -204,6 +223,8 @@ async def list_acquisitions(
         conditions.append(AcquisitionSQLModel.start_time >= start_date)
     if end_date:
         conditions.append(AcquisitionSQLModel.start_time <= end_date)
+    if magnification is not None:
+        conditions.append(AcquisitionSQLModel.acquisition_settings.contains({"magnification": magnification}))
     if param_tile_focus_lt is not None:
         conditions.append(AcquisitionSQLModel.avg_focus_score < param_tile_focus_lt)
 
@@ -223,53 +244,17 @@ async def list_acquisitions(
             param_tile_dy_gt,
         )
 
-    sort_column = getattr(AcquisitionSQLModel, sort_by, AcquisitionSQLModel.start_time)
-    order_column = sort_column.asc() if sort_order == 1 else sort_column.desc()
-    rows = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(*conditions)
-            .order_by(order_column)
-        )
-    ).all()
-    acquisitions = [row[0] for row in rows]
-    if magnification is not None:
-        rows = [
-            row
-            for row in rows
-            if isinstance(row[0].acquisition_settings, dict)
-            and row[0].acquisition_settings.get("magnification") == magnification
-        ]
-        acquisitions = [row[0] for row in rows]
-    total_count = len(acquisitions)
-    rows = rows[:limit]
+    rows, total_count, next_cursor = await acquisition_page(
+        session, select(AcquisitionSQLModel), conditions, sort_by, sort_order, cursor, limit
+    )
     payloads = []
-    for acq, _specimen_ref, _roi_ref, _task_ref in rows:
+    for (acq,) in rows:
         payload = AcquisitionResponse.model_validate(acq).model_dump(mode="json")
         if fields:
             kept = {field: payload.get(field) for field in fields}
             kept["id"] = payload["id"]
             payload = kept
         payloads.append(payload)
-    next_cursor = str(rows[-1][0].id) if rows else None
     metadata = {
         "total_count": total_count,
         "returned_count": len(payloads),
@@ -1223,12 +1208,9 @@ async def get_acquisition_with_full_metadata(
 @acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])
 async def list_acquisitions_with_hierarchy(
     response: Response,
-    cursor: str | None = Query(
-        None,
-        description="Cursor for pagination (e.g., last seen acquisition_id or _id)",
-    ),
+    cursor: int | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(50, ge=1, le=100),
-    sort_by: str = Query("start_time", description="Field to sort by (e.g., start_time, acquisition_id)"),
+    sort_by: Literal["start_time", "acquisition_id"] = Query("start_time", description="Field to sort by"),
     sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     roi_id: str | None = Query(None, description="Filter by hierarchical ROI ID"),
@@ -1252,61 +1234,59 @@ async def list_acquisitions_with_hierarchy(
     if acq_status:
         conditions.append(_status_condition(acq_status))
     if substrate_media_id:
-        conditions.append(SubstrateSQLModel.media_id == substrate_media_id)
-
-    sort_column = getattr(AcquisitionSQLModel, sort_by, AcquisitionSQLModel.start_time)
-    order_column = sort_column.asc() if sort_order == 1 else sort_column.desc()
-    rows = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                AcquisitionTaskSQLModel,
-                ROISQLModel,
-                SectionSQLModel,
-                SubstrateSQLModel,
-                CuttingSessionSQLModel,
-                BlockSQLModel,
-                SpecimenSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
+        conditions.append(
+            AcquisitionSQLModel.roi_id.in_(
+                select(ROISQLModel.roi_id).where(ROISQLModel.substrate_media_id == substrate_media_id)
             )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                SectionSQLModel,
-                SectionSQLModel.section_id == ROISQLModel.section_id,
-            )
-            .outerjoin(
-                SubstrateSQLModel,
-                SubstrateSQLModel.media_id == ROISQLModel.substrate_media_id,
-            )
-            .outerjoin(
-                CuttingSessionSQLModel,
-                CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.block_id == CuttingSessionSQLModel.block_id,
-                    BlockSQLModel.specimen_id == CuttingSessionSQLModel.specimen_id,
-                ),
-            )
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .where(*conditions)
-            .order_by(order_column)
         )
-    ).all()
+
+    statement = (
+        select(
+            AcquisitionSQLModel,
+            AcquisitionTaskSQLModel,
+            ROISQLModel,
+            SectionSQLModel,
+            SubstrateSQLModel,
+            CuttingSessionSQLModel,
+            BlockSQLModel,
+            SpecimenSQLModel,
+        )
+        .select_from(AcquisitionSQLModel)
+        .outerjoin(
+            AcquisitionTaskSQLModel,
+            AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+        )
+        .outerjoin(
+            ROISQLModel,
+            ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+        )
+        .outerjoin(
+            SectionSQLModel,
+            SectionSQLModel.section_id == ROISQLModel.section_id,
+        )
+        .outerjoin(
+            SubstrateSQLModel,
+            SubstrateSQLModel.media_id == ROISQLModel.substrate_media_id,
+        )
+        .outerjoin(
+            CuttingSessionSQLModel,
+            CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
+        )
+        .outerjoin(
+            BlockSQLModel,
+            and_(
+                BlockSQLModel.block_id == CuttingSessionSQLModel.block_id,
+                BlockSQLModel.specimen_id == CuttingSessionSQLModel.specimen_id,
+            ),
+        )
+        .outerjoin(
+            SpecimenSQLModel,
+            SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+        )
+    )
+    rows, total_count, next_cursor = await acquisition_page(
+        session, statement, conditions, sort_by, sort_order, cursor, limit
+    )
 
     formatted_results = []
     for (
@@ -1318,9 +1298,6 @@ async def list_acquisitions_with_hierarchy(
         cutting_obj,
         block_obj,
         specimen_obj,
-        _specimen_ref,
-        _roi_ref_value,
-        _task_ref,
     ) in rows:
         formatted_results.append(
             AcquisitionFullMetadata(
@@ -1334,9 +1311,6 @@ async def list_acquisitions_with_hierarchy(
                 specimen=specimen_obj.model_dump() if specimen_obj else None,
             ).model_dump(mode="json", by_alias=True)
         )
-    total_count = len(formatted_results)
-    formatted_results = formatted_results[:limit]
-    next_cursor = str(formatted_results[-1]["acquisition"]["id"]) if formatted_results else None
     metadata = {
         "total_count": total_count,
         "returned_count": len(formatted_results),
