@@ -84,7 +84,7 @@ async def create_specimen(
     )
     if existing_specimen.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Specimen with ID '{specimen_data.specimen_id}' already exists",
         )
 
@@ -172,15 +172,6 @@ async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
-        )
-    block_count_query = await session.scalars(
-        select(func.count()).select_from(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id)
-    )
-    block_count = block_count_query.one()
-    if block_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete specimen '{specimen_id}' as it has {block_count} associated blocks.",
         )
     await session.delete(specimen)
     await session.commit()

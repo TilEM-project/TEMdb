@@ -1,11 +1,18 @@
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
-from temdb.client.exceptions import TEMdbServerError, TEMdbUnprocessableError
+from temdb.client.exceptions import (
+    TEMdbConflictError,
+    TEMdbInternalError,
+    TEMdbServerError,
+    TEMdbUnprocessableError,
+)
+from temdb.models import APIErrorResponse
 from temdb.server.exception_handlers import register_exception_handlers
+from temdb.server.sqlmodels import AcquisitionTaskSQLModel, SpecimenSQLModel
 
 
 class _Body(BaseModel):
@@ -21,6 +28,14 @@ def app():
     @app.post("/things")
     async def create_thing(body: _Body):
         return {"ok": True}
+
+    @app.get("/things/{thing_id}")
+    async def get_thing(thing_id: str):
+        raise HTTPException(status_code=404, detail=f"Thing '{thing_id}' not found")
+
+    @app.post("/things/{thing_id}/conflict")
+    async def conflict(thing_id: str):
+        raise HTTPException(status_code=409, detail={"thing_ids": [thing_id]})
 
     return app
 
@@ -51,3 +66,87 @@ async def test_validation_failure_tells_the_caller_which_field(app):
         ("body", "specimen_id"),
         ("body", "tile_count"),
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "status", "error_code"),
+    [
+        ("GET", "/things/T1", 404, "NOT_FOUND"),
+        ("GET", "/no/such/route", 404, "NOT_FOUND"),
+        ("POST", "/things", 422, "VALIDATION_ERROR"),
+        ("POST", "/things/T1/conflict", 409, "CONFLICT"),
+    ],
+)
+async def test_every_error_body_is_an_api_error_response(app, method, path, status, error_code):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.request(method, path, json={})
+
+    assert response.status_code == status
+    body = APIErrorResponse.model_validate(response.json())
+    assert body.error_code == error_code
+    assert body.detail
+
+
+@pytest.mark.asyncio
+async def test_structured_http_exception_detail_moves_to_context(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/things/T1/conflict")
+
+    error = _as_client_error(response)
+    assert isinstance(error, TEMdbConflictError)
+    assert error.error_code == "CONFLICT"
+    assert error.context == {"detail": {"thing_ids": ["T1"]}}
+
+
+@pytest.fixture
+def database_app(app, init_db):
+    """Routes that insert straight into Postgres, as a create does once its pre-check has passed."""
+
+    @app.post("/specimens/{specimen_id}")
+    async def insert_specimen(specimen_id: str):
+        async with init_db.async_session_factory() as session:
+            session.add(SpecimenSQLModel(specimen_id=specimen_id))
+            await session.commit()
+        return {"ok": True}
+
+    @app.post("/tasks/{task_id}")
+    async def insert_task_without_lineage(task_id: str):
+        async with init_db.async_session_factory() as session:
+            session.add(AcquisitionTaskSQLModel(task_id=task_id))
+            await session.commit()
+        return {"ok": True}
+
+    return app
+
+
+@pytest.mark.asyncio
+async def test_unique_violation_is_a_conflict_naming_the_table(database_app):
+    async with AsyncClient(
+        transport=ASGITransport(app=database_app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        assert (await client.post("/specimens/RACED")).status_code == 200
+        response = await client.post("/specimens/RACED")
+
+    assert response.status_code == 409
+
+    error = _as_client_error(response)
+
+    assert isinstance(error, TEMdbConflictError)
+    assert error.error_code == "UNIQUE_VIOLATION"
+    assert error.context["table"] == SpecimenSQLModel.__tablename__
+    assert "RACED" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_other_integrity_violations_stay_internal_errors(database_app, monkeypatch):
+    monkeypatch.delenv("DEBUG", raising=False)
+    async with AsyncClient(
+        transport=ASGITransport(app=database_app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        response = await client.post("/tasks/NO_LINEAGE")
+
+    assert response.status_code == 500
+    assert isinstance(_as_client_error(response), TEMdbInternalError)

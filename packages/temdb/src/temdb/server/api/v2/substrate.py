@@ -58,7 +58,7 @@ async def create_substrate(
     )
     if existing_substrate.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Substrate with media_id '{substrate_data.media_id}' already exists.",
         )
     layout = await session.get(SubstrateLayoutSQLModel, substrate_data.substrate_layout_id)
@@ -168,12 +168,6 @@ async def delete_substrate(media_id: str, session: AsyncSession = Depends(get_as
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate with media_id '{media_id}' not found",
-        )
-    section_count = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.media_id == media_id))
-    if len(section_count.all()) > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete substrate '{media_id}' as it has associated sections.",
         )
     await session.delete(substrate_obj)
     await session.commit()

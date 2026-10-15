@@ -260,7 +260,7 @@ async def create_task(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
     )
     if existing.one_or_none() is not None:
-        raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
+        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     new_task = _task_from_create(task_data)
     session.add(new_task)
     await session.commit()
@@ -367,22 +367,11 @@ async def update_task(
 
 @acquisition_task_api.delete("/acquisition-tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_session)):
-    dependency_row = (
-        await session.execute(
-            select(AcquisitionTaskSQLModel, AcquisitionSQLModel.id)
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                AcquisitionSQLModel,
-                AcquisitionSQLModel.acquisition_task_id == AcquisitionTaskSQLModel.task_id,
-            )
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
-        )
-    ).first()
-    if dependency_row is None:
+    task_obj = (
+        await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    ).one_or_none()
+    if task_obj is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    task_obj, acquisition_id = dependency_row
-    if acquisition_id is not None:
-        raise HTTPException(400, f"Cannot delete task '{task_id}': acquisitions exist.")
     await session.delete(task_obj)
     await session.commit()
     return None
@@ -438,7 +427,7 @@ async def supersede_task(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
     )
     if existing.one_or_none() is not None:
-        raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
+        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     await _validate_lineage(session, task_data)
     new_task = _task_from_create(task_data)
     session.add(new_task)
@@ -473,7 +462,7 @@ async def create_tasks_batch(
             select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
         )
         if existing.one_or_none() is not None:
-            raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists.")
+            raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists.")
 
     group_id = uuid7() if group else None
     new_tasks = []

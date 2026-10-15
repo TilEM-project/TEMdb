@@ -4,14 +4,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import and_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import APIErrorResponse, ROICreate, ROIResponse, ROIUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import (
-    AcquisitionSQLModel,
-    AcquisitionTaskSQLModel,
     ROISQLModel,
     SectionSQLModel,
     SubstrateSQLModel,
@@ -123,7 +120,7 @@ async def create_roi(roi_data: ROICreate, session: AsyncSession = Depends(get_as
     )
     existing_roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == roi_id))
     if existing_roi.one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"ROI with ID '{roi_id}' already exists")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"ROI with ID '{roi_id}' already exists")
 
     new_roi = ROISQLModel(
         roi_id=roi_id,
@@ -223,11 +220,7 @@ async def create_rois_batch(
         )
 
     session.add_all(rois_to_insert)
-    try:
-        await session.commit()
-    except IntegrityError as error:
-        await session.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"duplicate ROI IDs: {error.orig}") from error
+    await session.commit()
     for roi in rois_to_insert:
         await session.refresh(roi)
     # Newly inserted ROIs may be parents of each other (child created before parent in the
@@ -305,21 +298,6 @@ async def delete_roi(roi_id: str, session: AsyncSession = Depends(get_async_sess
     roi_obj = roi_result.one_or_none()
     if roi_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"ROI with ID '{roi_id}' not found")
-    child_rois_count = await session.scalars(select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id))
-    if child_rois_count.first() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete ROI '{roi_id}' as it has child ROIs",
-        )
-    task_count = await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.roi_id == roi_id))
-    if task_count.first() is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete ROI '{roi_id}' as it has associated Acquisition Tasks.",
-        )
-    acq_count = await session.scalars(select(AcquisitionSQLModel).where(AcquisitionSQLModel.roi_id == roi_id))
-    if acq_count.first() is not None:
-        raise HTTPException(status_code=400, detail=f"Cannot delete ROI '{roi_id}' as it has associated Acquisitions.")
     await session.delete(roi_obj)
     await session.commit()
     return None

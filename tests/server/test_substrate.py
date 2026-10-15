@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
+from temdb.server.sqlmodels import SectionSQLModel
+
 
 @pytest.mark.asyncio
 async def test_list_substrates(async_client: AsyncClient, test_substrate):
@@ -52,7 +54,7 @@ async def test_create_substrate_duplicate(async_client: AsyncClient, test_substr
             "substrate_layout_id": test_substrate.substrate_layout_id,
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert "already exists" in response.json()["detail"]
 
 
@@ -193,8 +195,10 @@ async def test_delete_substrate(async_client: AsyncClient, test_layout):
 @pytest.mark.asyncio
 async def test_delete_substrate_with_sections(async_client: AsyncClient, test_substrate, test_section):
     response = await async_client.delete(f"/api/v2/substrates/{test_substrate.media_id}")
-    assert response.status_code == 400
-    assert "associated sections" in response.json()["detail"].lower()
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == SectionSQLModel.__tablename__
 
 
 @pytest.mark.asyncio

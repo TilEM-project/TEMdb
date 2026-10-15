@@ -368,13 +368,37 @@ async def test_delete_task(async_client: AsyncClient, test_specimen, test_block,
     assert get_response.status_code == 404
 
 
-# @pytest.mark.asyncio
-# async def test_delete_task_with_acquisitions(async_client: AsyncClient, test_acquisition_task, test_acquisition):
-#     """Test deleting a task fails if it has associated Acquisitions."""
-#     # test_acquisition fixture links to test_acquisition_task
-#     response = await async_client.delete(f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}")
-#     assert response.status_code == 400
-#     assert "associated Acquisitions" in response.json()["detail"].lower() # Check message
+@pytest.mark.asyncio
+async def test_delete_task_with_acquisitions(async_client: AsyncClient, test_acquisition):
+    """Test that deleting a task fails if it has associated acquisitions."""
+    response = await async_client.delete(f"/api/v2/acquisition-tasks/{test_acquisition.acquisition_task_id}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == AcquisitionSQLModel.__tablename__
+
+
+@pytest.mark.asyncio
+async def test_delete_task_that_supersedes_another(
+    async_client: AsyncClient, test_acquisition_task, test_specimen, test_block, test_roi
+):
+    """Test that deleting a task fails while the task it superseded points to it."""
+    old_id = test_acquisition_task.task_id
+    new_payload = {
+        "task_id": f"{old_id}_V2",
+        "specimen_id": test_specimen.specimen_id,
+        "block_id": test_block.block_id,
+        "roi_id": test_roi.roi_id,
+    }
+    created = await async_client.post(f"/api/v2/acquisition-tasks/{old_id}/supersede", json=new_payload)
+    assert created.status_code == 201
+
+    response = await async_client.delete(f"/api/v2/acquisition-tasks/{new_payload['task_id']}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == AcquisitionTaskSQLModel.__tablename__
+
 
 # @pytest.mark.asyncio
 # async def test_get_task_acquisitions(async_client: AsyncClient, test_acquisition_task, test_acquisition):

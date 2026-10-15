@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
+from temdb.server.sqlmodels import SectionSQLModel
+
 
 @pytest.mark.asyncio
 async def test_list_cutting_sessions(async_client: AsyncClient):
@@ -173,10 +175,10 @@ async def test_delete_cutting_session(async_client: AsyncClient, test_block):
 async def test_delete_cutting_session_with_sections(async_client: AsyncClient, test_cutting_session, test_section):
     """Test that deleting a cutting session fails if it has associated sections."""
     response = await async_client.delete(f"/api/v2/cutting-sessions/{test_cutting_session.cutting_session_id}")
-    assert response.status_code == 400
+    assert response.status_code == 409
     response_data = response.json()
-    assert "detail" in response_data
-    assert "associated sections" in response_data["detail"].lower()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == SectionSQLModel.__tablename__
 
 
 @pytest.mark.asyncio

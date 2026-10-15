@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel
+
 
 @pytest.mark.asyncio
 async def test_list_specimens(async_client: AsyncClient):
@@ -97,10 +99,20 @@ async def test_specimen_extra_fields_round_trip(async_client: AsyncClient):
 async def test_delete_specimen_with_blocks(async_client: AsyncClient, test_specimen, test_block):
     """Test that deleting a specimen fails if it has associated blocks."""
     response = await async_client.delete(f"/api/v2/specimens/{test_specimen.specimen_id}")
-    assert response.status_code == 400  #
+    assert response.status_code == 409
     response_data = response.json()
-    assert "detail" in response_data
-    assert "associated blocks" in response_data["detail"].lower()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == BlockSQLModel.__tablename__
+
+
+@pytest.mark.asyncio
+async def test_delete_specimen_with_dataset(async_client: AsyncClient, test_dataset):
+    """Test that deleting a specimen fails if a dataset references it."""
+    response = await async_client.delete(f"/api/v2/specimens/{test_dataset.specimen_id}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == DatasetSQLModel.__tablename__
 
 
 @pytest.mark.asyncio

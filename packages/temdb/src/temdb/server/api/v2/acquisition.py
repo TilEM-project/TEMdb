@@ -288,7 +288,7 @@ async def create_acquisition(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
     )
     if existing.first() is not None:
-        raise HTTPException(400, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
+        raise HTTPException(409, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
     microscope = await session.scalars(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )
@@ -523,23 +523,6 @@ async def delete_acquisition(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    tile_count = 0
-    if acq_obj.dataset_id is not None:
-        tile_count = (
-            await session.scalars(
-                select(func.count())
-                .select_from(TileSQLModel)
-                .where(
-                    TileSQLModel.dataset_id == acq_obj.dataset_id,
-                    TileSQLModel.run_id == acq_obj.run_id,
-                )
-            )
-        ).one()
-    if tile_count > 0:
-        raise HTTPException(
-            400,
-            f"Cannot delete acquisition '{acquisition_id}': {tile_count} tiles exist.",
-        )
     await session.delete(acq_obj)
     await session.commit()
     return None

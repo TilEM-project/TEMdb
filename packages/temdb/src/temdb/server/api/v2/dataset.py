@@ -31,7 +31,7 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
 async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=400, detail=f"Dataset name '{data.name}' already exists")
+        raise HTTPException(status_code=409, detail=f"Dataset name '{data.name}' already exists")
     if data.parent_dataset_id is not None:
         parent = (
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == data.parent_dataset_id))
