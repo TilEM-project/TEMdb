@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from temdb.models import SectionQuality
+from temdb.server.sqlmodels import SectionSQLModel
 
 
 @pytest.mark.asyncio
@@ -473,3 +474,24 @@ async def test_batch_marks_each_substrates_apertures_used(async_client: AsyncCli
 
     assert await statuses("TEST_SUB_BATCH_A") == ["used", "damaged", "available"]
     assert await statuses("TEST_SUB_BATCH_B") == ["available", "damaged", "used"]
+
+
+@pytest.mark.asyncio
+async def test_list_sections_by_quality_pages_matches(async_client: AsyncClient, test_db_manager, test_section):
+    """The quality filter applies before limit, so the page holds matching sections."""
+    async with test_db_manager.async_session_factory() as session:
+        broken = SectionSQLModel(
+            section_id=f"{test_section.section_id}_BROKEN",
+            section_number=test_section.section_number + 1,
+            timestamp=test_section.timestamp,
+            cutting_session_id=test_section.cutting_session_id,
+            block_id=test_section.block_id,
+            specimen_id=test_section.specimen_id,
+            media_id=test_section.media_id,
+            section_metrics={"quality": SectionQuality.BROKEN.value},
+        )
+        session.add(broken)
+        await session.commit()
+
+    response = await async_client.get("/api/v2/sections", params={"quality": SectionQuality.BROKEN.value, "limit": 1})
+    assert [section["section_id"] for section in response.json()] == [broken.section_id]

@@ -83,7 +83,11 @@ async def list_datasets(
         stmt = stmt.where(DatasetSQLModel.status == status_filter)
     if parent_dataset_id is not None:
         stmt = stmt.where(DatasetSQLModel.parent_dataset_id == parent_dataset_id)
-    rows = (await session.scalars(stmt.order_by(DatasetSQLModel.created_at).offset(skip).limit(limit))).all()
+    rows = (
+        await session.scalars(
+            stmt.order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id).offset(skip).limit(limit)
+        )
+    ).all()
     return rows
 
 
@@ -107,7 +111,7 @@ async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends
         await session.scalars(
             select(DatasetSQLModel)
             .where(DatasetSQLModel.parent_dataset_id == parent.dataset_id)
-            .order_by(DatasetSQLModel.created_at)
+            .order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id)
         )
     ).all()
     return rows

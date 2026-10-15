@@ -142,3 +142,20 @@ async def test_acquisition_carries_dataset_id(
             await session.scalars(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == "ACQ_DS_001"))
         ).one()
         assert fetched.dataset_id == ds_id
+
+
+@pytest.mark.asyncio
+async def test_list_datasets_pages_through_created_at_ties(init_db, async_client, test_db_manager):
+    created_at = datetime.now(timezone.utc)
+    datasets = [
+        DatasetSQLModel(dataset_id=uuid7(), name=f"ds_{n}", size_class="small", created_at=created_at) for n in range(3)
+    ]
+    async with test_db_manager.async_session_factory() as session:
+        session.add_all(datasets)
+        await session.commit()
+
+    pages = [
+        (await async_client.get("/api/v2/datasets", params={"skip": skip, "limit": 1})).json() for skip in range(3)
+    ]
+    expected = sorted(datasets, key=lambda dataset: dataset.dataset_id)
+    assert [dataset["name"] for page in pages for dataset in page] == [dataset.name for dataset in expected]

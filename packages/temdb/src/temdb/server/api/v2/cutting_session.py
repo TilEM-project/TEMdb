@@ -32,6 +32,7 @@ async def list_cutting_sessions(
         statement = statement.where(CuttingSessionSQLModel.block_id == block_id)
     if operator:
         statement = statement.where(CuttingSessionSQLModel.operator == operator)
+    statement = statement.order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
     sessions = (await session.scalars(statement.offset(skip).limit(limit))).all()
     return sessions
 
@@ -65,6 +66,7 @@ async def get_cutting_session_sections(
     sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.cutting_session_id == cutting_session_id)
+        .order_by(SectionSQLModel.section_number)
         .offset(skip)
         .limit(limit)
     )
@@ -227,6 +229,7 @@ async def list_block_cutting_sessions(
                     CuttingSessionSQLModel.block_id == block_id,
                     CuttingSessionSQLModel.specimen_id == specimen_id,
                 )
+                .order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
                 .offset(skip)
                 .limit(limit)
             )

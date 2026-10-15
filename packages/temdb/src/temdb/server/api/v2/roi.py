@@ -79,7 +79,7 @@ async def list_rois(
         conditions.append(ROISQLModel.section_id == section_id)
     if conditions:
         statement = statement.where(and_(*conditions))
-    rois = (await session.scalars(statement.offset(skip).limit(limit))).all()
+    rois = (await session.scalars(statement.order_by(ROISQLModel.roi_id).offset(skip).limit(limit))).all()
     parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in rois))
     return [_to_response(roi, roi.roi_id in parents_with_children) for roi in rois]
 

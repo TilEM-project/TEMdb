@@ -196,6 +196,7 @@ async def list_tasks(
     if task_group_id is not None:
         filters.append(AcquisitionTaskSQLModel.task_group_id == task_group_id)
         statement = statement.order_by(AcquisitionTaskSQLModel.tilt_angle_deg)
+    statement = statement.order_by(AcquisitionTaskSQLModel.task_id)
     if current_only or imageable:
         filters.append(AcquisitionTaskSQLModel.superseded_by.is_(None))
     if skip_destroyed or imageable:
