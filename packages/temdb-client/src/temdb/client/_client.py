@@ -163,7 +163,7 @@ class TEMdbClient:
     async def health_check(self) -> dict[str, Any]:
         """Check if the API is available."""
         try:
-            result = await self._async_request("GET", "/health")
+            result = await self._async_request("GET", f"{self.raw_base_url}/health")
             self.logger.info(f"Async Health check: {result.get('status', 'unknown')}")
             return cast(dict[str, Any], result)
         except Exception as e:
@@ -172,7 +172,7 @@ class TEMdbClient:
 
     async def get_api_info(self) -> dict[str, Any]:
         """Get API information."""
-        result = await self._async_request("GET", "/")
+        result = await self._async_request("GET", f"{self.raw_base_url}/")
         return cast(dict[str, Any], result)
 
     async def close(self) -> None:
