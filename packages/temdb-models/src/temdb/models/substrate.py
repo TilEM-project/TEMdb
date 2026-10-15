@@ -4,7 +4,6 @@ from typing import Any
 from pydantic import AliasChoices, ConfigDict, Field
 
 from .base import TEMDBModel
-from .utils.uri import URI
 
 
 class ReferencePoints(TEMDBModel):
@@ -69,10 +68,6 @@ class SubstrateBase(TEMDBModel):
     refpoint: ReferencePoints | None = Field(None, description="Reference points in local substrate coordinates")
     refpoint_world: ReferencePoints | None = Field(
         None, description="Reference points mapped to world/stage coordinates"
-    )
-    source_path: URI.Type | None = Field(
-        None,
-        description="Path or identifier of the source file defining this substrate",
     )
     metadata: SubstrateMetadata | None = Field(None, description="General metadata about the substrate")
     apertures: list[Aperture] | None = Field(

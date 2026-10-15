@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +12,14 @@ from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, Specim
 block_api = APIRouter(
     tags=["Blocks"],
 )
+
+
+def _to_json_compatible(value):
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    return jsonable_encoder(value)
 
 
 @block_api.get("/blocks", response_model=list[BlockResponse])
@@ -106,6 +115,7 @@ async def create_block(
         block_id=block_data.block_id,
         specimen_id=block_data.specimen_id,
         microCT_info=block_data.microCT_info,
+        default_storage=_to_json_compatible(block_data.default_storage),
         created_at=block_data.created_at or datetime.now(timezone.utc),
         description=block_data.description,
     )
@@ -156,6 +166,8 @@ async def update_block(
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    if "default_storage" in update_data:
+        block_obj.default_storage = _to_json_compatible(update_data.pop("default_storage"))
     for field, value in update_data.items():
         setattr(block_obj, field, value)
     block_obj.updated_at = datetime.now(timezone.utc)

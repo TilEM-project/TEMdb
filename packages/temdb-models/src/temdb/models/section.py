@@ -5,7 +5,7 @@ from pydantic import ConfigDict, Field, computed_field, field_validator, model_v
 
 from .base import TEMDBModel
 from .enums import SECTION_CONDITIONS, SectionQuality
-from .utils.uri import URI
+from .file_storage import FileObject
 
 
 class SectioningRunParameters(TEMDBModel):
@@ -59,19 +59,12 @@ class SectionMetrics(TEMDBModel):
     shape: SectionMetric | None = Field(None, description="")
 
 
-class OpticalImage(TEMDBModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    image_path: URI.Type = Field(description="The URI of where the optical image is stored")
-    metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
-
-
 class SectionBase(TEMDBModel):
     """Base section fields."""
 
     section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
-    optical_image: dict[str, OpticalImage] | None = Field(
+    optical_image: FileObject | None = Field(
         None,
         description="Optical image collected before imaging",
     )

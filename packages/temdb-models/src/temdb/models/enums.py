@@ -19,6 +19,11 @@ class MatchPosition(str, Enum):
     BOTTOM = "bottom"
 
 
+class StorageProtocol(str, Enum):
+    S3 = "s3"
+    GCS = "gcs"
+
+
 RUN_STATUSES = ("complete", "aborted", "failed")
 AcquisitionStatusFilter = Literal["complete", "aborted", "failed", "in_flight"]
 QC_STATES = ("pending", "qc_pass", "qc_fail", "needs_review")

@@ -103,7 +103,12 @@ from temdb.models.tile import (
     TileResponse,
     TileUpdate,
 )
-from temdb.models.utils.uri import URI
+from temdb.models.file_storage import (
+    FileObject,
+    FileObjectRequest,
+    FileObjectResponse,
+    StorageDefault,
+)
 
 __all__ = [
     # Enums
@@ -199,6 +204,9 @@ __all__ = [
     "AcquisitionFocusScoresResponse",
     "BadFocusTileInfo",
     "BadFocusTilesResponse",
-    # Utils
-    "URI",
+    # File Storage
+    "FileObject",
+    "FileObjectRequest",
+    "FileObjectResponse",
+    "StorageDefault",
 ]

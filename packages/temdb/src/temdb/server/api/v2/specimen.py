@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from pydantic import AnyHttpUrl
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,14 @@ from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 specimen_api = APIRouter(
     tags=["Specimens"],
 )
+
+
+def _to_json_compatible(value):
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    return jsonable_encoder(value)
 
 
 @specimen_api.get("/specimens", response_model=list[SpecimenResponse])
@@ -92,7 +101,7 @@ async def create_specimen(
     specimen = SpecimenSQLModel(
         specimen_id=specimen_data.specimen_id,
         description=specimen_data.description,
-        specimen_images=sorted(specimen_data.specimen_images or []),
+        specimen_images=_to_json_compatible(specimen_data.specimen_images or {}),
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=specimen_data.created_at or datetime.now(timezone.utc),
     )
@@ -139,8 +148,8 @@ async def update_specimen(
         specimen.description = update_data["description"]
         needs_save = True
     if "specimen_images" in update_data:
-        updated_images = sorted(update_data["specimen_images"] or [])
-        if (specimen.specimen_images or []) != updated_images:
+        updated_images = _to_json_compatible(update_data["specimen_images"] or {})
+        if (specimen.specimen_images or {}) != updated_images:
             specimen.specimen_images = updated_images
             needs_save = True
     if (

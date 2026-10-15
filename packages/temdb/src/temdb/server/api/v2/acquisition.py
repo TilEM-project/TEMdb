@@ -127,7 +127,7 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "max_value": tile_data.max_value,
         "mean_value": tile_data.mean_value,
         "std_value": tile_data.std_value,
-        "image_path": str(tile_data.image_path),
+        "image": tile_data.image.model_dump() if tile_data.image else None,
         "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
         "supertile_id": tile_data.supertile_id,
         "supertile_raster_position": (
@@ -1040,6 +1040,7 @@ async def delete_tiles_from_acquisition_bulk(
             TileSQLModel.tile_id == any_(bindparam("tile_keys", requested, type_=ARRAY(TileSQLModel.tile_id.type))),
             TileSQLModel.dataset_id == acq_obj.dataset_id,
             TileSQLModel.run_id == acq_obj.run_id,
+            TileSQLModel.image.is_(None),
         )
         .returning(TileSQLModel.tile_id)
     )
@@ -1063,6 +1064,7 @@ async def delete_tiles_from_acquisition_all(
         delete(TileSQLModel).where(
             TileSQLModel.dataset_id == acq_obj.dataset_id,
             TileSQLModel.run_id == acq_obj.run_id,
+            TileSQLModel.image.is_(None),
         )
     )
     await session.commit()
@@ -1086,6 +1088,7 @@ async def delete_tile_from_acquisition(
             TileSQLModel.tile_id == tile_key,
             TileSQLModel.dataset_id == acq_obj.dataset_id,
             TileSQLModel.run_id == acq_obj.run_id,
+            TileSQLModel.image.is_(None),
         )
     )
     tile_obj = tile.first()

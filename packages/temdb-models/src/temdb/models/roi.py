@@ -5,7 +5,6 @@ from typing import Any
 from pydantic import ConfigDict, Field, field_validator
 
 from .base import TEMDBModel
-from .utils.uri import URI
 
 
 class ROIPayload(TEMDBModel):
@@ -23,14 +22,11 @@ class ROIPayload(TEMDBModel):
         None,
         description="Bounding box of aperture measured in pixel coordinates",
     )
-    aperture_image: URI.Type | None = Field(None, description="URL of aperture image")
     optical_pixel_size: float | None = Field(None, description="Optical resolution in nm per pixel")
     scale_y: float | None = Field(None, description="Scaling factor for y-axis")
     barcode: int | str | None = Field(None, description="Barcode of ROI if present")
     rois: list[Any] | None = Field(None, description="List of ROIs")
     bucket: str | None = Field(None, description="Bucket of ROI")
-    roi_mask: URI.Type | None = Field(None, description="URL of ROI mask")
-    roi_mask_bucket: str | None = Field(None, description="Bucket of ROI mask")
     corners: dict[str, Any] | None = Field(None, description="Corners of ROI")
     corners_perpendicular: dict[str, Any] | None = Field(None, description="Perpendicular corners of ROI")
     rule: str | None = Field(None, description="Rule for ROI corner detection")

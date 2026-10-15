@@ -4,11 +4,13 @@ from typing import Any
 from pydantic import ConfigDict, Field
 
 from .base import TEMDBModel
+from .file_storage import StorageDefault
 
 
 class BlockBase(TEMDBModel):
     microCT_info: dict[str, Any] | None = Field(None, description="MicroCT information of block")
     description: str | None = Field(None, description="Description of block")
+    default_storage: StorageDefault | None = Field(None, description="Default storage for sections in this block")
 
 
 class BlockCreate(BlockBase):

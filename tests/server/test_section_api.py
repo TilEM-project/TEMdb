@@ -1,9 +1,36 @@
+import io
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from temdb.models import SectionQuality
+from temdb.server.sqlmodels import SectionSQLModel, SubstrateSQLModel
+
+
+async def _seed_substrate(test_db_manager, media_id: str, media_type: str) -> None:
+    async with test_db_manager.async_session_factory() as session:
+        session.add(
+            SubstrateSQLModel(
+                media_id=media_id,
+                media_type=media_type,
+                status="new",
+                metadata_json={},
+                apertures=[],
+            )
+        )
+        await session.commit()
+
+
+def _image_object(key: str) -> dict[str, str]:
+    return {
+        "protocol": "s3",
+        "server": "http://s3.example.com",
+        "bucket": "section-images",
+        "key": key,
+    }
 
 
 @pytest.mark.asyncio
@@ -47,29 +74,16 @@ async def test_list_sections_filtered(
 
 
 @pytest.mark.asyncio
-async def test_create_section(async_client: AsyncClient, test_cutting_session):
+async def test_create_section(async_client: AsyncClient, test_cutting_session, test_substrate):
     """Test creating a new section."""
-
-    substrate_id_hr = f"TEST_SUB_CREATE_{int(datetime.now(timezone.utc).timestamp())}"
-    substrate_data = {
-        "media_id": substrate_id_hr,
-        "media_type": "wafer",
-        "status": "new",
-        "metadata": {"name": "Test Wafer Create"},
-        "apertures": [{"uid": "A1", "index": 0, "status": "available"}],
-    }
-
-    response = await async_client.post("/api/v2/substrates", json=substrate_data)
-    assert response.status_code == 201
-    response_data = response.json()
-    assert response_data["media_id"] == substrate_id_hr
+    substrate_id_hr = test_substrate.media_id
 
     section_id_hr = f"{substrate_id_hr}_S99"
     section_data = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "section_number": 99,
         "media_id": substrate_id_hr,
-        "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
+        "optical_image": _image_object("sections/create/image.png"),
         "barcode": "BC123456789",
         "run_parameters": {"cutting_thickness_um": 45.5, "water_added": True},
     }
@@ -87,28 +101,14 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session):
 
 
 @pytest.mark.asyncio
-async def test_create_sections_batch(async_client: AsyncClient, test_cutting_session):
+async def test_create_sections_batch(async_client: AsyncClient, test_cutting_session, test_db_manager):
     """Test creating multiple sections in a batch request."""
     timestamp = int(datetime.now(timezone.utc).timestamp())
     media_base = f"TEST_SUB_BATCH_{timestamp}"
 
-    substrates_data = []
     for i in range(2):
         substrate_id = f"{media_base}_{i}"
-        substrates_data.append(
-            {
-                "media_id": substrate_id,
-                "media_type": test_cutting_session.media_type,
-                "status": "new",
-                "uid": f"SUBSTRATE_{i}",
-                "metadata": {"name": f"Test Substrate Batch {i}"},
-                "apertures": [{"uid": f"A{j}", "index": j, "status": "available"} for j in range(3)],
-            }
-        )
-
-    for substrate_data in substrates_data:
-        substrate_response = await async_client.post("/api/v2/substrates", json=substrate_data)
-        assert substrate_response.status_code == 201
+        await _seed_substrate(test_db_manager, substrate_id, test_cutting_session.media_type)
 
     sections_data = []
     for i in range(5):
@@ -119,7 +119,7 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
                 "cutting_session_id": test_cutting_session.cutting_session_id,
                 "section_number": section_number,
                 "media_id": f"{media_base}_{substrate_idx}",
-                "optical_image": {"inspection": {"image_path": f"http://example.com/image_{i}.png"}},
+                "optical_image": _image_object(f"sections/batch/{i}.png"),
                 "barcode": f"BATCH{timestamp}_{i}",
             }
         )
@@ -170,7 +170,7 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
             "cutting_session_id": "NON_EXISTENT_SESSION_ID",
             "section_number": 1,
             "media_id": test_substrate.media_id,
-            "optical_image": {"inspection": {"image_path": "http://foobar.com/image.png"}},
+            "optical_image": _image_object("sections/invalid-session/image.png"),
         }
     ]
 
@@ -188,7 +188,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": "NON_EXISTENT_MEDIA_ID",
-            "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
+            "optical_image": _image_object("sections/invalid-substrate/image.png"),
         }
     ]
 
@@ -199,34 +199,25 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, test_cutting_session):
+async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, test_cutting_session, test_db_manager):
     """Test creating sections with duplicate IDs in the same batch."""
     timestamp = int(datetime.now(timezone.utc).timestamp())
     media_id = f"TEST_SUB_DUP_{timestamp}"
 
-    substrate_data = {
-        "media_id": media_id,
-        "media_type": test_cutting_session.media_type,
-        "status": "new",
-        "metadata": {"name": "Test Substrate Duplicate"},
-        "apertures": [{"uid": "A1", "index": 0, "status": "available"}],
-    }
-
-    substrate_response = await async_client.post("/api/v2/substrates", json=substrate_data)
-    assert substrate_response.status_code == 201
+    await _seed_substrate(test_db_manager, media_id, test_cutting_session.media_type)
 
     sections_data = [
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
-            "optical_image": {"inspection": {"image_path": "http://image.server.com/image1.png"}},
+            "optical_image": _image_object("sections/duplicate/image1.png"),
         },
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "section_number": 1,
             "media_id": media_id,
-            "optical_image": {"inspection": {"image_path": "http://some.other.place.com/image2.png"}},
+            "optical_image": _image_object("sections/duplicate/image2.png"),
         },
     ]
 
@@ -261,7 +252,7 @@ async def test_update_section(async_client: AsyncClient, test_cutting_session, t
     update_data = {
         "section_metrics": {"quality": SectionQuality.BROKEN},
         "run_parameters": {"cut_cycle": 0.6},
-        "optical_image": {"test": {"image_path": "/allen/something/something/profit.jpg"}},
+        "optical_image": _image_object("sections/update/image.png"),
     }
     path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}"
     response = await async_client.patch(path, json=update_data)
@@ -291,6 +282,98 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
 
     get_response = await async_client.get(delete_path)
     assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_put_section_image_url_uploads_to_minio(
+    async_client: AsyncClient,
+    test_cutting_session,
+    test_section,
+    minio_s3,
+):
+    path = (
+        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}"
+        f"/sections/{test_section.section_id}/image"
+    )
+    location = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": f"/sections/{test_section.section_id}.png",
+        "expiration": 900,
+    }
+
+    response = await async_client.post(path, json=location)
+
+    assert response.status_code == 200, response.text
+    presigned = response.json()
+    assert presigned["protocol"] == "s3"
+    assert presigned["bucket"] == minio_s3["bucket"]
+    assert presigned["key"] == f"sections/{test_section.section_id}.png"
+    assert presigned["expiration"] == 900
+
+    contents = b"image bytes written through the presigned URL"
+    async with httpx.AsyncClient() as s3_client:
+        upload_response = await s3_client.put(presigned["url"], content=contents)
+    assert upload_response.status_code == 200
+
+    uploaded = minio_s3["client"].get_object(
+        minio_s3["bucket"],
+        presigned["key"],
+    )
+    try:
+        assert uploaded.read() == contents
+    finally:
+        uploaded.close()
+        uploaded.release_conn()
+
+
+@pytest.mark.asyncio
+async def test_get_section_image_url_downloads_from_minio(
+    async_client: AsyncClient,
+    test_db_manager,
+    test_cutting_session,
+    test_section,
+    minio_s3,
+):
+    key = f"sections/{test_section.section_id}.png"
+    contents = b"image bytes retrieved through the presigned URL"
+    minio_s3["client"].put_object(
+        minio_s3["bucket"],
+        key,
+        io.BytesIO(contents),
+        length=len(contents),
+        content_type="image/png",
+    )
+    image = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": key,
+    }
+    async with test_db_manager.async_session_factory() as session:
+        section = await session.scalar(
+            select(SectionSQLModel).where(SectionSQLModel.section_id == test_section.section_id)
+        )
+        section.optical_image = image
+        await session.commit()
+
+    path = (
+        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}"
+        f"/sections/{test_section.section_id}/image"
+    )
+    response = await async_client.get(path, params={"expiration": 600})
+
+    assert response.status_code == 200, response.text
+    presigned = response.json()
+    assert presigned["protocol"] == "s3"
+    assert presigned["bucket"] == minio_s3["bucket"]
+    assert presigned["expiration"] == 600
+
+    async with httpx.AsyncClient() as s3_client:
+        download_response = await s3_client.get(presigned["url"])
+    assert download_response.status_code == 200
+    assert download_response.content == contents
 
 
 # @pytest.mark.asyncio
