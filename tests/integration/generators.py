@@ -24,7 +24,7 @@ def generate_specimen(**kwargs) -> SpecimenSQLModel:
     defaults = {
         "specimen_id": f"SPEC_{fake.unique.word()}_{int(datetime.now(timezone.utc).timestamp())}",
         "description": fake.text(max_nb_chars=150),
-        "specimen_images": [fake.image_url() for _ in range(fake.random_int(min=0, max=2))],
+        "specimen_images": {},
         "created_at": datetime.now(timezone.utc),
         "functional_imaging_metadata": ({"source": fake.word()} if fake.boolean() else None),
     }

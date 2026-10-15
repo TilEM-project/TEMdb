@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+
+from temdb.server.sqlmodels import SubstrateSQLModel
 
 
 @pytest.mark.asyncio
@@ -110,16 +113,12 @@ async def test_update_substrate(async_client: AsyncClient, test_substrate):
 
 
 @pytest.mark.asyncio
-async def test_delete_substrate(async_client: AsyncClient):
+async def test_delete_substrate(async_client: AsyncClient, test_db_manager):
     """Test deleting a substrate successfully (when it has no dependencies)."""
-    media_id_hr = f"TEST_SUB_DELETE_{int(datetime.now(timezone.utc).timestamp())}"
-    substrate_data = {
-        "media_id": media_id_hr,
-        "media_type": "grid",
-        "status": "new",
-    }
-    create_response = await async_client.post("/api/v2/substrates", json=substrate_data)
-    assert create_response.status_code == 201
+    media_id_hr = f"TEST_SUB_DELETE_{uuid4()}"
+    async with test_db_manager.async_session_factory() as session:
+        session.add(SubstrateSQLModel(media_id=media_id_hr, media_type="grid", status="new"))
+        await session.commit()
 
     delete_response = await async_client.delete(f"/api/v2/substrates/{media_id_hr}")
     assert delete_response.status_code == 204, delete_response.text

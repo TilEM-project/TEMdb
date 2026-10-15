@@ -24,7 +24,12 @@ def _tile(raster_index: int) -> dict:
         "max_value": 255,
         "mean_value": 128,
         "std_value": 25,
-        "image_path": "/p.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "tiles",
+            "key": "p.tif",
+        },
     }
 
 

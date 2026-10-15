@@ -81,7 +81,7 @@ def _tile_payload(
         "max_value": tile.max_value,
         "mean_value": tile.mean_value,
         "std_value": tile.std_value,
-        "image_path": tile.image_path,
+        "image": tile.image,
         "matcher": tile.matcher,
         "supertile_id": tile.supertile_id,
         "supertile_raster_position": tile.supertile_raster_position,

@@ -1,18 +1,25 @@
 import json
+import uuid
 from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import null, update
 
 from temdb.server.config import config
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
+from temdb.server.sqlmodels.tile import TileSQLModel
 
 TEST_MAX_BATCH_SIZE = 10
 config.max_batch_size = TEST_MAX_BATCH_SIZE
 
 
-def _tile_payload(tile_id: str, raster_index: int) -> dict:
+def _tile_image(key: str) -> dict[str, str]:
+    return {"protocol": "s3", "server": "http://localhost:9000", "bucket": "tiles", "key": key}
+
+
+def _tile_payload(tile_id: str, raster_index: int, *, include_image: bool = True) -> dict:
     return {
         "tile_id": tile_id,
         "raster_index": raster_index,
@@ -23,8 +30,18 @@ def _tile_payload(tile_id: str, raster_index: int) -> dict:
         "max_value": 240,
         "mean_value": 100,
         "std_value": 20,
-        "image_path": f"/path/to/{tile_id}.tif",
+        "image": _tile_image(f"path/to/{tile_id}.tif") if include_image else None,
     }
+
+
+async def _set_tiles_image_to_sql_null(test_db_manager, tile_ids: list[str]) -> None:
+    async with test_db_manager.async_session_factory() as session:
+        await session.execute(
+            update(TileSQLModel)
+            .where(TileSQLModel.tile_id.in_([uuid.UUID(tile_id) for tile_id in tile_ids]))
+            .values(image=null())
+        )
+        await session.commit()
 
 
 @pytest.mark.asyncio
@@ -256,7 +273,7 @@ async def test_add_tile_to_acquisition(async_client: AsyncClient, test_acquisiti
         "max_value": 250,
         "mean_value": 120,
         "std_value": 30,
-        "image_path": f"/path/to/test/{tile_id_hr}.tif",
+        "image": _tile_image(f"path/to/test/{tile_id_hr}.tif"),
     }
     response = await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data)
     assert response.status_code == 201
@@ -282,7 +299,7 @@ async def test_add_tile_with_supertile_raster_position(async_client: AsyncClient
         "max_value": 255,
         "mean_value": 128,
         "std_value": 10,
-        "image_path": f"/path/to/test/{tile_id_hr}.tif",
+        "image": _tile_image(f"path/to/test/{tile_id_hr}.tif"),
         "supertile_id": "banana",
         "supertile_raster_position": {"row": 7, "col": 8},
     }
@@ -315,7 +332,7 @@ async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acq
                 "max_value": 240,
                 "mean_value": 100,
                 "std_value": 20,
-                "image_path": f"/path/to/bulk/{tile_id_hr}.tif",
+                "image": _tile_image(f"path/to/bulk/{tile_id_hr}.tif"),
             }
         )
 
@@ -387,7 +404,7 @@ async def test_get_tile_count(async_client: AsyncClient, test_acquisition, test_
 
 
 @pytest.mark.asyncio
-async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acquisition):
+async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acquisition, test_db_manager):
     """Test deleting a specific tile from an acquisition."""
     tile_id_hr = str(uuid7())
     tile_data = {
@@ -400,10 +417,11 @@ async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acqu
         "max_value": 0,
         "mean_value": 0,
         "std_value": 0,
-        "image_path": "del.tif",
+        "image": None,
     }
     add_resp = await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data)
     assert add_resp.status_code == 201
+    await _set_tiles_image_to_sql_null(test_db_manager, [tile_id_hr])
 
     delete_response = await async_client.delete(
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id_hr}"
@@ -496,15 +514,16 @@ async def test_update_tiles_from_acquisition_bulk_missing_tile_returns_404(async
 
 
 @pytest.mark.asyncio
-async def test_delete_tiles_from_acquisition_bulk(async_client: AsyncClient, test_acquisition):
+async def test_delete_tiles_from_acquisition_bulk(async_client: AsyncClient, test_acquisition, test_db_manager):
     tile_ids = [str(uuid7()), str(uuid7())]
     for i, tile_id in enumerate(tile_ids):
         add_resp = await async_client.post(
             f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
-            json=_tile_payload(tile_id, 20 + i),
+            json=_tile_payload(tile_id, 20 + i, include_image=False),
         )
         assert add_resp.status_code == 201
 
+    await _set_tiles_image_to_sql_null(test_db_manager, tile_ids)
     delete_resp = await async_client.request(
         "DELETE",
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk",
@@ -519,15 +538,18 @@ async def test_delete_tiles_from_acquisition_bulk(async_client: AsyncClient, tes
 
 
 @pytest.mark.asyncio
-async def test_delete_tiles_from_acquisition_all(async_client: AsyncClient, test_acquisition):
+async def test_delete_tiles_from_acquisition_all(async_client: AsyncClient, test_acquisition, test_db_manager):
+    tile_ids = []
     for i in range(3):
         tile_id = str(uuid7())
+        tile_ids.append(tile_id)
         add_resp = await async_client.post(
             f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles",
-            json=_tile_payload(tile_id, 30 + i),
+            json=_tile_payload(tile_id, 30 + i, include_image=False),
         )
         assert add_resp.status_code == 201
 
+    await _set_tiles_image_to_sql_null(test_db_manager, tile_ids)
     delete_resp = await async_client.delete(
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/all",
     )
@@ -676,7 +698,7 @@ async def test_add_tiles_bulk_with_gzip(async_client: AsyncClient, test_acquisit
                 "max_value": 240,
                 "mean_value": 100,
                 "std_value": 20,
-                "image_path": f"/path/to/gzip/{tile_id_hr}.tif",
+                "image": _tile_image(f"path/to/gzip/{tile_id_hr}.tif"),
             }
         )
 
@@ -753,7 +775,7 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
             "max_value": 255,
             "mean_value": 128,
             "std_value": 25,
-            "image_path": "/p/7.tif",
+            "image": _tile_image("p/7.tif"),
         },
     )
     assert add.status_code == 201  # would 409 if dataset_id were not persisted
@@ -793,11 +815,22 @@ async def second_acquisition(
         yield acquisition
 
 
-async def _seed_tiles(async_client: AsyncClient, acquisition_id: str, count: int) -> list[str]:
-    tiles = [_tile_payload(str(uuid7()), i) for i in range(count)]
+async def _seed_tiles(
+    async_client: AsyncClient,
+    acquisition_id: str,
+    count: int,
+    *,
+    image_is_sql_null: bool = False,
+    test_db_manager=None,
+) -> list[str]:
+    tiles = [_tile_payload(str(uuid7()), i, include_image=not image_is_sql_null) for i in range(count)]
     response = await async_client.post(f"/api/v2/acquisitions/{acquisition_id}/tiles/bulk", json=tiles)
     assert response.status_code in (200, 201), response.text
-    return [tile["tile_id"] for tile in tiles]
+    tile_ids = [tile["tile_id"] for tile in tiles]
+    if image_is_sql_null:
+        assert test_db_manager is not None
+        await _set_tiles_image_to_sql_null(test_db_manager, tile_ids)
+    return tile_ids
 
 
 async def _tile_count(async_client: AsyncClient, acquisition_id: str) -> int:
@@ -807,11 +840,15 @@ async def _tile_count(async_client: AsyncClient, acquisition_id: str) -> int:
 
 @pytest.mark.asyncio
 async def test_delete_all_tiles_is_scoped_to_one_acquisition(
-    async_client: AsyncClient, test_acquisition, second_acquisition
+    async_client: AsyncClient, test_acquisition, second_acquisition, test_db_manager
 ):
     assert test_acquisition.dataset_id == second_acquisition.dataset_id
-    await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
-    await _seed_tiles(async_client, second_acquisition.acquisition_id, 2)
+    await _seed_tiles(
+        async_client, test_acquisition.acquisition_id, 3, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
+    await _seed_tiles(
+        async_client, second_acquisition.acquisition_id, 2, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
 
     response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/all")
 
@@ -883,8 +920,12 @@ async def test_bulk_update_leaves_the_batch_untouched_when_one_tile_is_missing(
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_deletes_what_exists_and_lists_the_rest(async_client: AsyncClient, test_acquisition):
-    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+async def test_bulk_delete_deletes_what_exists_and_lists_the_rest(
+    async_client: AsyncClient, test_acquisition, test_db_manager
+):
+    tile_ids = await _seed_tiles(
+        async_client, test_acquisition.acquisition_id, 3, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
     ghost = str(uuid7())
 
     response = await async_client.request(
@@ -899,8 +940,12 @@ async def test_bulk_delete_deletes_what_exists_and_lists_the_rest(async_client: 
 
 
 @pytest.mark.asyncio
-async def test_retried_bulk_delete_reports_nothing_deleted(async_client: AsyncClient, test_acquisition):
-    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 2)
+async def test_retried_bulk_delete_reports_nothing_deleted(
+    async_client: AsyncClient, test_acquisition, test_db_manager
+):
+    tile_ids = await _seed_tiles(
+        async_client, test_acquisition.acquisition_id, 2, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
     url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk"
     await async_client.request("DELETE", url, json=tile_ids)
 
@@ -911,8 +956,10 @@ async def test_retried_bulk_delete_reports_nothing_deleted(async_client: AsyncCl
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_counts_an_id_named_twice_once(async_client: AsyncClient, test_acquisition):
-    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
+async def test_bulk_delete_counts_an_id_named_twice_once(async_client: AsyncClient, test_acquisition, test_db_manager):
+    tile_ids = await _seed_tiles(
+        async_client, test_acquisition.acquisition_id, 1, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
 
     response = await async_client.request(
         "DELETE",
@@ -994,9 +1041,11 @@ async def test_malformed_tile_id_in_a_bulk_body_is_a_422(async_client: AsyncClie
 @pytest.mark.asyncio
 @pytest.mark.parametrize("run_status", ["aborted", "failed"])
 async def test_tile_deletes_are_allowed_after_an_unsuccessful_run(
-    async_client: AsyncClient, test_acquisition, run_status: str
+    async_client: AsyncClient, test_acquisition, test_db_manager, run_status: str
 ):
-    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+    tile_ids = await _seed_tiles(
+        async_client, test_acquisition.acquisition_id, 3, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
     await _finish(async_client, test_acquisition.acquisition_id, run_status)
     url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}"
 
@@ -1008,8 +1057,12 @@ async def test_tile_deletes_are_allowed_after_an_unsuccessful_run(
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_removes_every_tile_when_all_ids_match(async_client: AsyncClient, test_acquisition):
-    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+async def test_bulk_delete_removes_every_tile_when_all_ids_match(
+    async_client: AsyncClient, test_acquisition, test_db_manager
+):
+    tile_ids = await _seed_tiles(
+        async_client, test_acquisition.acquisition_id, 3, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
 
     response = await async_client.request(
         "DELETE",
@@ -1132,7 +1185,7 @@ async def test_bulk_update_stamps_updated_at_on_every_tile(async_client: AsyncCl
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["image_path", "stage_position", "raster_position"])
+@pytest.mark.parametrize("field", ["stage_position", "raster_position"])
 async def test_update_tile_rejects_null_for_a_not_null_column(async_client: AsyncClient, test_acquisition, field: str):
     [tile_id] = await _seed_tiles(async_client, test_acquisition.acquisition_id, 1)
     url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}"
@@ -1151,7 +1204,7 @@ async def test_bulk_update_rejects_null_for_a_not_null_column(async_client: Asyn
 
     response = await async_client.patch(
         f"{base}/bulk",
-        json={tile_ids[0]: {"focus_score": 0.5}, tile_ids[1]: {"image_path": None}},
+        json={tile_ids[0]: {"focus_score": 0.5}, tile_ids[1]: {"stage_position": None}},
     )
 
     assert response.status_code == 422, response.text
@@ -1254,7 +1307,7 @@ async def test_bulk_upload_large_tile_batch(async_client: AsyncClient, test_acqu
     last = (await async_client.get(f"{base}/{tiles[4095]['tile_id']}")).json()
     assert last["stage_position"] == {"x": 4095.0, "y": 4096.0}
     assert last["raster_position"] == {"row": 0, "col": 4095}
-    assert last["image_path"] == tiles[4095]["image_path"]
+    assert last["image"] == tiles[4095]["image"]
 
 
 @pytest.mark.asyncio
@@ -1290,11 +1343,17 @@ async def test_bulk_upload_rejects_a_tile_id_repeated_in_one_request(async_clien
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_counts_every_row_it_deletes(async_client: AsyncClient, test_acquisition):
+async def test_bulk_delete_counts_every_row_it_deletes(async_client: AsyncClient, test_acquisition, test_db_manager):
     shared = str(uuid7())
     base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
     for raster_index in (0, 1):
-        assert (await async_client.post(base, json=_tile_payload(shared, raster_index))).status_code == 201
+        assert (
+            await async_client.post(
+                base,
+                json=_tile_payload(shared, raster_index, include_image=False),
+            )
+        ).status_code == 201
+    await _set_tiles_image_to_sql_null(test_db_manager, [shared])
 
     response = await async_client.request("DELETE", f"{base}/bulk", json=[shared])
 

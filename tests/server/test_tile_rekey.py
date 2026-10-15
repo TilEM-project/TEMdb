@@ -18,7 +18,12 @@ def _tile_payload(raster_index: int, tile_id: str | None = None) -> dict:
         "max_value": 255,
         "mean_value": 128,
         "std_value": 10,
-        "image_path": f"/path/to/tile_{raster_index}.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "tiles",
+            "key": f"path/to/tile_{raster_index}.tif",
+        },
     }
     if tile_id is not None:
         payload["tile_id"] = tile_id
@@ -47,7 +52,12 @@ async def test_tiles_keyed_by_run_id_wire_unchanged(async_client: AsyncClient, t
         "max_value": 255,
         "mean_value": 128,
         "std_value": 10,
-        "image_path": f"/path/to/{tile_id}.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "tiles",
+            "key": f"path/to/{tile_id}.tif",
+        },
     }
     r = await async_client.post(f"/api/v2/acquisitions/{acq_id}/tiles", json=payload)
     assert r.status_code == 201

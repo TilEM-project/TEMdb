@@ -201,11 +201,11 @@ async def test_get_roi_not_found(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_update_roi(async_client: AsyncClient, test_roi):
     """Test updating an ROI's attributes."""
-    update_data = {"payload": {"aperture_image": "http://example.com/updated_roi.png"}}
+    update_data = {"payload": {"bucket": "updated-roi-bucket"}}
     response = await async_client.patch(f"/api/v2/rois/{test_roi.roi_id}", json=update_data)
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["roi_payload"]["aperture_image"] == "http://example.com/updated_roi.png"
+    assert response_data["roi_payload"]["bucket"] == "updated-roi-bucket"
     assert response_data["roi_id"] == test_roi.roi_id
     assert "updated_at" in response_data
     assert response_data["updated_at"] is not None

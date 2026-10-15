@@ -81,34 +81,26 @@ async def test_get_specimen_blocks(async_client: AsyncClient, test_specimen, tes
 
 
 @pytest.mark.asyncio
-async def test_add_specimen_image(async_client: AsyncClient, test_specimen):
-    """Test adding an image URL to a specimen."""
-    image_url = "https://example.com/test-image-for-add.jpg"
-    response = await async_client.post(
-        f"/api/v2/specimens/{test_specimen.specimen_id}/images",
-        json={"image_url": image_url},
+async def test_update_specimen_images(async_client: AsyncClient, test_specimen):
+    """Test storing and clearing specimen images as named file objects."""
+    images = {
+        "overview": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "specimens",
+            "key": "overview.jpg",
+        }
+    }
+    response = await async_client.patch(
+        f"/api/v2/specimens/{test_specimen.specimen_id}",
+        json={"specimen_images": images},
     )
-    assert response.status_code == 200
-    response_data = response.json()
-    assert "specimen_images" in response_data
-    assert image_url in response_data["specimen_images"]
+    assert response.status_code == 200, response.text
+    assert response.json()["specimen_images"] == images
 
-
-@pytest.mark.asyncio
-async def test_remove_specimen_image(async_client: AsyncClient, test_specimen):
-    """Test removing an image URL from a specimen."""
-    image_url_to_add_remove = "https://example.com/test-image-for-remove.jpg"
-
-    add_response = await async_client.post(
-        f"/api/v2/specimens/{test_specimen.specimen_id}/images",
-        json={"image_url": image_url_to_add_remove},
+    clear_response = await async_client.patch(
+        f"/api/v2/specimens/{test_specimen.specimen_id}",
+        json={"specimen_images": {}},
     )
-    assert add_response.status_code == 200
-    assert image_url_to_add_remove in add_response.json()["specimen_images"]
-    remove_response = await async_client.delete(
-        f"/api/v2/specimens/{test_specimen.specimen_id}/images?image_url={image_url_to_add_remove}"
-    )
-    assert remove_response.status_code == 200
-    response_data = remove_response.json()
-    assert "specimen_images" in response_data
-    assert image_url_to_add_remove not in response_data["specimen_images"]
+    assert clear_response.status_code == 200, clear_response.text
+    assert clear_response.json()["specimen_images"] == {}

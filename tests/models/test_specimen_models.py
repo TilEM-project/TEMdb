@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from temdb.models import SpecimenBase, SpecimenCreate, SpecimenResponse, SpecimenUpdate
+from temdb.models import FileObject, SpecimenBase, SpecimenCreate, SpecimenResponse, SpecimenUpdate
 
 
 class TestSpecimenBase:
@@ -16,11 +16,26 @@ class TestSpecimenBase:
     def test_with_all_fields(self):
         specimen = SpecimenBase(
             description="Test specimen",
-            specimen_images={"image1.png", "image2.png"},
+            specimen_images={
+                "image1": {
+                    "protocol": "s3",
+                    "server": "http://localhost:9000",
+                    "bucket": "specimens",
+                    "key": "image1.png",
+                },
+                "image2": {
+                    "protocol": "s3",
+                    "server": "http://localhost:9000",
+                    "bucket": "specimens",
+                    "key": "image2.png",
+                },
+            },
             functional_imaging_metadata={"key": "value"},
         )
         assert specimen.description == "Test specimen"
-        assert "image1.png" in specimen.specimen_images
+        assert specimen.specimen_images["image1"] == FileObject(
+            protocol="s3", server="http://localhost:9000", bucket="specimens", key="image1.png"
+        )
         assert specimen.functional_imaging_metadata == {"key": "value"}
 
     def test_extra_fields_forbidden(self):

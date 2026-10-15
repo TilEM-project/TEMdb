@@ -69,7 +69,6 @@ async def create_substrate(
             if getattr(substrate_data, "refpoint_world", None) is not None
             else None
         ),
-        source_path=str(substrate_data.source_path) if substrate_data.source_path is not None else None,
         metadata_json=(
             substrate_data.metadata.model_dump(mode="json")
             if getattr(substrate_data, "metadata", None) is not None
