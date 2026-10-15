@@ -192,26 +192,17 @@ class TestTileStatsOptional:
         ] == [None] * 5
 
     def test_tile_focus_score_accepts_null(self):
-        assert (
-            TileFocusScore(
-                tile_id="TILE_001", raster_index=0, focus_score=None
-            ).focus_score
-            is None
-        )
+        assert TileFocusScore(tile_id="TILE_001", raster_index=0, focus_score=None).focus_score is None
 
 
 class TestTileUpdate:
-    @pytest.mark.parametrize(
-        "field", ["stage_position", "raster_position", "image_path"]
-    )
+    @pytest.mark.parametrize("field", ["stage_position", "raster_position", "image_path"])
     def test_null_rejected_for_a_not_null_column(self, field):
         with pytest.raises(ValidationError):
             TileUpdate(**{field: None})
 
     def test_omitted_fields_stay_unset(self):
-        assert TileUpdate(focus_score=0.5).model_dump(exclude_unset=True) == {
-            "focus_score": 0.5
-        }
+        assert TileUpdate(focus_score=0.5).model_dump(exclude_unset=True) == {"focus_score": 0.5}
 
     @pytest.mark.parametrize(
         "field",
@@ -227,13 +218,10 @@ class TestTileUpdate:
         ],
     )
     def test_null_accepted_for_a_nullable_field(self, field):
-        assert TileUpdate(**{field: None}).model_dump(exclude_unset=True) == {
-            field: None
-        }
+        assert TileUpdate(**{field: None}).model_dump(exclude_unset=True) == {field: None}
 
 
 class TestTileCreatePositionValidation:
-
     @staticmethod
     def _create(**overrides):
         payload = {

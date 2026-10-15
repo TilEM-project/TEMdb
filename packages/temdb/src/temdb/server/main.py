@@ -14,6 +14,7 @@ from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
 from temdb.server.api.v2.dataset import dataset_api
+from temdb.server.api.v2.layout import substrate_layout_api
 from temdb.server.api.v2.lens_correction import lens_correction_api
 from temdb.server.api.v2.microscope import microscope_api
 from temdb.server.api.v2.quality_control import qc_api
@@ -157,6 +158,7 @@ def create_app():
     app.include_router(cutting_session_api, prefix=v2_prefix)
     app.include_router(section_api, prefix=v2_prefix)
     app.include_router(substrate_api, prefix=v2_prefix)
+    app.include_router(substrate_layout_api, prefix=v2_prefix)
     app.include_router(roi_api, prefix=v2_prefix)
     app.include_router(acquisition_task_api, prefix=v2_prefix)
     app.include_router(acquisition_api, prefix=v2_prefix)

@@ -31,6 +31,8 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
             "condition IN ('ok', 'damaged', 'destroyed', 'contaminated', 'lost')",
             name="condition_vocab",
         ),
+        CheckConstraint("aperture_index >= 0", name="aperture_index_nonnegative"),
+        Index("ix_sections_media_aperture", "media_id", "aperture_index"),
     )
 
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
@@ -46,8 +48,8 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     specimen_id: Mapped[str] = mapped_column(String)
     media_id: Mapped[str] = mapped_column(ForeignKey("substrates.media_id"), index=True)
     optical_image: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    aperture_uid: Mapped[str | None] = mapped_column(String, nullable=True)
     aperture_index: Mapped[int | None] = mapped_column(nullable=True)
+    position: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     barcode: Mapped[str | None] = mapped_column(String, nullable=True)
     condition: Mapped[str] = mapped_column(String, server_default=text("'ok'"))
     condition_reason: Mapped[str | None] = mapped_column(String, nullable=True)

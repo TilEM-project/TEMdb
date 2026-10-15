@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
+from temdb.models import SubstrateResponse
 from temdb.server.database import DatabaseManager
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
@@ -15,6 +16,7 @@ from temdb.server.sqlmodels import (
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
+    SubstrateLayoutSQLModel,
     SubstrateSQLModel,
     TileSQLModel,
 )
@@ -75,10 +77,18 @@ class TestDataIntegration:
 
     async def create_substrate(self) -> SubstrateSQLModel:
         async with self.db_manager.async_session_factory() as session:
+            layout = SubstrateLayoutSQLModel(
+                layout_id=f"LAYOUT_{int(datetime.now(timezone.utc).timestamp())}",
+                name="integration layout",
+                media_type="tape",
+                apertures=[{"shape_type": "circle", "shape_params": {"diameter": 3.0}, "centroid": [0.0, 0.0]}],
+            )
+            session.add(layout)
+            await session.flush()
             substrate = SubstrateSQLModel(
                 media_id=f"SUB_{int(datetime.now(timezone.utc).timestamp())}",
-                media_type="tape",
-                metadata_json={},
+                substrate_layout_id=layout.layout_id,
+                aperture_status=["available"],
                 created_at=datetime.now(timezone.utc),
             )
             session.add(substrate)
@@ -101,6 +111,7 @@ class TestDataIntegration:
                 block_id=cutting_session.block_id,
                 specimen_id=cutting_session.specimen_id,
                 media_id=substrate.media_id,
+                aperture_index=0,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(section)
@@ -253,7 +264,8 @@ class TestDataIntegration:
     async def test_substrate_creation(self):
         substrate = await self.create_substrate()
         assert substrate.id is not None
-        assert substrate.media_type == "tape"
+        assert substrate.substrate_layout_id is not None
+        assert SubstrateResponse.model_validate(substrate).aperture_status == ["available"]
 
     @pytest.mark.asyncio
     async def test_section_creation(self):

@@ -66,6 +66,11 @@ class OpticalImage(TEMDBModel):
     metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
 
 
+class SectionPosition(TEMDBModel):
+    x: float = Field(..., description="X position in mm, in layout coordinates")
+    y: float = Field(..., description="Y position in mm, in layout coordinates")
+
+
 class SectionBase(TEMDBRecord):
     """Base section fields."""
 
@@ -75,15 +80,11 @@ class SectionBase(TEMDBRecord):
         None,
         description="Optical image collected before imaging",
     )
-    aperture_uid: str | None = Field(
-        None,
-        description="UID of the specific aperture holding this section",
-    )
-    aperture_index: int | None = Field(
-        None,
-        description="Index of the specific aperture holding this section",
-    )
     barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
+    aperture_index: int | None = Field(
+        None, ge=0, description="Index of the layout aperture holding this section; empty for a section on a blank"
+    )
+    position: SectionPosition | None = Field(None, description="Where the section sits on the substrate, if known")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"

@@ -17,6 +17,7 @@ from .resources.acquisition import AcquisitionResource
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
 from .resources.dataset import DatasetResource
+from .resources.layout import SubstrateLayoutResource
 from .resources.lens_correction import LensCorrectionResource
 from .resources.microscope import MicroscopeResource
 from .resources.roi import ROIResource
@@ -69,6 +70,7 @@ class TEMdbClient:
         self._section = SectionResource(self._async_request, self.api_url)
         self._microscope = MicroscopeResource(self._async_request, self.api_url)
         self._lens_correction = LensCorrectionResource(self._async_request, self.api_url)
+        self._substrate_layout = SubstrateLayoutResource(self._async_request, self.api_url)
 
     @property
     def specimen(self) -> SpecimenResource:
@@ -113,6 +115,10 @@ class TEMdbClient:
     @property
     def lens_correction(self) -> LensCorrectionResource:
         return self._lens_correction
+
+    @property
+    def substrate_layout(self) -> SubstrateLayoutResource:
+        return self._substrate_layout
 
     @retry(
         stop=stop_after_attempt(3),

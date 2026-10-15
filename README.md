@@ -189,7 +189,7 @@ Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable onc
 
 ### Extra fields
 
-Every stored record (specimen, block, cutting session, section, substrate, ROI, task, acquisition, tile, dataset, microscope, lens correction) has an `extra` object for fields outside the schema. Unknown top-level fields are still rejected, so a typo fails instead of landing in `extra`.
+Every stored record (specimen, block, cutting session, section, substrate, substrate layout, ROI, task, acquisition, tile, dataset, microscope, lens correction) has an `extra` object for fields outside the schema. Unknown top-level fields are still rejected, so a typo fails instead of landing in `extra`.
 
 ```python
 await client.block.create(block_id="B1", specimen_id="S1", extra={"foo": "bar", "batch": 7})
