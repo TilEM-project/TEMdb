@@ -3,6 +3,8 @@ from datetime import timedelta
 import pytest
 from httpx import AsyncClient
 
+from temdb.server.sqlmodels import CuttingSessionSQLModel
+
 
 @pytest.mark.asyncio
 async def test_list_blocks(async_client: AsyncClient):
@@ -142,10 +144,10 @@ async def test_delete_block_with_sessions(async_client: AsyncClient, test_specim
     response = await async_client.delete(
         f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{test_block.block_id}"
     )
-    assert response.status_code == 400
+    assert response.status_code == 409
     response_data = response.json()
-    assert "detail" in response_data
-    assert "associated cutting sessions" in response_data["detail"].lower()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == CuttingSessionSQLModel.__tablename__
 
 
 @pytest.mark.asyncio

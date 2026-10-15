@@ -90,7 +90,7 @@ async def create_cutting_session(
     )
     if existing.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Cutting Session with ID '{session_data.cutting_session_id}' already exists",
         )
     block_obj = (
@@ -195,14 +195,6 @@ async def delete_cutting_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{cutting_session_id}' not found",
-        )
-    sections = await session.scalars(
-        select(SectionSQLModel).where(SectionSQLModel.cutting_session_id == cutting_session_id)
-    )
-    if sections.first() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete session '{cutting_session_id}' as it has associated sections.",
         )
     await session.delete(cutting_session_obj)
     await session.commit()

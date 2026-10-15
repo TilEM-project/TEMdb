@@ -4,7 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from temdb.models import SectionQuality
-from temdb.server.sqlmodels import SectionSQLModel
+from temdb.server.sqlmodels import ROISQLModel, SectionSQLModel
 
 
 @pytest.mark.asyncio
@@ -291,16 +291,15 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
     assert get_response.status_code == 404
 
 
-# @pytest.mark.asyncio
-# async def test_delete_section_with_rois(async_client: AsyncClient, test_cutting_session, test_section, test_roi):
-#     """Test that deleting a section fails if it has associated ROIs."""
-#     # test_roi fixture should be linked to test_section via conftest update
-#     path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}"
-#     response = await async_client.delete(path)
-#     assert response.status_code == 400 # Expect Bad Request
-#     response_data = response.json()
-#     assert "detail" in response_data
-#     assert "associated ROIs" in response_data["detail"].lower() # Check message
+@pytest.mark.asyncio
+async def test_delete_section_with_rois(async_client: AsyncClient, test_section, test_roi):
+    """Test that deleting a section fails if it has associated ROIs."""
+    path = f"/api/v2/sections/sessions/{test_section.cutting_session_id}/sections/{test_section.section_id}"
+    response = await async_client.delete(path)
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == ROISQLModel.__tablename__
 
 
 @pytest.mark.asyncio

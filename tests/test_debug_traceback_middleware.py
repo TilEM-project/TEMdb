@@ -52,7 +52,7 @@ async def test_debug_false_hides_traceback(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_debug_true_does_not_wrap_http_exception(monkeypatch):
+async def test_debug_true_still_answers_an_http_exception_with_the_error_body(monkeypatch):
     monkeypatch.setenv("DEBUG", "true")
     app = create_app()
 
@@ -69,5 +69,5 @@ async def test_debug_true_does_not_wrap_http_exception(monkeypatch):
     assert response.status_code == 404
     payload = response.json()
     assert payload["detail"] == "missing"
-    assert payload.get("error_code") is None
+    assert payload["error_code"] == "NOT_FOUND"
     assert payload.get("context") is None

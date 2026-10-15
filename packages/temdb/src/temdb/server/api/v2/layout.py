@@ -60,7 +60,7 @@ async def create_layout(
     )
     if existing_layout.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Substrate layout with layout_id '{layout_data.layout_id}' already exists.",
         )
     new_layout = SubstrateLayoutSQLModel(
@@ -149,14 +149,6 @@ async def delete_layout(layout_id: str, session: AsyncSession = Depends(get_asyn
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate layout with layout_id '{layout_id}' not found",
-        )
-    substrate_count = await session.scalars(
-        select(SubstrateSQLModel).where(SubstrateSQLModel.substrate_layout_id == layout_id)
-    )
-    if len(substrate_count.all()) > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete substrate layout '{layout_id}' as it has associated substrates.",
         )
     await session.delete(layout_obj)
     await session.commit()

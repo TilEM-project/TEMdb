@@ -95,7 +95,7 @@ async def test_dataset_extra_fields_round_trip(async_client, test_specimen):
 async def test_create_duplicate_name_rejected(async_client):
     await async_client.post("/api/v2/datasets", json={"name": "dup", "size_class": "small"})
     resp = await async_client.post("/api/v2/datasets", json={"name": "dup", "size_class": "small"})
-    assert resp.status_code == 400
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio

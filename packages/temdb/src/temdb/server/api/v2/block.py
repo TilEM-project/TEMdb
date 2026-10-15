@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSessionResponse
@@ -83,7 +83,7 @@ async def create_block(
     )
     if existing_block.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=(f"Block with ID '{block_data.block_id}' already exists for specimen '{block_data.specimen_id}'"),
         )
     new_block = BlockSQLModel(
@@ -173,21 +173,6 @@ async def delete_block(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
-        )
-    session_count = (
-        await session.scalars(
-            select(func.count())
-            .select_from(CuttingSessionSQLModel)
-            .where(
-                CuttingSessionSQLModel.block_id == block_id,
-                CuttingSessionSQLModel.specimen_id == specimen_id,
-            )
-        )
-    ).one()
-    if session_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(f"Cannot delete block '{block_id}' as it has {session_count} associated cutting sessions."),
         )
     await session.delete(block_obj)
     await session.commit()

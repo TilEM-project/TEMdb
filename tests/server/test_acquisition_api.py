@@ -6,6 +6,7 @@ from httpx import AsyncClient
 
 from temdb.server.config import config
 from temdb.server.ids import uuid7
+from temdb.server.sqlmodels import TileSQLModel
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
 
 TEST_MAX_BATCH_SIZE = 10
@@ -367,13 +368,14 @@ async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acqu
     assert get_response.status_code == 404
 
 
-# @pytest.mark.asyncio
-# async def test_delete_acquisition_with_tiles(async_client: AsyncClient, test_acquisition, test_tile):
-#     """Test deleting an acquisition fails if it has associated Tiles."""
-#     # test_tile fixture links to test_acquisition
-#     response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}")
-#     assert response.status_code == 400
-#     assert "tiles exist" in response.json()["detail"].lower()
+@pytest.mark.asyncio
+async def test_delete_acquisition_with_tiles(async_client: AsyncClient, test_acquisition, test_tile):
+    """Test that deleting an acquisition fails if it has tiles."""
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"].startswith(TileSQLModel.__tablename__)
 
 
 @pytest.mark.asyncio

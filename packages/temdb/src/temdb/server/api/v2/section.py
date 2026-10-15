@@ -4,14 +4,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import ApertureStatus, APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import (
     CuttingSessionSQLModel,
-    ROISQLModel,
     SectionSQLModel,
     SubstrateSQLModel,
 )
@@ -250,7 +248,7 @@ async def create_section(
     existing_ref = validation_row[2]
     if existing_ref is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
         )
     if validation_row[1] is not None:
@@ -379,11 +377,7 @@ async def create_sections_batch(
         await mark_apertures_used(
             session, media_id, [item.aperture_index for item in sections_to_insert if item.media_id == media_id]
         )
-    try:
-        await session.commit()
-    except IntegrityError as error:
-        await session.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"duplicate sections: {error.orig}") from error
+    await session.commit()
     for item in sections_to_insert:
         await session.refresh(item)
     return sections_to_insert
@@ -453,28 +447,18 @@ async def delete_section(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a specific section."""
-    row = (
-        await session.execute(
-            select(SectionSQLModel, func.count(ROISQLModel.id))
-            .select_from(SectionSQLModel)
-            .outerjoin(ROISQLModel, ROISQLModel.section_id == SectionSQLModel.section_id)
-            .where(
+    section_obj = (
+        await session.scalars(
+            select(SectionSQLModel).where(
                 SectionSQLModel.section_id == section_id,
                 SectionSQLModel.cutting_session_id == cutting_session_id,
             )
-            .group_by(SectionSQLModel.id)
         )
-    ).first()
-    if row is None:
+    ).one_or_none()
+    if section_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
-        )
-    section_obj, roi_count = row
-    if roi_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete section '{section_id}' as it has {roi_count} associated ROIs.",
         )
     await session.delete(section_obj)
     await session.commit()
