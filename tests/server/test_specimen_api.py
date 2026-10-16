@@ -122,6 +122,19 @@ async def test_text_postgres_cannot_store_is_a_422(async_client: AsyncClient, te
 
 
 @pytest.mark.asyncio
+async def test_too_deep_extra_is_not_stored(async_client: AsyncClient):
+    extra = {"a": 1}
+    for _ in range(299):
+        extra = {"a": extra}
+
+    created = await async_client.post("/api/v2/specimens", json={"specimen_id": "TEST_DEEP_SPEC", "extra": extra})
+
+    assert created.status_code == 422, created.text
+    assert (await async_client.get("/api/v2/specimens/TEST_DEEP_SPEC")).status_code == 404
+    assert (await async_client.get("/api/v2/specimens")).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_delete_specimen_with_blocks(async_client: AsyncClient, test_specimen, test_block):
     """Test that deleting a specimen fails if it has associated blocks."""
     response = await async_client.delete(f"/api/v2/specimens/{test_specimen.specimen_id}")

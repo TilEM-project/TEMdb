@@ -1,7 +1,7 @@
 from functools import cache
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TEMDBModel(BaseModel):
@@ -18,6 +18,19 @@ class TEMDBRecord(TEMDBModel):
     extra: dict[str, Any] | None = Field(
         None, description="Free-form fields outside the schema; an update merges keys and null removes one"
     )
+
+    @field_validator("extra")
+    @classmethod
+    def extra_is_at_most_32_levels_deep(cls, extra):
+        """Reject data in the 'extra' field being deeper than 32 levels."""
+        levels = [(extra, 1)] if extra else []
+        while levels:
+            value, depth = levels.pop()
+            if depth > 32:
+                raise ValueError("extra is nested more than 32 levels deep")
+            children = value.values() if isinstance(value, dict) else value
+            levels.extend((child, depth + 1) for child in children if isinstance(child, dict | list))
+        return extra
 
     @model_validator(mode="after")
     def extra_keys_are_not_fields(self):
