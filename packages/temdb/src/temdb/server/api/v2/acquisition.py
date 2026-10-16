@@ -1054,10 +1054,11 @@ async def delete_tiles_from_acquisition_bulk(
     )
     deleted = result.scalars().all()
     await session.commit()
+    deleted_ids = set(deleted)
     return TileBulkDeleteResult(
         requested=len(requested),
         deleted=len(deleted),
-        not_found=[str(tile_id) for tile_id in requested if tile_id not in set(deleted)],
+        not_found=[str(tile_id) for tile_id in requested if tile_id not in deleted_ids],
     )
 
 
