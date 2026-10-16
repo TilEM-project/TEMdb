@@ -1,13 +1,19 @@
 import logging
 from http import HTTPStatus
 
-from asyncpg.exceptions import ForeignKeyViolationError, UniqueViolationError
+from asyncpg.exceptions import (
+    CharacterNotInRepertoireError,
+    ForeignKeyViolationError,
+    InvalidTextRepresentationError,
+    UniqueViolationError,
+    UntranslatableCharacterError,
+)
 from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from temdb.models import APIErrorResponse
@@ -123,6 +129,22 @@ async def integrity_exception_handler(request: Request, exc: IntegrityError):
     return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error_content.model_dump(exclude_none=True))
 
 
+async def database_error_handler(request: Request, exc: DBAPIError):
+    """Return 422 when a string contains a NUL character or a lone UTF-16 surrogate, which Postgres rejects.
+
+    Every other database error is passed to the generic 500 handler.
+    """
+    postgres_error = exc.driver_exception
+    unstorable = CharacterNotInRepertoireError | UntranslatableCharacterError | InvalidTextRepresentationError
+    if not (isinstance(postgres_error, unstorable) or isinstance(postgres_error.__cause__, UnicodeEncodeError)):
+        return await generic_exception_handler(request, exc)
+    error_content = APIErrorResponse(detail=f"Text cannot be stored: {postgres_error}", error_code="VALIDATION_ERROR")
+    logger.warning(f"Unstorable text on {request.url}: {postgres_error}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content=error_content.model_dump(exclude_none=True)
+    )
+
+
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handles FastAPI RequestValidationError (returns 422 Unprocessable Entity)."""
     error_content = APIErrorResponse(
@@ -145,5 +167,6 @@ def register_exception_handlers(app):
 
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(IntegrityError, integrity_exception_handler)
+    app.add_exception_handler(DBAPIError, database_error_handler)
     app.add_exception_handler(Exception, generic_exception_handler)
     logger.info("Registered custom exception handlers.")

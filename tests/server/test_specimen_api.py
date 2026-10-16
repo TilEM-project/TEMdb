@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from httpx import AsyncClient
 
@@ -93,6 +95,30 @@ async def test_specimen_extra_fields_round_trip(async_client: AsyncClient):
     listed = next(spec for spec in list_response.json() if spec["specimen_id"] == specimen_id_hr)
     assert listed["extra"]["unknown_create_key"] == {"source": "create"}
     assert listed["extra"]["unknown_patch_key"] == ["from", "patch"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"extra": {"note": "a\x00b"}},
+        {"extra": {"note": "\ud800"}},
+        {"extra": {"a\x00b": 1}},
+        {"description": "a\x00b"},
+        {"description": "\ud800"},
+    ],
+)
+@pytest.mark.asyncio
+async def test_text_postgres_cannot_store_is_a_422(async_client: AsyncClient, test_specimen, fields):
+    headers = {"content-type": "application/json"}
+    created = await async_client.post(
+        "/api/v2/specimens", content=json.dumps({"specimen_id": "TEST_TEXT_SPEC", **fields}), headers=headers
+    )
+    updated = await async_client.patch(
+        f"/api/v2/specimens/{test_specimen.specimen_id}", content=json.dumps(fields), headers=headers
+    )
+
+    assert (created.status_code, updated.status_code) == (422, 422), (created.text, updated.text)
+    assert created.json()["error_code"] == updated.json()["error_code"] == "VALIDATION_ERROR"
 
 
 @pytest.mark.asyncio
