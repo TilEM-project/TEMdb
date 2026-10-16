@@ -1,6 +1,8 @@
+import inspect
 import logging
 from collections.abc import Callable
 from functools import wraps
+from itertools import takewhile
 from typing import Any
 
 
@@ -29,8 +31,12 @@ def accepts_keywords(model):
     """Let a create/update method take the model's fields as keywords instead of a built model."""
 
     def decorate(method):
+        parameters = list(inspect.signature(method).parameters)[1:]
+
         @wraps(method)
         async def wrapper(self, *args, **kwargs):
+            leading = list(takewhile(kwargs.__contains__, parameters[len(args) :]))
+            args = (*args, *(kwargs.pop(name) for name in leading))
             named = [key for key, value in kwargs.items() if isinstance(value, model)]
             if named:
                 args = (*args, kwargs.pop(named[0]))
