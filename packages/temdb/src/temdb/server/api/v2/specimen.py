@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from pydantic import AnyHttpUrl
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -185,7 +184,7 @@ async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_
 )
 async def add_specimen_image(
     specimen_id: str,
-    image_url: AnyHttpUrl = Body(..., embed=True),
+    image_url: str = Body(..., embed=True),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Add an image URL to a specimen."""
@@ -215,7 +214,7 @@ async def add_specimen_image(
 )
 async def remove_specimen_image(
     specimen_id: str,
-    image_url: AnyHttpUrl = Query(..., description="The URL of the image to remove"),
+    image_url: str = Query(..., description="The URL of the image to remove"),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Remove an image URL from a specimen using a query parameter."""

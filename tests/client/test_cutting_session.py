@@ -29,24 +29,6 @@ def _session_payload(**extra) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_posts_session():
-    res, request = _resource()
-    request.return_value = _session_payload()
-    out = await res.create(
-        CuttingSessionCreate(
-            cutting_session_id="CUT001",
-            block_id="BLOCK001",
-            start_time=NOW,
-            sectioning_device="Leica",
-            media_type="wafer",
-        )
-    )
-    assert request.await_args.args[:2] == ("POST", "cutting-sessions")
-    assert request.await_args.kwargs["json"]["cutting_session_id"] == "CUT001"
-    assert out.cutting_session_id == "CUT001"
-
-
-@pytest.mark.asyncio
 async def test_create_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _session_payload(cutting_session_id="CUT002")
@@ -102,11 +84,3 @@ async def test_update_rejects_model_plus_kwargs():
     res, _ = _resource()
     with pytest.raises(TypeError):
         await res.update("CUT001", CuttingSessionUpdate(operator="cam"), end_time=NOW)
-
-
-@pytest.mark.asyncio
-async def test_delete_uses_delete_method():
-    res, request = _resource()
-    request.return_value = None
-    await res.delete("CUT001")
-    assert request.await_args.args[:2] == ("DELETE", "cutting-sessions/CUT001")

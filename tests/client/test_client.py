@@ -174,3 +174,14 @@ async def test_health_check_and_api_info_reach_the_server_root():
         assert (await client.get_api_info())["message"].startswith("TEMdb API version")
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_uses_provided_transport():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/v2/specimens"
+        return httpx.Response(200, json=[])
+
+    async with TEMdbClient("http://test", transport=httpx.MockTransport(handler)) as client:
+        assert await client.specimen.list() == []

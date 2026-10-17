@@ -216,3 +216,15 @@ async def test_get_specimen_blocks_past_last_page(async_client: AsyncClient, tes
     response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks", params={"skip": 1})
     assert response.status_code == 200
     assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_specimen_image_endpoints_accept_s3_uris(async_client: AsyncClient, test_specimen):
+    url = f"/api/v2/specimens/{test_specimen.specimen_id}/images"
+    image = "s3://bucket/specimens/sp1.png"
+    added = await async_client.post(url, json={"image_url": image})
+    assert added.status_code == 200
+    assert image in added.json()["specimen_images"]
+    removed = await async_client.delete(url, params={"image_url": image})
+    assert removed.status_code == 200
+    assert image not in removed.json()["specimen_images"]

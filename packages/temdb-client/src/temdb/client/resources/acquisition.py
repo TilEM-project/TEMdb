@@ -50,8 +50,11 @@ class AcquisitionResource(BaseResource):
         end_date: datetime | None = None,
         fields: list[str] | None = None,
         **kwargs: Any,
-    ) -> PaginatedAcquisitionResponse:
-        """List acquisitions with filtering, sorting, and pagination."""
+    ) -> PaginatedAcquisitionResponse | dict[str, Any]:
+        """List acquisitions with filtering, sorting, and pagination.
+
+        With fields, the page is returned as the server sends it: each acquisition holds only those fields.
+        """
         params = {
             "cursor": cursor,
             "limit": limit,
@@ -71,7 +74,7 @@ class AcquisitionResource(BaseResource):
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
         response_data = await self._get("acquisitions", params=params)
-        return PaginatedAcquisitionResponse.model_validate(response_data)
+        return response_data if fields else PaginatedAcquisitionResponse.model_validate(response_data)
 
     @accepts_keywords(AcquisitionCreate)
     async def create(self, acquisition_data: AcquisitionCreate) -> AcquisitionResponse:
@@ -109,7 +112,7 @@ class AcquisitionResource(BaseResource):
         x_max: float | None = None,
         y_min: float | None = None,
         y_max: float | None = None,
-    ) -> PaginatedTileResponse:
+    ) -> PaginatedTileResponse | dict[str, Any]:
         """Retrieve tiles for an acquisition with pagination."""
         endpoint = f"acquisitions/{acquisition_id}/tiles"
         params = {
@@ -123,7 +126,7 @@ class AcquisitionResource(BaseResource):
         }
         params = {k: v for k, v in params.items() if v is not None}
         response_data = await self._get(endpoint, params=params)
-        return PaginatedTileResponse.model_validate(response_data)
+        return response_data if fields else PaginatedTileResponse.model_validate(response_data)
 
     async def get_tile(self, acquisition_id: str, tile_id: str) -> TileResponse:
         """Get a specific tile by ID within an acquisition."""
@@ -198,16 +201,19 @@ class AcquisitionResource(BaseResource):
 
     async def get_all_tiles(
         self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
-    ) -> builtins.list[TileResponse]:
+    ) -> builtins.list[TileResponse] | builtins.list[dict[str, Any]]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
-        all_tiles: builtins.list[TileResponse] = []
+        all_tiles: builtins.list = []
         cursor: int | None = None
         while True:
             page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
-            all_tiles.extend(page.tiles)
-            if not page.metadata.get("has_more"):
+            tiles, metadata = (
+                (page["tiles"], page["metadata"]) if isinstance(page, dict) else (page.tiles, page.metadata)
+            )
+            all_tiles.extend(tiles)
+            if not metadata.get("has_more"):
                 break
-            cursor = page.metadata.get("next_cursor")
+            cursor = metadata.get("next_cursor")
             if cursor is None:
                 break
         return all_tiles
@@ -219,7 +225,7 @@ class AcquisitionResource(BaseResource):
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""
-        endpoint = f"acquisitions/{acquisition_id}/complete-metadata"
+        endpoint = f"acquisitions/{acquisition_id}/metadata"
         response_data = await self._get(endpoint)
         return response_data if isinstance(response_data, dict) else {}
 
@@ -238,12 +244,8 @@ class AcquisitionResource(BaseResource):
         specimen_id: str | None = None,
         roi_id: str | None = None,
         acquisition_task_id: str | None = None,
-        montage_set_name: str | None = None,
-        magnification: int | None = None,
+        substrate_media_id: str | None = None,
         status: AcquisitionStatusFilter | None = None,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        **kwargs: Any,
     ) -> dict[str, Any]:
         """List acquisitions with complete hierarchy metadata."""
         params = {
@@ -254,12 +256,8 @@ class AcquisitionResource(BaseResource):
             "specimen_id": specimen_id,
             "roi_id": roi_id,
             "acquisition_task_id": acquisition_task_id,
-            "montage_set_name": montage_set_name,
-            "magnification": magnification,
+            "substrate_media_id": substrate_media_id,
             "status": status,
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
         }
         params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
-        return await self._get("acquisitions/aggregated", params=params)
+        return await self._get("aggregated/acquisitions", params=params)

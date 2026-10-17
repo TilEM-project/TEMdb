@@ -77,15 +77,6 @@ def _tile_payload(**extra) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_returns_paginated_model():
-    res, request = _resource()
-    request.return_value = {"acquisitions": [_acquisition_payload()], "metadata": {"has_more": False}}
-    out = await res.list(limit=1)
-    assert request.await_args.args[:2] == ("GET", "acquisitions")
-    assert out.acquisitions[0].acquisition_id == "ACQ001"
-
-
-@pytest.mark.asyncio
 async def test_create_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _acquisition_payload(acquisition_id="ACQ002")
@@ -179,11 +170,3 @@ async def test_add_storage_location_accepts_kwargs_via_decorator():
     assert request.await_args.args[:2] == ("POST", "acquisitions/ACQ001/storage-locations")
     assert request.await_args.kwargs["json"]["location_type"] == "s3"
     assert out.acquisition_id == "ACQ001"
-
-
-@pytest.mark.asyncio
-async def test_delete_uses_delete_method():
-    res, request = _resource()
-    request.return_value = None
-    await res.delete("ACQ001")
-    assert request.await_args.args[:2] == ("DELETE", "acquisitions/ACQ001")

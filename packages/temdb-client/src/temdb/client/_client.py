@@ -35,6 +35,7 @@ class TEMdbClient:
         api_key: str | None = None,
         timeout: float = 30.0,
         debug: bool = False,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         self.raw_base_url = base_url
         self.api_version = api_version
@@ -55,6 +56,7 @@ class TEMdbClient:
             base_url=self.api_url,
             headers=headers,
             timeout=timeout,
+            transport=transport,
         )
 
         self.logger.info(f"Async TEMdb client initialized: {base_url} (API v{api_version})")

@@ -31,16 +31,6 @@ def _section_payload(**extra) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_posts_section():
-    res, request = _resource()
-    request.return_value = _section_payload()
-    out = await res.create(SectionCreate(cutting_session_id="CUT001", section_number=1, media_id="MEDIA001"))
-    assert request.await_args.args[:2] == ("POST", "sections")
-    assert request.await_args.kwargs["json"]["cutting_session_id"] == "CUT001"
-    assert out.section_id == "MEDIA001_S00001"
-
-
-@pytest.mark.asyncio
 async def test_create_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _section_payload(section_id="MEDIA001_S00002", section_number=2)

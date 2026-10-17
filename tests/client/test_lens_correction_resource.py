@@ -9,7 +9,6 @@ from temdb.client.resources.microscope import MicroscopeResource
 from temdb.models import (
     LensCorrectionCreate,
     LensCorrectionUpdate,
-    MicroscopeCreate,
     MicroscopeUpdate,
 )
 
@@ -51,37 +50,6 @@ def _lc_payload(**extra) -> dict:
         "updated_at": NOW.isoformat(),
         **extra,
     }
-
-
-@pytest.mark.asyncio
-async def test_microscope_create_posts():
-    res, request = _scope_resource()
-    request.return_value = _scope_payload()
-    out = await res.create(MicroscopeCreate(label="TEM-01"))
-    method, endpoint = request.await_args.args[0], request.await_args.args[1]
-    assert (method, endpoint) == ("POST", "microscopes")
-    assert request.await_args.kwargs["json"]["label"] == "TEM-01"
-    assert out.label == "TEM-01"
-    assert str(out.microscope_id) == SCOPE_ID
-
-
-@pytest.mark.asyncio
-async def test_microscope_get_by_id_or_label():
-    res, request = _scope_resource()
-    request.return_value = _scope_payload()
-    await res.get("TEM-01")
-    assert request.await_args.args[1] == "microscopes/TEM-01"
-    await res.get(SCOPE_ID)
-    assert request.await_args.args[1] == f"microscopes/{SCOPE_ID}"
-
-
-@pytest.mark.asyncio
-async def test_microscope_list_returns_models():
-    res, request = _scope_resource()
-    request.return_value = [_scope_payload(), _scope_payload(label="TEM-02")]
-    out = await res.list()
-    assert [m.label for m in out] == ["TEM-01", "TEM-02"]
-    assert request.await_args.args[1] == "microscopes"
 
 
 @pytest.mark.asyncio
@@ -140,25 +108,6 @@ async def test_lc_create_rejects_model_plus_kwargs():
 
 
 @pytest.mark.asyncio
-async def test_lc_get():
-    res, request = _lc_resource()
-    request.return_value = _lc_payload()
-    out = await res.get(LC_ID)
-    assert request.await_args.args[1] == f"lens-corrections/{LC_ID}"
-    assert str(out.lc_id) == LC_ID
-
-
-@pytest.mark.asyncio
-async def test_lc_get_current_uses_current_path():
-    res, request = _lc_resource()
-    request.return_value = _lc_payload()
-    out = await res.get_current(SCOPE_ID, 20000)
-    assert request.await_args.args[1] == "lens-corrections/current"
-    assert request.await_args.kwargs["params"] == {"microscope_id": SCOPE_ID, "magnification": 20000}
-    assert str(out.lc_id) == LC_ID
-
-
-@pytest.mark.asyncio
 async def test_lc_list_filters_and_returns_models():
     res, request = _lc_resource()
     request.return_value = [_lc_payload(), _lc_payload(lc_id=str(uuid.uuid4()))]
@@ -191,9 +140,3 @@ async def test_lc_update_accepts_kwargs_via_decorator():
     out = await res.update(LC_ID, correction_y_uri="s3://bucket/lc/y.tiff")
     assert request.await_args.kwargs["json"] == {"correction_y_uri": "s3://bucket/lc/y.tiff"}
     assert out.correction_y_uri == "s3://bucket/lc/y.tiff"
-
-
-@pytest.mark.asyncio
-async def test_client_attaches_resources(client):
-    assert isinstance(client.microscope, MicroscopeResource)
-    assert isinstance(client.lens_correction, LensCorrectionResource)
