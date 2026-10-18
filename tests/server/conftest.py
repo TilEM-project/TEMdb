@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.ids import uuid7
-from temdb.server.main import create_app
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -44,11 +43,6 @@ async def fresh_database_url(postgres_container):
         await conn.execute(text(f'CREATE DATABASE "{db_name}"'))
     await engine.dispose()
     yield admin_url.rsplit("/", 1)[0] + f"/{db_name}"
-
-
-@pytest.fixture(scope="session")
-def app() -> FastAPI:
-    return create_app()
 
 
 @pytest.fixture(scope="function")

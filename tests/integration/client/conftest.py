@@ -1,26 +1,32 @@
 import pytest
 import pytest_asyncio
 
-from temdb.server.main import create_app
-from tests.integration.client.live import LiveServer, Seed
-
-
-@pytest.fixture(scope="session")
-def live_app():
-    return create_app()
+from temdb.client import TEMdbClient
+from temdb.server.dependencies import get_db_manager
+from tests.integration.client.records import Records
+from tests.integration.client.transport import RecordingTransport
 
 
 @pytest_asyncio.fixture
-async def live(live_app, init_db):
-    server = LiveServer(live_app, init_db)
+async def transport(app, init_db):
+    app.dependency_overrides[get_db_manager] = lambda: init_db
+    recording = RecordingTransport(app)
     try:
-        yield server
+        yield recording
     finally:
-        await server.client.close()
-        live_app.dependency_overrides = {}
-    assert server.unmatched_requests() == []
+        app.dependency_overrides = {}
+    assert recording.unmatched_requests() == []
+
+
+@pytest_asyncio.fixture
+async def client(transport):
+    client = TEMdbClient("http://test", transport=transport)
+    try:
+        yield client
+    finally:
+        await client.close()
 
 
 @pytest.fixture
-def seed(live):
-    return Seed(live.client)
+def records(client):
+    return Records(client)

@@ -1,10 +1,7 @@
+import json
 import uuid
 from datetime import datetime, timezone
-
-import httpx
-from fastapi import FastAPI
-from fastapi.routing import APIRoute
-from starlette.routing import Match
+from pathlib import Path
 
 from temdb.client import TEMdbClient
 from temdb.models import (
@@ -14,44 +11,6 @@ from temdb.models import (
     SubstrateLayoutCreate,
     TileCreate,
 )
-from temdb.server.dependencies import get_db_manager
-
-
-class RecordingTransport(httpx.AsyncBaseTransport):
-    def __init__(self, app: FastAPI):
-        self._inner = httpx.ASGITransport(app=app)
-        self.requests: list[tuple[str, str]] = []
-        self.gzipped_requests: list[tuple[str, str]] = []
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append((request.method, request.url.path))
-        if request.headers.get("content-encoding") == "gzip":
-            self.gzipped_requests.append((request.method, request.url.path))
-        return await self._inner.handle_async_request(request)
-
-    async def aclose(self) -> None:
-        await self._inner.aclose()
-
-
-def unmatched_requests(app: FastAPI, requests: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    routes = [route for route in app.routes if isinstance(route, APIRoute)]
-    unmatched = []
-    for method, path in requests:
-        scope = {"type": "http", "method": method, "path": path, "root_path": ""}
-        if not any(route.matches(scope)[0] is Match.FULL for route in routes):
-            unmatched.append((method, path))
-    return unmatched
-
-
-class LiveServer:
-    def __init__(self, app: FastAPI, db_manager):
-        self.app = app
-        self.app.dependency_overrides[get_db_manager] = lambda: db_manager
-        self.transport = RecordingTransport(self.app)
-        self.client = TEMdbClient("http://test", transport=self.transport)
-
-    def unmatched_requests(self) -> list[tuple[str, str]]:
-        return unmatched_requests(self.app, self.transport.requests)
 
 
 def acquisition_payload(
@@ -68,7 +27,7 @@ def acquisition_payload(
             "camera_model": "c",
             "camera_serial": "1",
             "camera_bit_depth": 8,
-            "media_type": "tape",
+            "media_type": "grid_disc",
         },
         acquisition_settings={
             "magnification": 1000,
@@ -90,7 +49,7 @@ def tile_payload(raster_index: int) -> TileCreate:
     )
 
 
-class Seed:
+class Records:
     def __init__(self, client: TEMdbClient):
         self.client = client
         self._made = {}
@@ -110,14 +69,20 @@ class Seed:
     async def layout(self):
         return await self._once(
             "layout",
-            lambda: self.client.substrate_layout.create(SubstrateLayoutCreate(layout_id="L1", media_type="tape")),
+            lambda: self.client.substrate_layout.create(
+                SubstrateLayoutCreate(
+                    layout_id="GD-9mm-56-G1",
+                    media_type="grid_disc",
+                    apertures=json.loads(Path(__file__).with_name("grid_disc_56.json").read_text()),
+                )
+            ),
         )
 
     async def substrate(self):
         await self.layout()
         return await self._once(
             "substrate",
-            lambda: self.client.substrate.create(media_id="M1", substrate_layout_id="L1"),
+            lambda: self.client.substrate.create(media_id="M1", substrate_layout_id="GD-9mm-56-G1"),
         )
 
     async def cutting_session(self):
@@ -129,7 +94,7 @@ class Seed:
                 block_id="B1",
                 start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
                 sectioning_device="robot",
-                media_type="tape",
+                media_type="grid_disc",
             ),
         )
 
@@ -139,7 +104,7 @@ class Seed:
         return await self._once(
             "section",
             lambda: self.client.section.create(
-                section_number=1, cutting_session_id="CS1", media_id="M1", barcode="BC1"
+                section_number=1, cutting_session_id="CS1", media_id="M1", barcode="BC1", aperture_index=0
             ),
         )
 
