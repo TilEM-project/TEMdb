@@ -1,8 +1,11 @@
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import text
 from testcontainers.postgres import PostgresContainer
 
+from temdb.server.cli import run_migrations
 from temdb.server.database import DatabaseManager
+from temdb.server.main import create_app
 from temdb.server.sqlmodels import Base
 
 _UNSAFE_BUT_FAST = (
@@ -16,6 +19,17 @@ _UNSAFE_BUT_FAST = (
 )
 
 _PGDATA = "/var/lib/postgresql/18/docker"
+
+
+def collect_tests_using_postgres_container(items):
+    for item in items:
+        if "postgres_container" in item.fixturenames:
+            item.add_marker(pytest.mark.db)
+
+
+@pytest.fixture(scope="session")
+def app() -> FastAPI:
+    return create_app()
 
 
 @pytest.fixture(scope="session")
@@ -35,9 +49,17 @@ def async_database_url(container: PostgresContainer) -> str:
 
 
 @pytest.fixture(scope="session")
-async def test_db_manager(postgres_container):
-    db_manager = DatabaseManager(database_url=async_database_url(postgres_container))
-    await db_manager.initialize(create_schema=True)
+def migrated_database_url(postgres_container) -> str:
+    url = async_database_url(postgres_container)
+    with pytest.MonkeyPatch.context() as environment:
+        environment.setenv("TEMDB_MIGRATION_URL", url)
+        run_migrations(url=url)
+    return url
+
+
+@pytest.fixture(scope="session")
+async def test_db_manager(migrated_database_url):
+    db_manager = DatabaseManager(database_url=migrated_database_url)
     yield db_manager
     await db_manager.dispose()
 
