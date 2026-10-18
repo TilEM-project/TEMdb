@@ -25,6 +25,10 @@ jobs:
 
       - name: Lint
         run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -43,4 +47,4 @@ jobs:
         run: uv sync
 
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --cov -n auto
