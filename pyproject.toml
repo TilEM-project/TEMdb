@@ -33,6 +33,8 @@ dev = [
     "faker>=40.0",
     "bump-my-version>=1.3",
     "pre-commit>=4.6",
+    "pytest-cov>=6.0",
+    "pytest-xdist>=3.6",
 ]
 
 [tool.pytest.ini_options]
@@ -42,6 +44,17 @@ asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+addopts = "--strict-markers"
+markers = ["db: needs the testcontainers Postgres (Docker)"]
+
+[tool.coverage.run]
+source_pkgs = ["temdb.models", "temdb.client", "temdb.server"]
+branch = true
+concurrency = ["thread", "greenlet"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 120

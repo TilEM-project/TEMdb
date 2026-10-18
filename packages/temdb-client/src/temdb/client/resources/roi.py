@@ -58,23 +58,23 @@ class ROIResource(BaseResource):
         response_data = await self._post("rois", data=roi_data.model_dump(exclude_unset=True))
         return ROIResponse.model_validate(response_data)
 
-    async def get(self, roi_id: int) -> ROIResponse:
-        """Get a specific ROI by its integer ID."""
+    async def get(self, roi_id: str) -> ROIResponse:
+        """Get a specific ROI by its roi_id."""
         response_data = await self._get(f"rois/{roi_id}")
         return ROIResponse.model_validate(response_data)
 
     @accepts_keywords(ROIUpdate)
-    async def update(self, roi_id: int, roi_data: ROIUpdate) -> ROIResponse:
+    async def update(self, roi_id: str, roi_data: ROIUpdate) -> ROIResponse:
         """Update an existing ROI."""
         update_payload = roi_data.model_dump(exclude_unset=True)
         response_data = await self._patch(f"rois/{roi_id}", data=update_payload)
         return ROIResponse.model_validate(response_data)
 
-    async def delete(self, roi_id: int) -> None:
+    async def delete(self, roi_id: str) -> None:
         """Delete an ROI."""
         await self._delete(f"rois/{roi_id}")
 
-    async def get_children(self, roi_id: int, skip: int = 0, limit: int = 10) -> ROIChildrenResponse:
+    async def get_children(self, roi_id: str, skip: int = 0, limit: int = 10) -> ROIChildrenResponse:
         """Get child ROIs for a specific parent ROI."""
         endpoint = f"rois/{roi_id}/children"
         params = {"skip": skip, "limit": limit}

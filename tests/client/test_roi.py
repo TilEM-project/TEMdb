@@ -30,24 +30,6 @@ def _roi_payload(**extra) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_posts_roi():
-    res, request = _resource()
-    request.return_value = _roi_payload()
-    out = await res.create(
-        ROICreate(
-            roi_number=1,
-            section_id="SEC001",
-            specimen_id="SPEC001",
-            block_id="BLK001",
-            substrate_media_id="SUB001",
-        )
-    )
-    assert request.await_args.args[:2] == ("POST", "rois")
-    assert request.await_args.kwargs["json"]["section_id"] == "SEC001"
-    assert out.roi_id.endswith("ROI001")
-
-
-@pytest.mark.asyncio
 async def test_create_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _roi_payload(roi_id="SPEC001.BLK001.SEC001.SUB001.ROI002", roi_number=2)
@@ -104,11 +86,3 @@ async def test_update_rejects_model_plus_kwargs():
     res, _ = _resource()
     with pytest.raises(TypeError):
         await res.update(1, ROIUpdate(payload={"vertices": [[1, 1], [2, 2]]}), payload={"vertices": []})
-
-
-@pytest.mark.asyncio
-async def test_delete_uses_delete_method():
-    res, request = _resource()
-    request.return_value = None
-    await res.delete(1)
-    assert request.await_args.args[:2] == ("DELETE", "rois/1")

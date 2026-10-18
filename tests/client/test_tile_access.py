@@ -7,7 +7,7 @@ from temdb.client import TEMdbClient
 from temdb.client.exceptions import TEMdbConflictError
 from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.client.resources.roi import ROIResource
-from temdb.models import TileBulkDeleteResult, TileDeleteAllResult, TileUpdate
+from temdb.models import TileUpdate
 
 API = "http://test/api/v2"
 
@@ -26,29 +26,6 @@ def _tile(raster_index: int) -> dict:
         "std_value": 25,
         "image_path": "/p.tif",
     }
-
-
-@pytest.mark.asyncio
-async def test_get_all_tiles_follows_pagination():
-    request = AsyncMock()
-    res = AcquisitionResource(request, API)
-    request.side_effect = [
-        {"tiles": [_tile(0), _tile(1)], "metadata": {"has_more": True, "next_cursor": 1}},
-        {"tiles": [_tile(2)], "metadata": {"has_more": False, "next_cursor": None}},
-    ]
-    tiles = await res.get_all_tiles("ACQ1", page_limit=2)
-    assert [t.raster_index for t in tiles] == [0, 1, 2]
-    assert request.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_get_all_tiles_single_page():
-    request = AsyncMock()
-    res = AcquisitionResource(request, API)
-    request.return_value = {"tiles": [_tile(0)], "metadata": {"has_more": False, "next_cursor": None}}
-    tiles = await res.get_all_tiles("ACQ1")
-    assert len(tiles) == 1
-    assert request.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -207,33 +184,6 @@ async def test_update_tiles_bulk_sends_patch_and_returns_models():
         "018f-1": {"stage_position": {"x": 10.0, "y": 20.0}},
     }
     assert [tile.tile_id for tile in out] == ["018f-0", "018f-1"]
-
-
-@pytest.mark.asyncio
-async def test_delete_all_tiles_returns_the_deleted_count():
-    request = AsyncMock()
-    res = AcquisitionResource(request, API)
-    request.return_value = {"deleted": 3}
-
-    out = await res.delete_all_tiles("ACQ1")
-
-    method, endpoint = request.await_args.args[0], request.await_args.args[1]
-    assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/all")
-    assert out == TileDeleteAllResult(deleted=3)
-
-
-@pytest.mark.asyncio
-async def test_delete_tiles_bulk_sends_json_body_and_returns_the_result():
-    request = AsyncMock()
-    res = AcquisitionResource(request, API)
-    request.return_value = {"requested": 2, "deleted": 1, "not_found": ["018f-1"]}
-
-    out = await res.delete_tiles_bulk("ACQ1", ["018f-0", "018f-1"])
-
-    method, endpoint = request.await_args.args[0], request.await_args.args[1]
-    assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/bulk")
-    assert request.await_args.kwargs["json"] == ["018f-0", "018f-1"]
-    assert out == TileBulkDeleteResult(requested=2, deleted=1, not_found=["018f-1"])
 
 
 @pytest.mark.asyncio

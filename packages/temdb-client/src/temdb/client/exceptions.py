@@ -26,6 +26,10 @@ class TEMdbClientError(TEMdbError):
     pass
 
 
+class TEMdbContractError(TEMdbClientError):
+    """Raised when the server's model version is incompatible with the client."""
+
+
 class TEMdbServerError(TEMdbError):
     """Base exception for TEMdb server errors."""
 

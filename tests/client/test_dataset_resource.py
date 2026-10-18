@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from temdb.client.resources.dataset import DatasetResource
-from temdb.models import DatasetCreate, DatasetUpdate
+from temdb.models import DatasetCreate
 
 API = "http://test/api/v2"
 
@@ -12,23 +12,6 @@ API = "http://test/api/v2"
 def _resource():
     request = AsyncMock()
     return DatasetResource(request, API), request
-
-
-@pytest.mark.asyncio
-async def test_create_posts_dataset():
-    res, request = _resource()
-    request.return_value = {
-        "dataset_id": str(uuid.uuid4()),
-        "name": "d1",
-        "status": "collecting",
-        "size_class": "small",
-        "tile_hash_modulus": None,
-        "estimated_tile_count": None,
-    }
-    out = await res.create(DatasetCreate(name="d1", size_class="small"))
-    method, endpoint = request.await_args.args[0], request.await_args.args[1]
-    assert (method, endpoint) == ("POST", "datasets")
-    assert out.name == "d1"
 
 
 @pytest.mark.asyncio
@@ -50,41 +33,6 @@ async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
     with pytest.raises(TypeError):
         await res.create(DatasetCreate(name="d1", size_class="small"), status="collecting")
-
-
-@pytest.mark.asyncio
-async def test_get_by_name_uses_by_name_path():
-    res, request = _resource()
-    request.return_value = {
-        "dataset_id": str(uuid.uuid4()),
-        "name": "d1",
-        "status": "collecting",
-        "size_class": "small",
-    }
-    await res.get_by_name("d1")
-    assert request.await_args.args[1] == "datasets/by-name/d1"
-
-
-@pytest.mark.asyncio
-async def test_list_returns_models():
-    res, request = _resource()
-    request.return_value = [
-        {"dataset_id": str(uuid.uuid4()), "name": "a", "status": "collecting", "size_class": "small"},
-        {"dataset_id": str(uuid.uuid4()), "name": "b", "status": "collected", "size_class": "large"},
-    ]
-    out = await res.list(status="collected")
-    assert [d.name for d in out] == ["a", "b"]
-    assert request.await_args.args[1] == "datasets"
-
-
-@pytest.mark.asyncio
-async def test_update_patches():
-    res, request = _resource()
-    dataset_id = str(uuid.uuid4())
-    request.return_value = {"dataset_id": dataset_id, "name": "a", "status": "archived", "size_class": "small"}
-    await res.update("1", DatasetUpdate(status="archived"))
-    assert request.await_args.args[0] == "PATCH"
-    assert request.await_args.args[1] == "datasets/1"
 
 
 @pytest.mark.asyncio

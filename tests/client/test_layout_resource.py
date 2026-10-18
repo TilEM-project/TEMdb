@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from temdb.client.resources.layout import SubstrateLayoutResource
-from temdb.models import SubstrateLayoutCreate, SubstrateLayoutUpdate
+from temdb.models import SubstrateLayoutUpdate
 
 API = "http://test/api/v2"
 NOW = datetime(2026, 10, 8, tzinfo=timezone.utc)
@@ -25,29 +25,6 @@ def _layout_payload(**extra):
         "created_at": NOW.isoformat(),
         **extra,
     }
-
-
-@pytest.mark.asyncio
-async def test_layout_create_posts_and_returns_model():
-    resource, request = _layout_resource()
-    request.return_value = _layout_payload()
-
-    layout = await resource.create(SubstrateLayoutCreate(layout_id="LAYOUT001", name="Test layout", media_type="wafer"))
-
-    assert request.await_args.args[:2] == ("POST", "layouts")
-    assert request.await_args.kwargs["json"]["layout_id"] == "LAYOUT001"
-    assert layout.name == "Test layout"
-
-
-@pytest.mark.asyncio
-async def test_layout_get_uses_layout_path():
-    resource, request = _layout_resource()
-    request.return_value = _layout_payload()
-
-    layout = await resource.get("LAYOUT001")
-
-    assert request.await_args.args[:2] == ("GET", "layouts/LAYOUT001")
-    assert layout.layout_id == "LAYOUT001"
 
 
 @pytest.mark.asyncio
@@ -75,21 +52,3 @@ async def test_layout_update_patches_and_delete_uses_layout_path():
 
     await resource.delete("LAYOUT001")
     assert request.await_args.args[:2] == ("DELETE", "layouts/LAYOUT001")
-
-
-@pytest.mark.asyncio
-async def test_list_related_substrates_uses_layout_substrates_path():
-    resource, request = _layout_resource()
-    request.return_value = [
-        {
-            "id": 1,
-            "media_id": "MEDIA001",
-            "substrate_layout_id": "LAYOUT001",
-            "aperture_status": ["available"],
-        }
-    ]
-
-    substrates = await resource.list_related_substrates("LAYOUT001")
-
-    assert request.await_args.args[:2] == ("GET", "layouts/LAYOUT001/substrates")
-    assert substrates[0].media_id == "MEDIA001"

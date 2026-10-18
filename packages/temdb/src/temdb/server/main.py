@@ -10,6 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from temdb.models import Contract
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
@@ -169,6 +170,14 @@ def create_app():
     @app.get("/")
     async def root():
         return {"message": f"TEMdb API version v{__version__}"}
+
+    @app.get(f"{v2_prefix}/contract", response_model=Contract)
+    async def contract():
+        return {
+            "api": "v2",
+            "server_version": __version__,
+            "models_version": importlib.metadata.version("temdb-models"),
+        }
 
     @app.get("/health", response_model=dict)
     def health():

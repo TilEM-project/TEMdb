@@ -154,7 +154,7 @@ async def acquisition_page(
     if cursor is not None:
         last = (await session.execute(select(*keys).where(AcquisitionSQLModel.id == cursor))).first()
         if last is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"cursor {cursor} is not an acquisition")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"cursor {cursor} is not an acquisition")
         statement = statement.where(tuple_(*keys) > tuple(last) if ascending else tuple_(*keys) < tuple(last))
     order = [key.asc() if ascending else key.desc() for key in keys]
     rows = (await session.execute(statement.where(*conditions).order_by(*order).limit(limit + 1))).all()

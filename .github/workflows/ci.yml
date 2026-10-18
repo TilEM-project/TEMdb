@@ -25,6 +25,16 @@ jobs:
 
       - name: Lint
         run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: API changes since the last release
+        run: |
+          set -o pipefail
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          uv run temdb-contract-check | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -43,4 +53,4 @@ jobs:
         run: uv sync
 
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --cov -n auto

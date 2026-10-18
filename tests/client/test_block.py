@@ -23,16 +23,6 @@ def _block_payload(**extra) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_posts_block():
-    res, request = _resource()
-    request.return_value = _block_payload()
-    out = await res.create(BlockCreate(block_id="BLOCK001", specimen_id="SPEC001"))
-    assert request.await_args.args[:2] == ("POST", "blocks")
-    assert request.await_args.kwargs["json"] == {"block_id": "BLOCK001", "specimen_id": "SPEC001"}
-    assert out.block_id == "BLOCK001"
-
-
-@pytest.mark.asyncio
 async def test_create_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _block_payload(block_id="BLOCK002")
@@ -59,15 +49,6 @@ async def test_list_by_specimen_uses_scoped_path():
 
 
 @pytest.mark.asyncio
-async def test_get_uses_scoped_path():
-    res, request = _resource()
-    request.return_value = _block_payload()
-    out = await res.get("SPEC001", "BLOCK001")
-    assert request.await_args.args[:2] == ("GET", "blocks/specimens/SPEC001/blocks/BLOCK001")
-    assert out.specimen_id == "SPEC001"
-
-
-@pytest.mark.asyncio
 async def test_update_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _block_payload(description="updated")
@@ -85,8 +66,10 @@ async def test_update_rejects_model_plus_kwargs():
 
 
 @pytest.mark.asyncio
-async def test_delete_uses_delete_method():
+async def test_create_posts_block():
     res, request = _resource()
-    request.return_value = None
-    await res.delete("SPEC001", "BLOCK001")
-    assert request.await_args.args[:2] == ("DELETE", "blocks/specimens/SPEC001/blocks/BLOCK001")
+    request.return_value = _block_payload()
+    out = await res.create(BlockCreate(block_id="BLOCK001", specimen_id="SPEC001"))
+    assert request.await_args.args[:2] == ("POST", "blocks")
+    assert request.await_args.kwargs["json"] == {"block_id": "BLOCK001", "specimen_id": "SPEC001"}
+    assert out.block_id == "BLOCK001"
