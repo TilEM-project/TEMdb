@@ -4,37 +4,38 @@
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `acquisition_id` | string |  |
-| `run_id` | UUID |  |
-| `montage_id` | string |  |
-| `specimen_id` | string |  |
-| `roi_id` | string |  |
-| `acquisition_task_id` | string |  |
-| `microscope_id` | UUID |  |
-| `dataset_id` | UUID |  |
-| `kind` | string |  |
-| `lc_id` | UUID |  |
-| `hardware_settings` | object |  |
-| `acquisition_settings` | object |  |
+| `acquisition_id` | string | Unique acquisition identifier |
+| `run_id` | UUID | DB-minted UUIDv7 execution key |
+| `montage_id` | string | Montage identifier |
+| `specimen_id` | string | Specimen identifier |
+| `roi_id` | string | ROI identifier |
+| `acquisition_task_id` | string | Parent task identifier |
+| `microscope_id` | UUID | Microscope that executed this run |
+| `dataset_id` | UUID | Dataset this acquisition belongs to (UUIDv7) |
+| `kind` | string | Run kind: montage or lens_correction |
+| `lc_id` | UUID | Lens correction applied to this run |
+| `hardware_settings` | object | Hardware settings of acquisition |
+| `acquisition_settings` | object | Acquisition settings of acquisition |
 | `calibration_info` | object |  |
-| `status` | string |  |
-| `error_message` | string |  |
-| `qc_state` | string |  |
+| `status` | string | Terminal run status; null while in flight |
+| `error_message` | string | Failure detail for terminal status |
+| `qc_state` | string | QC axis state |
 | `qc_state_updated_at` | datetime |  |
 | `qc_state_updated_by` | string |  |
-| `transfer_state` | string |  |
+| `transfer_state` | string | Transfer axis state |
 | `transfer_state_updated_at` | datetime |  |
 | `transfer_state_updated_by` | string |  |
 | `tile_count` | int |  |
 | `avg_focus_score` | float |  |
 | `failed_tile_count` | int |  |
 | `median_match_quality` | float |  |
-| `tilt_angle_deg` | float |  |
-| `start_time` | datetime |  |
-| `end_time` | datetime |  |
-| `storage_locations` | object |  |
-| `montage_set_name` | string |  |
-| `sub_region` | object |  |
-| `replaces_acquisition_id` | string |  |
-| `created_at` | datetime |  |
+| `tilt_angle_deg` | float | Tilt angle of acquisition in degrees |
+| `start_time` | datetime | Start time of acquisition |
+| `end_time` | datetime | End time of acquisition |
+| `storage_locations` | object | Storage locations of acquisition |
+| `montage_set_name` | string | Name of montage set |
+| `sub_region` | object | Sub region of acquisition |
+| `replaces_acquisition_id` | string | Business ID (acquisition_id) of acquisition this acquisition replaces |
+| `created_at` | datetime | Creation timestamp; server-generated if omitted |
 | `updated_at` | datetime |  |
+| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |

@@ -4,6 +4,7 @@
 erDiagram
     direction LR
     AcquisitionSQLModel ||--o{ AcquisitionSQLModel : "replaces_acquisition_id"
+    AcquisitionSQLModel ||--o{ TileSQLModel : "dataset_id, run_id"
     AcquisitionTaskSQLModel ||--o{ AcquisitionSQLModel : "acquisition_task_id"
     AcquisitionTaskSQLModel ||--o{ AcquisitionTaskSQLModel : "superseded_by"
     BlockSQLModel ||--o{ AcquisitionTaskSQLModel : "specimen_id, block_id"
@@ -26,6 +27,7 @@ erDiagram
     SpecimenSQLModel ||--o{ AcquisitionSQLModel : "specimen_id"
     SpecimenSQLModel ||--o{ BlockSQLModel : "specimen_id"
     SpecimenSQLModel ||--o{ DatasetSQLModel : "specimen_id"
+    SubstrateLayoutSQLModel ||--o{ SubstrateSQLModel : "substrate_layout_id"
     SubstrateSQLModel ||--o{ ROISQLModel : "substrate_media_id"
     SubstrateSQLModel ||--o{ SectionSQLModel : "media_id"
     AcquisitionSQLModel {
@@ -61,6 +63,7 @@ erDiagram
         string montage_set_name
         object sub_region
         string replaces_acquisition_id
+        object extra
     }
     AcquisitionTaskSQLModel {
         string task_id
@@ -75,11 +78,14 @@ erDiagram
         object sub_region
         object tags
         object metadata
+        object extra
     }
     BlockSQLModel {
         string block_id
         string specimen_id
         object microCT_info
+        string description
+        object extra
     }
     CuttingSessionSQLModel {
         string cutting_session_id
@@ -91,6 +97,7 @@ erDiagram
         string sectioning_device
         string media_type
         string knife_id
+        object extra
     }
     DatasetSQLModel {
         UUID dataset_id
@@ -105,6 +112,7 @@ erDiagram
         int tile_hash_modulus
         int estimated_tile_count
         object metadata_json
+        object extra
     }
     LensCorrectionSQLModel {
         UUID lc_id
@@ -117,6 +125,7 @@ erDiagram
         string correction_x_uri
         string correction_y_uri
         object solver_params
+        object extra
     }
     MicroscopeSQLModel {
         UUID microscope_id
@@ -125,6 +134,7 @@ erDiagram
         string model
         string location
         string notes
+        object extra
     }
     ROISQLModel {
         string roi_id
@@ -138,6 +148,7 @@ erDiagram
         UUID dataset_id
         int section_number
         object roi_payload
+        object extra
     }
     SectionSQLModel {
         string section_id
@@ -148,29 +159,35 @@ erDiagram
         string specimen_id
         string media_id
         object optical_image
-        string aperture_uid
         int aperture_index
+        object position
         string barcode
         string condition
         string condition_reason
         object section_metrics
+        object run_parameters
+        object extra
     }
     SpecimenSQLModel {
         string specimen_id
         string description
         object specimen_images
         object functional_imaging_metadata
+        object extra
+    }
+    SubstrateLayoutSQLModel {
+        string layout_id
+        string name
+        object fiducials
+        object apertures
+        string media_type
+        object extra
     }
     SubstrateSQLModel {
         string media_id
-        string media_type
-        string uid
-        string status
-        object refpoint
-        object refpoint_world
-        string source_path
-        object metadata
-        object apertures
+        string substrate_layout_id
+        list aperture_status
+        object extra
     }
     TileSQLModel {
         UUID dataset_id
@@ -190,5 +207,6 @@ erDiagram
         object matcher
         string supertile_id
         object supertile_raster_position
+        object extra
     }
 ```

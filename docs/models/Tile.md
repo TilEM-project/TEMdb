@@ -6,19 +6,21 @@
 |------------|------|-------------|
 | `dataset_id` | UUID |  |
 | `run_id` | UUID |  |
-| `raster_index` | int |  |
-| `tile_id` | UUID |  |
+| `raster_index` | int | Index of the tile in the raster |
+| `tile_id` | UUID | Unique tile identifier |
 | `stage_x_nm` | float |  |
 | `stage_y_nm` | float |  |
 | `montage_row` | int |  |
 | `montage_col` | int |  |
-| `focus_score` | float |  |
-| `min_value` | float |  |
-| `max_value` | float |  |
-| `mean_value` | float |  |
-| `std_value` | float |  |
-| `image_path` | string |  |
-| `matcher` | object |  |
-| `supertile_id` | string |  |
-| `supertile_raster_position` | object |  |
+| `focus_score` | float | Focus score of the tile |
+| `min_value` | float | Minimum pixel value of the tile |
+| `max_value` | float | Maximum pixel value of the tile |
+| `mean_value` | float | Mean pixel value of the tile |
+| `std_value` | float | Standard deviation of pixel values of the tile |
+| `image_path` | string | URL to the image of the tile |
+| `matcher` | object | List of matchers for the tile |
+| `supertile_id` | string | ID of the supertile the tile belongs to |
+| `supertile_raster_position` | object | Row, column raster position of the supertile |
 | `created_at` | datetime |  |
+| `updated_at` | datetime |  |
+| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |

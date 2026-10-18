@@ -7,6 +7,7 @@ from typing import Any, Union, get_args, get_origin
 from pydantic import BaseModel
 from sqlalchemy.orm import DeclarativeBase
 
+import temdb.models as api_models
 import temdb.server.sqlmodels as sqlmodels_module
 from temdb.server.sqlmodels import Base
 
@@ -95,6 +96,16 @@ def _model_fields(model: type[DeclarativeBase]) -> dict[str, Any]:
     return {column.key: column for column in model.__mapper__.columns}
 
 
+def _field_description(model_name: str, field_name: str) -> str:
+    """The API's description of a column, from <Name>Response, else <Name>Create."""
+    for suffix in ("Response", "Create"):
+        api_model = getattr(api_models, f"{model_name}{suffix}", None)
+        field = api_model.model_fields.get(field_name) if api_model else None
+        if field is not None and field.description:
+            return field.description
+    return ""
+
+
 def generate_model_markdown_page(model: type[DeclarativeBase]) -> str:
     model_name = _display_name(model.__name__)
     markdown = f"# {model_name} Model\n\n"
@@ -110,8 +121,7 @@ def generate_model_markdown_page(model: type[DeclarativeBase]) -> str:
             continue
         field_type_hint = getattr(column.type, "python_type", None)
         mermaid_type = _parse_type(field_type_hint) if field_type_hint else "unknown"
-        description = ""
-        description = description.replace("|", "\\|")
+        description = _field_description(model_name, field_name).replace("|", "\\|").replace("\n", " ")
         markdown += f"| `{field_name}` | {mermaid_type} | {description} |\n"
     return markdown
 

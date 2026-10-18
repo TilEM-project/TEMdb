@@ -4,6 +4,7 @@
 erDiagram
     direction LR
     AcquisitionSQLModel ||--o{ AcquisitionSQLModel : "replaces_acquisition_id"
+    AcquisitionSQLModel ||--o{ TileSQLModel : "dataset_id, run_id"
     AcquisitionTaskSQLModel ||--o{ AcquisitionSQLModel : "acquisition_task_id"
     AcquisitionTaskSQLModel ||--o{ AcquisitionTaskSQLModel : "superseded_by"
     DatasetSQLModel ||--o{ AcquisitionSQLModel : "dataset_id"
@@ -53,6 +54,7 @@ erDiagram
         string montage_set_name
         object sub_region
         string replaces_acquisition_id
+        object extra
     }
     AcquisitionTaskSQLModel {
         string task_id
@@ -67,6 +69,7 @@ erDiagram
         object sub_region
         object tags
         object metadata
+        object extra
     }
     DatasetSQLModel {
         UUID dataset_id
@@ -81,6 +84,7 @@ erDiagram
         int tile_hash_modulus
         int estimated_tile_count
         object metadata_json
+        object extra
     }
     LensCorrectionSQLModel {
         UUID lc_id
@@ -93,6 +97,7 @@ erDiagram
         string correction_x_uri
         string correction_y_uri
         object solver_params
+        object extra
     }
     MicroscopeSQLModel {
         UUID microscope_id
@@ -101,6 +106,7 @@ erDiagram
         string model
         string location
         string notes
+        object extra
     }
     ROISQLModel {
         string roi_id
@@ -114,6 +120,7 @@ erDiagram
         UUID dataset_id
         int section_number
         object roi_payload
+        object extra
     }
     SectionSQLModel {
         string section_id
@@ -124,23 +131,20 @@ erDiagram
         string specimen_id
         string media_id
         object optical_image
-        string aperture_uid
         int aperture_index
+        object position
         string barcode
         string condition
         string condition_reason
         object section_metrics
+        object run_parameters
+        object extra
     }
     SubstrateSQLModel {
         string media_id
-        string media_type
-        string uid
-        string status
-        object refpoint
-        object refpoint_world
-        string source_path
-        object metadata
-        object apertures
+        string substrate_layout_id
+        list aperture_status
+        object extra
     }
     TileSQLModel {
         UUID dataset_id
@@ -160,5 +164,6 @@ erDiagram
         object matcher
         string supertile_id
         object supertile_raster_position
+        object extra
     }
 ```
