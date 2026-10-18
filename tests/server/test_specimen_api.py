@@ -228,3 +228,20 @@ async def test_specimen_image_endpoints_accept_s3_uris(async_client: AsyncClient
     removed = await async_client.delete(url, params={"image_url": image})
     assert removed.status_code == 200
     assert image not in removed.json()["specimen_images"]
+
+
+async def test_create_specimen_stores_its_images(async_client: AsyncClient):
+    images = ["s3://bucket/b.png", "s3://bucket/a.png"]
+    response = await async_client.post("/api/v2/specimens", json={"specimen_id": "SP-IMG", "specimen_images": images})
+    assert response.status_code == 201, response.text
+    fetched = await async_client.get("/api/v2/specimens/SP-IMG")
+    assert set(fetched.json()["specimen_images"]) == set(images)
+
+
+async def test_update_specimen_replaces_its_images(async_client: AsyncClient, test_specimen):
+    images = ["s3://bucket/new.png"]
+    response = await async_client.patch(
+        f"/api/v2/specimens/{test_specimen.specimen_id}", json={"specimen_images": images}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["specimen_images"] == images

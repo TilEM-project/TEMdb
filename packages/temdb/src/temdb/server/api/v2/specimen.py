@@ -90,7 +90,7 @@ async def create_specimen(
     specimen = SpecimenSQLModel(
         specimen_id=specimen_data.specimen_id,
         description=specimen_data.description,
-        specimen_images=sorted(specimen_data.specimen_images or []),
+        specimen_images=sorted(image.uri for image in specimen_data.specimen_images or []),
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=specimen_data.created_at or datetime.now(timezone.utc),
         extra=drop_null_keys(specimen_data.extra),
