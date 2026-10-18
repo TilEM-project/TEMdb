@@ -17,6 +17,7 @@ from temdb.models.block import (
     BlockResponse,
     BlockUpdate,
 )
+from temdb.models.contract import Contract
 from temdb.models.cutting_session import (
     CuttingSessionBase,
     CuttingSessionCreate,
@@ -118,6 +119,7 @@ from temdb.models.tile import (
 from temdb.models.utils.uri import URI
 
 __all__ = [
+    "Contract",
     # Enums
     "AcquisitionStatusFilter",
     "SectionQuality",

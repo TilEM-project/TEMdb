@@ -1,4 +1,6 @@
+import asyncio
 import gzip
+import importlib.metadata
 import json
 import logging
 from typing import Any, cast
@@ -12,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from .exceptions import TEMdbClientError, TEMdbServerError
+from .exceptions import TEMdbClientError, TEMdbContractError, TEMdbNotFoundError, TEMdbServerError
 from .resources.acquisition import AcquisitionResource
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
@@ -60,19 +62,21 @@ class TEMdbClient:
         )
 
         self.logger.info(f"Async TEMdb client initialized: {base_url} (API v{api_version})")
+        self.contract: dict[str, Any] | None = None
+        self._contract_lock = asyncio.Lock()
 
-        self._specimen = SpecimenResource(self._async_request, self.api_url)
-        self._block = BlockResource(self._async_request, self.api_url)
-        self._cutting_session = CuttingSessionResource(self._async_request, self.api_url)
-        self._substrate = SubstrateResource(self._async_request, self.api_url)
-        self._acquisition_task = AcquisitionTaskResource(self._async_request, self.api_url)
-        self._roi = ROIResource(self._async_request, self.api_url)
-        self._acquisition = AcquisitionResource(self._async_request, self.api_url)
-        self._dataset = DatasetResource(self._async_request, self.api_url)
-        self._section = SectionResource(self._async_request, self.api_url)
-        self._microscope = MicroscopeResource(self._async_request, self.api_url)
-        self._lens_correction = LensCorrectionResource(self._async_request, self.api_url)
-        self._substrate_layout = SubstrateLayoutResource(self._async_request, self.api_url)
+        self._specimen = SpecimenResource(self._api_request, self.api_url)
+        self._block = BlockResource(self._api_request, self.api_url)
+        self._cutting_session = CuttingSessionResource(self._api_request, self.api_url)
+        self._substrate = SubstrateResource(self._api_request, self.api_url)
+        self._acquisition_task = AcquisitionTaskResource(self._api_request, self.api_url)
+        self._roi = ROIResource(self._api_request, self.api_url)
+        self._acquisition = AcquisitionResource(self._api_request, self.api_url)
+        self._dataset = DatasetResource(self._api_request, self.api_url)
+        self._section = SectionResource(self._api_request, self.api_url)
+        self._microscope = MicroscopeResource(self._api_request, self.api_url)
+        self._lens_correction = LensCorrectionResource(self._api_request, self.api_url)
+        self._substrate_layout = SubstrateLayoutResource(self._api_request, self.api_url)
 
     @property
     def specimen(self) -> SpecimenResource:
@@ -181,7 +185,39 @@ class TEMdbClient:
         self.logger.info("Closing async TEMdb client")
         await self._http_client.aclose()
 
+    async def check_contract(self) -> dict[str, Any]:
+        """Check server contract compatibility with this client's model version."""
+        try:
+            contract = await self._async_request("GET", "contract")
+        except TEMdbNotFoundError:
+            # TODO(4.0.0): raise TEMdbContractError; 3.0.0 servers have no /contract.
+            self.logger.warning(f"{self.raw_base_url} has no /contract route; skipping the compatibility check")
+            self.contract = {}
+            return self.contract
+        if not isinstance(contract, dict) or not isinstance(contract.get("models_version"), str):
+            raise TEMdbContractError(f"{self.raw_base_url} answered /contract without a models_version: {contract!r}")
+        ours = importlib.metadata.version("temdb-models")
+        theirs = contract["models_version"]
+        if ours.split(".")[0] != theirs.split(".")[0]:
+            raise TEMdbContractError(
+                f"{self.raw_base_url} serves models {theirs}; this client was built against models {ours}"
+            )
+        self.contract = contract
+        return contract
+
+    async def _api_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | list[Any]:
+        if self.contract is None:
+            async with self._contract_lock:
+                if self.contract is None:
+                    await self.check_contract()
+        return await self._async_request(method, endpoint, **kwargs)
+
     async def __aenter__(self) -> "TEMdbClient":
+        try:
+            await self.check_contract()
+        except BaseException:
+            await self.close()
+            raise
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
