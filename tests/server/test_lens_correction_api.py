@@ -116,6 +116,16 @@ async def test_microscope_list_and_patch(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_microscope_patch_rejects_null_for_a_required_field(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-10")
+
+    patched = await async_client.patch(f"/api/v2/microscopes/{scope['microscope_id']}", json={"microscope_type": None})
+
+    assert patched.status_code == 422
+    assert [error["loc"] for error in patched.json()["context"]["errors"]] == [["body", "microscope_type"]]
+
+
+@pytest.mark.asyncio
 async def test_lc_create_unknown_microscope_404(async_client: AsyncClient):
     r = await async_client.post(
         "/api/v2/lens-corrections",
@@ -182,6 +192,24 @@ async def test_lc_create_honors_client_lc_id(async_client: AsyncClient):
     )
     assert created.status_code == 201
     assert created.json()["lc_id"] == lc_id
+
+
+@pytest.mark.asyncio
+async def test_lc_create_duplicate_lc_id_409(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-09")
+    payload = {
+        "lc_id": str(uuid.uuid4()),
+        "microscope_id": scope["microscope_id"],
+        "magnification": 4000,
+        "started_at": "2026-06-10T00:00:00Z",
+    }
+    assert (await async_client.post("/api/v2/lens-corrections", json=payload)).status_code == 201
+
+    duplicate = await async_client.post("/api/v2/lens-corrections", json=payload)
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error_code"] == "CONFLICT"
+    assert payload["lc_id"] in duplicate.json()["detail"]
 
 
 @pytest.mark.asyncio

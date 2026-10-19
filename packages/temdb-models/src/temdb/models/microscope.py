@@ -18,10 +18,10 @@ class MicroscopeCreate(MicroscopeBase):
 
 
 class MicroscopeUpdate(TEMDBRecord):
-    microscope_type: str | None = None
-    model: str | None = None
-    location: str | None = None
-    notes: str | None = None
+    microscope_type: str = Field(None, description="Instrument type")
+    model: str | None = Field(None, description="Manufacturer model")
+    location: str | None = Field(None, description="Physical location")
+    notes: str | None = Field(None, description="Free-form notes")
 
 
 class MicroscopeResponse(MicroscopeBase):

@@ -130,16 +130,21 @@ async def integrity_exception_handler(request: Request, exc: IntegrityError):
 
 
 async def database_error_handler(request: Request, exc: DBAPIError):
-    """Return 422 when a string contains a NUL character or a lone UTF-16 surrogate, which Postgres rejects.
+    """Return 422 for values Postgres cannot store: a string with a NUL character or a lone UTF-16 surrogate, or an
+    integer too large for its column.
 
     Every other database error is passed to the generic 500 handler.
     """
     postgres_error = exc.driver_exception
     unstorable = CharacterNotInRepertoireError | UntranslatableCharacterError | InvalidTextRepresentationError
-    if not (isinstance(postgres_error, unstorable) or isinstance(postgres_error.__cause__, UnicodeEncodeError)):
+    if isinstance(postgres_error, unstorable) or isinstance(postgres_error.__cause__, UnicodeEncodeError):
+        detail = f"Text cannot be stored: {postgres_error}"
+    elif isinstance(postgres_error.__cause__, OverflowError):
+        detail = f"Number out of range: {postgres_error}"
+    else:
         return await generic_exception_handler(request, exc)
-    error_content = APIErrorResponse(detail=f"Text cannot be stored: {postgres_error}", error_code="VALIDATION_ERROR")
-    logger.warning(f"Unstorable text on {request.url}: {postgres_error}")
+    error_content = APIErrorResponse(detail=detail, error_code="VALIDATION_ERROR")
+    logger.warning(f"Unstorable value on {request.url}: {postgres_error}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content=error_content.model_dump(exclude_none=True)
     )

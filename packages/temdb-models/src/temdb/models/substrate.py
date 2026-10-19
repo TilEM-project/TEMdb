@@ -32,8 +32,8 @@ class SubstrateCreate(SubstrateBase):
 class SubstrateUpdate(SubstrateBase):
     """Schema for updating a substrate."""
 
-    media_id: str | None = Field(None, description="Primary unique identifier")
-    substrate_layout_id: str | None = Field(
+    media_id: str = Field(None, description="Primary unique identifier")
+    substrate_layout_id: str = Field(
         None, description="Move the substrate to this layout; it must have the same number of apertures"
     )
     aperture_status: dict[int, ApertureStatus] | None = Field(

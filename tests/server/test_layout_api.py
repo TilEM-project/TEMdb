@@ -69,6 +69,31 @@ async def test_layout_create_get_list_update_delete(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_layout_shape_params_that_are_not_an_object_are_rejected(async_client: AsyncClient):
+    payload = _layout_payload("LAYOUT_BAD_PARAMS")
+    payload["apertures"][0]["shape_params"] = [1.0, 2.0]
+
+    created = await async_client.post("/api/v2/layouts", json=payload)
+    updated = await async_client.patch("/api/v2/layouts/LAYOUT_BAD_PARAMS", json={"apertures": payload["apertures"]})
+
+    assert created.status_code == 422
+    assert updated.status_code == 422
+    [error] = created.json()["context"]["errors"]
+    assert error["loc"] == ["body", "apertures", 0, "shape_params"]
+    assert error["msg"] == "Input should be a valid dictionary or instance of CircleParams"
+
+
+@pytest.mark.asyncio
+async def test_layout_patch_rejects_null_media_type(async_client: AsyncClient):
+    await async_client.post("/api/v2/layouts", json=_layout_payload("LAYOUT_NULL_MEDIA"))
+
+    patched = await async_client.patch("/api/v2/layouts/LAYOUT_NULL_MEDIA", json={"media_type": None})
+
+    assert patched.status_code == 422
+    assert [error["loc"] for error in patched.json()["context"]["errors"]] == [["body", "media_type"]]
+
+
+@pytest.mark.asyncio
 async def test_layout_cannot_be_deleted_when_it_has_substrates(async_client: AsyncClient, test_layout, test_substrate):
     response = await async_client.delete(f"/api/v2/layouts/{test_layout.layout_id}")
     assert response.status_code == 409

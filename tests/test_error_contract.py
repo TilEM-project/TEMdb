@@ -3,6 +3,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from temdb.client.exceptions import (
     TEMdbConflictError,
@@ -12,7 +13,7 @@ from temdb.client.exceptions import (
 )
 from temdb.models import APIErrorResponse
 from temdb.server.exception_handlers import register_exception_handlers
-from temdb.server.sqlmodels import AcquisitionTaskSQLModel, SpecimenSQLModel
+from temdb.server.sqlmodels import AcquisitionTaskSQLModel, LensCorrectionSQLModel, SpecimenSQLModel
 
 
 class _Body(BaseModel):
@@ -101,7 +102,21 @@ async def test_structured_http_exception_detail_moves_to_context(app):
 
 @pytest.fixture
 def database_app(app, init_db):
-    """Routes that insert straight into Postgres, as a create does once its pre-check has passed."""
+    """Routes that go straight to Postgres, as an endpoint does once its pre-checks have passed."""
+
+    @app.get("/specimens")
+    async def page_specimens(skip: int):
+        async with init_db.async_session_factory() as session:
+            await session.scalars(select(SpecimenSQLModel).offset(skip))
+        return {"ok": True}
+
+    @app.get("/lens-corrections")
+    async def find_lens_corrections(magnification: int):
+        async with init_db.async_session_factory() as session:
+            await session.scalars(
+                select(LensCorrectionSQLModel).where(LensCorrectionSQLModel.magnification == magnification)
+            )
+        return {"ok": True}
 
     @app.post("/specimens/{specimen_id}")
     async def insert_specimen(specimen_id: str):
@@ -137,6 +152,30 @@ async def test_unique_violation_is_a_conflict_naming_the_table(database_app):
     assert error.error_code == "UNIQUE_VIOLATION"
     assert error.context["table"] == SpecimenSQLModel.__tablename__
     assert "RACED" in str(error)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"/specimens?skip={2**63}",
+        f"/lens-corrections?magnification={2**31}",
+    ],
+)
+async def test_integer_too_large_for_its_column_is_a_validation_error(database_app, path):
+    async with AsyncClient(
+        transport=ASGITransport(app=database_app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(path)
+
+    assert response.status_code == 422
+
+    error = _as_client_error(response)
+
+    assert isinstance(error, TEMdbUnprocessableError)
+    assert error.error_code == "VALIDATION_ERROR"
+    assert "Number out of range" in str(error)
 
 
 @pytest.mark.asyncio

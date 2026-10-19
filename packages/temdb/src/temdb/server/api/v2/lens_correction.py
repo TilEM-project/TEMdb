@@ -37,6 +37,8 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
     ).one_or_none()
     if microscope is None:
         raise HTTPException(status_code=404, detail=f"Microscope '{data.microscope_id}' not found")
+    if data.lc_id is not None and await session.get(LensCorrectionSQLModel, data.lc_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Lens correction '{data.lc_id}' already exists")
     lc = LensCorrectionSQLModel(
         lc_id=data.lc_id if data.lc_id is not None else uuid7(),
         microscope_id=data.microscope_id,

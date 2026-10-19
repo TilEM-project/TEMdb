@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from .base import TEMDBModel, TEMDBRecord
 from .enums import ShapeType, SubstrateType
@@ -54,20 +54,14 @@ class Shape(TEMDBModel):
     )
     centroid: tuple[float, float] = Field(..., description="Centroid of the shape (X, Y) in mm")
 
-    @model_validator(mode="before")
-    def validate_shape_params(cls, values):
-        if not isinstance(values, dict):
-            return values
-        shape_type = values.get("shape_type")
-        shape_params = values.get("shape_params")
-
+    @field_validator("shape_params", mode="before")
+    @classmethod
+    def validate_shape_params(cls, shape_params, info):
+        shape_type = info.data.get("shape_type")
         if shape_type is None:
-            raise ValueError("shape_type is required")
-        if shape_params is None:
-            raise ValueError("shape_params are required")
+            raise ValueError("needs a valid shape_type")
         if isinstance(shape_params, TEMDBModel):
             shape_params = shape_params.model_dump()
-
         params_model = {
             ShapeType.CIRCLE: CircleParams,
             ShapeType.SLOT: SlotParams,
@@ -75,10 +69,8 @@ class Shape(TEMDBModel):
             ShapeType.TRIANGLE: TriangleParams,
             ShapeType.CIRCLE_ARRAY: CircleArrayParams,
             ShapeType.POLYGON: PolygonParams,
-        }.get(shape_type)
-        if params_model is None:
-            raise ValueError(f"Invalid shape_type: {shape_type}")
-        return {**values, "shape_params": params_model(**shape_params)}
+        }[shape_type]
+        return params_model.model_validate(shape_params)
 
 
 class Fiducial(Shape):
@@ -120,7 +112,7 @@ class SubstrateLayoutCreate(SubstrateLayoutBase):
 class SubstrateLayoutUpdate(SubstrateLayoutBase):
     """Schema for updating a substrate layout."""
 
-    media_type: SubstrateType | None = Field(None, description="Type of substrate")
+    media_type: SubstrateType = Field(None, description="Type of substrate")
 
 
 class SubstrateLayoutResponse(SubstrateLayoutBase):

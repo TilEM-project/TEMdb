@@ -1206,16 +1206,9 @@
             "title": "Extra"
           },
           "kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Task kind: montage or lens_correction",
-            "title": "Kind"
+            "title": "Kind",
+            "type": "string"
           },
           "metadata": {
             "anyOf": [
@@ -1291,14 +1284,8 @@
         "additionalProperties": false,
         "properties": {
           "acquisition_settings": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AcquisitionParams"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/AcquisitionParams",
+            "description": "Acquisition settings of acquisition"
           },
           "avg_focus_score": {
             "anyOf": [
@@ -1376,14 +1363,8 @@
             "title": "Failed Tile Count"
           },
           "hardware_settings": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/HardwareParams"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/HardwareParams",
+            "description": "Hardware settings of acquisition"
           },
           "median_match_quality": {
             "anyOf": [
@@ -2251,16 +2232,9 @@
         "description": "Schema for updating a cutting session.",
         "properties": {
           "block_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "ID of block",
-            "title": "Block Id"
+            "title": "Block Id",
+            "type": "string"
           },
           "end_time": {
             "anyOf": [
@@ -2301,16 +2275,9 @@
             "title": "Knife Id"
           },
           "media_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Type of substrate the sections are placed upon",
-            "title": "Media Type"
+            "title": "Media Type",
+            "type": "string"
           },
           "operator": {
             "anyOf": [
@@ -2325,41 +2292,20 @@
             "title": "Operator"
           },
           "sectioning_device": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Microtome/Device used for sectioning",
-            "title": "Sectioning Device"
+            "title": "Sectioning Device",
+            "type": "string"
           },
           "specimen_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "ID of specimen",
-            "title": "Specimen Id"
+            "title": "Specimen Id",
+            "type": "string"
           },
           "start_time": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Time when cutting session started",
-            "title": "Start Time"
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
           }
         },
         "title": "CuttingSessionUpdate",
@@ -2396,6 +2342,7 @@
           "estimated_tile_count": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -2683,6 +2630,7 @@
                 "type": "null"
               }
             ],
+            "description": "Human description of the dataset",
             "title": "Description"
           },
           "extra": {
@@ -2708,40 +2656,29 @@
                 "type": "null"
               }
             ],
+            "description": "Free-form metadata",
             "title": "Metadata Json"
           },
           "size_class": {
-            "anyOf": [
-              {
-                "enum": [
-                  "small",
-                  "medium",
-                  "large",
-                  "xlarge"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "Planner size class; drives tile partitioning",
+            "enum": [
+              "small",
+              "medium",
+              "large",
+              "xlarge"
             ],
-            "title": "Size Class"
+            "title": "Size Class",
+            "type": "string"
           },
           "status": {
-            "anyOf": [
-              {
-                "enum": [
-                  "collecting",
-                  "collected",
-                  "archived"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "Lifecycle status",
+            "enum": [
+              "collecting",
+              "collected",
+              "archived"
             ],
-            "title": "Status"
+            "title": "Status",
+            "type": "string"
           }
         },
         "title": "DatasetUpdate",
@@ -3644,18 +3581,13 @@
                 "type": "null"
               }
             ],
+            "description": "Physical location",
             "title": "Location"
           },
           "microscope_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Microscope Type"
+            "description": "Instrument type",
+            "title": "Microscope Type",
+            "type": "string"
           },
           "model": {
             "anyOf": [
@@ -3666,6 +3598,7 @@
                 "type": "null"
               }
             ],
+            "description": "Manufacturer model",
             "title": "Model"
           },
           "notes": {
@@ -3677,6 +3610,7 @@
                 "type": "null"
               }
             ],
+            "description": "Free-form notes",
             "title": "Notes"
           }
         },
@@ -4850,16 +4784,9 @@
             "title": "Barcode"
           },
           "condition": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Physical condition of the section",
-            "title": "Condition"
+            "title": "Condition",
+            "type": "string"
           },
           "condition_reason": {
             "anyOf": [
@@ -4935,30 +4862,16 @@
             "description": "Metrics and parameters of the section"
           },
           "section_number": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Sequential section number within the cutting session",
-            "title": "Section Number"
+            "exclusiveMinimum": 0.0,
+            "title": "Section Number",
+            "type": "integer"
           },
           "timestamp": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Timestamp of section creation/cutting",
-            "title": "Timestamp"
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "title": "SectionUpdate",
@@ -5836,14 +5749,7 @@
             "title": "Fiducials"
           },
           "media_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubstrateType"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "$ref": "#/components/schemas/SubstrateType",
             "description": "Type of substrate"
           },
           "name": {
@@ -5980,28 +5886,14 @@
             "title": "Extra"
           },
           "media_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Primary unique identifier",
-            "title": "Media Id"
+            "title": "Media Id",
+            "type": "string"
           },
           "substrate_layout_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Move the substrate to this layout; it must have the same number of apertures",
-            "title": "Substrate Layout Id"
+            "title": "Substrate Layout Id",
+            "type": "string"
           }
         },
         "title": "SubstrateUpdate",

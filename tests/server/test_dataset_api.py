@@ -92,6 +92,12 @@ async def test_dataset_extra_fields_round_trip(async_client, test_specimen):
 
 
 @pytest.mark.asyncio
+async def test_create_rejects_a_negative_tile_estimate(async_client):
+    resp = await async_client.post("/api/v2/datasets", json={"name": "negative", "estimated_tile_count": -1})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_create_duplicate_name_rejected(async_client):
     await async_client.post("/api/v2/datasets", json={"name": "dup", "size_class": "small"})
     resp = await async_client.post("/api/v2/datasets", json={"name": "dup", "size_class": "small"})
