@@ -73,12 +73,48 @@ def test_layout_update_fields_are_optional():
 
 
 def test_shape_rejects_params_for_a_different_shape():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as rejected:
         Aperture(
             shape_type="circle",
             shape_params={"width": 1.0, "height": 2.0},
             centroid=(0.0, 0.0),
         )
+
+    assert [(error["loc"], error["msg"]) for error in rejected.value.errors()] == [
+        (("shape_params", "diameter"), "Field required"),
+        (("shape_params", "width"), "Extra inputs are not permitted"),
+        (("shape_params", "height"), "Extra inputs are not permitted"),
+    ]
+
+
+@pytest.mark.parametrize("shape_params", [[1.0, 2.0], 3])
+def test_shape_params_must_be_an_object(shape_params):
+    with pytest.raises(ValidationError) as rejected:
+        Aperture(shape_type="slot", shape_params=shape_params, centroid=(0.0, 0.0))
+
+    assert [(error["loc"], error["msg"]) for error in rejected.value.errors()] == [
+        (("shape_params",), "Input should be a valid dictionary or instance of SlotParams"),
+    ]
+
+
+def test_shape_type_must_be_a_known_shape():
+    with pytest.raises(ValidationError) as rejected:
+        Aperture(shape_type="hexagon", shape_params={"diameter": 1.0}, centroid=(0.0, 0.0))
+
+    assert [(error["loc"], error["type"]) for error in rejected.value.errors()] == [
+        (("shape_type",), "enum"),
+        (("shape_params",), "value_error"),
+    ]
+
+
+def test_shape_type_and_params_are_required():
+    with pytest.raises(ValidationError) as rejected:
+        Aperture(centroid=(0.0, 0.0))
+
+    assert [(error["loc"], error["type"]) for error in rejected.value.errors()] == [
+        (("shape_type",), "missing"),
+        (("shape_params",), "missing"),
+    ]
 
 
 def test_polygon_needs_three_vertices():

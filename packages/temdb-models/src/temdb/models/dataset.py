@@ -14,7 +14,9 @@ class DatasetBase(TEMDBRecord):
     description: str | None = Field(None, description="Human description of the dataset")
     specimen_id: str | None = Field(None, description="Specimen this dataset belongs to")
     size_class: SizeClass | None = Field(None, description="Planner size class; drives tile partitioning")
-    estimated_tile_count: int | None = Field(None, description="Estimated total tiles; resolves size_class when set")
+    estimated_tile_count: int | None = Field(
+        None, ge=0, description="Estimated total tiles; resolves size_class when set"
+    )
     metadata_json: dict[str, Any] | None = Field(None, description="Free-form metadata")
 
 

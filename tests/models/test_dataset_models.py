@@ -26,6 +26,11 @@ def test_dataset_create_size_class_optional_and_estimate_field():
     assert model.estimated_tile_count == 2_000_000_000
 
 
+def test_dataset_create_rejects_a_negative_estimate():
+    with pytest.raises(ValidationError):
+        DatasetCreate(name="x", estimated_tile_count=-1)
+
+
 def test_dataset_create_neither_size_nor_estimate_is_allowed_by_model():
     # The model permits both-None; the SERVER enforces the 'must set one' rule.
     model = DatasetCreate(name="x")
