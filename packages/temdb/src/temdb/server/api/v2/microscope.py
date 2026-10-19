@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -7,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import MicroscopeCreate, MicroscopeResponse, MicroscopeUpdate
 from temdb.server.dependencies import get_async_session
-from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import MicroscopeSQLModel
 
 from ..utils import drop_null_keys, merge_extra
@@ -16,13 +14,7 @@ microscope_api = APIRouter(tags=["Microscopes"])
 
 
 async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQLModel:
-    try:
-        key = uuid.UUID(microscope_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid microscope_id '{microscope_id}'")
-    scope = (
-        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == key))
-    ).one_or_none()
+    scope = await session.scalar(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == microscope_id))
     if scope is None:
         raise HTTPException(status_code=404, detail=f"Microscope '{microscope_id}' not found")
     return scope
@@ -31,13 +23,12 @@ async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQL
 @microscope_api.post("/microscopes", status_code=status.HTTP_201_CREATED, response_model=MicroscopeResponse)
 async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (
-        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == data.label))
+        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id))
     ).one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Microscope label '{data.label}' already exists")
+        raise HTTPException(status_code=409, detail=f"Microscope '{data.microscope_id}' already exists")
     scope = MicroscopeSQLModel(
-        microscope_id=data.microscope_id if data.microscope_id is not None else uuid7(),
-        label=data.label,
+        microscope_id=data.microscope_id,
         microscope_type=data.microscope_type,
         model=data.model,
         location=data.location,
@@ -58,23 +49,16 @@ async def list_microscopes(
     session: AsyncSession = Depends(get_async_session),
 ):
     rows = (
-        await session.scalars(select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.label).offset(skip).limit(limit))
+        await session.scalars(
+            select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.microscope_id).offset(skip).limit(limit)
+        )
     ).all()
     return rows
 
 
-@microscope_api.get("/microscopes/{id_or_label}", response_model=MicroscopeResponse)
-async def get_microscope(id_or_label: str, session: AsyncSession = Depends(get_async_session)):
-    try:
-        key = uuid.UUID(id_or_label)
-    except ValueError:
-        scope = (
-            await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.label == id_or_label))
-        ).one_or_none()
-        if scope is None:
-            raise HTTPException(status_code=404, detail=f"Microscope '{id_or_label}' not found")
-        return scope
-    return await _get_by_id(session, str(key))
+@microscope_api.get("/microscopes/{microscope_id}", response_model=MicroscopeResponse)
+async def get_microscope(microscope_id: str, session: AsyncSession = Depends(get_async_session)):
+    return await _get_by_id(session, microscope_id)
 
 
 @microscope_api.patch("/microscopes/{microscope_id}", response_model=MicroscopeResponse)

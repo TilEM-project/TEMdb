@@ -163,7 +163,7 @@ async def test_create_acquisition(
         "montage_id": montage_id_hr,
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": test_acquisition_task.task_id,
-        "microscope_id": str(test_microscope.microscope_id),
+        "microscope_id": test_microscope.microscope_id,
         "hardware_settings": {
             "camera_model": "Test Camera Create",
             "camera_serial": "CR12345",
@@ -208,7 +208,7 @@ async def test_create_acquisition_invalid_parent(
         "montage_id": "MONTAGE_INVALID",
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": invalid_task_id,
-        "microscope_id": str(test_microscope.microscope_id),
+        "microscope_id": test_microscope.microscope_id,
         "hardware_settings": {
             "camera_model": "c",
             "camera_serial": "1",
@@ -286,7 +286,7 @@ async def test_acquisition_extra_fields_round_trip(
             "montage_id": montage_id_hr,
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "hardware_settings": {
                 "camera_model": "Test Camera Extra",
                 "camera_serial": "EX12345",
@@ -339,7 +339,7 @@ async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acqu
         "montage_id": "MONTAGE_DELETE",
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": test_acquisition_task.task_id,
-        "microscope_id": str(test_microscope.microscope_id),
+        "microscope_id": test_microscope.microscope_id,
         "hardware_settings": {
             "camera_model": "c",
             "camera_serial": "1",
@@ -910,7 +910,7 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
             "montage_id": "M_E2E",
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "dataset_id": ds["dataset_id"],
             "hardware_settings": {
                 "camera_model": "C",

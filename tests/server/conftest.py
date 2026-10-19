@@ -284,7 +284,7 @@ async def test_acquisition_task(
 
 @pytest.fixture(scope="function")
 async def test_microscope(init_db, test_db_manager: DatabaseManager):
-    return await _seed(test_db_manager, MicroscopeSQLModel(label="TEST_SCOPE_001"))
+    return await _seed(test_db_manager, MicroscopeSQLModel(microscope_id="TEST_SCOPE_001"))
 
 
 @pytest.fixture(scope="function")

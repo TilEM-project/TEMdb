@@ -176,7 +176,7 @@ class TestDataIntegration:
                 created_at=datetime.now(timezone.utc),
             )
             session.add(dataset)
-            microscope = MicroscopeSQLModel(label=f"SCOPE_{task.task_id}")
+            microscope = MicroscopeSQLModel(microscope_id=f"SCOPE_{task.task_id}")
             session.add(microscope)
             await session.commit()
             await session.refresh(dataset)

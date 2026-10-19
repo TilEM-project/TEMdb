@@ -21,8 +21,8 @@ MINIMAL_ACQ_PAYLOAD = {
 }
 
 
-async def _create_microscope(async_client: AsyncClient, label: str) -> dict:
-    resp = await async_client.post("/api/v2/microscopes", json={"label": label})
+async def _create_microscope(async_client: AsyncClient, microscope_id: str) -> dict:
+    resp = await async_client.post("/api/v2/microscopes", json={"microscope_id": microscope_id})
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -81,23 +81,19 @@ async def test_lc_current_404_when_none(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_microscope_duplicate_label_409(async_client: AsyncClient):
+async def test_microscope_duplicate_id_409(async_client: AsyncClient):
     await _create_microscope(async_client, "TEM-04")
-    r = await async_client.post("/api/v2/microscopes", json={"label": "TEM-04"})
+    r = await async_client.post("/api/v2/microscopes", json={"microscope_id": "TEM-04"})
     assert r.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_microscope_get_by_id_or_label(async_client: AsyncClient):
+async def test_microscope_get_found(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-05")
 
-    by_id = await async_client.get(f"/api/v2/microscopes/{scope['microscope_id']}")
-    assert by_id.status_code == 200
-    assert by_id.json()["label"] == "TEM-05"
-
-    by_label = await async_client.get("/api/v2/microscopes/TEM-05")
-    assert by_label.status_code == 200
-    assert by_label.json()["microscope_id"] == scope["microscope_id"]
+    found = await async_client.get("/api/v2/microscopes/TEM-05")
+    assert found.status_code == 200
+    assert found.json()["id"] == scope["id"]
 
     missing = await async_client.get("/api/v2/microscopes/NO-SUCH-SCOPE")
     assert missing.status_code == 404
@@ -237,7 +233,7 @@ async def test_acquisition_create_carries_lc_id(
         await async_client.post(
             "/api/v2/lens-corrections",
             json={
-                "microscope_id": str(test_microscope.microscope_id),
+                "microscope_id": test_microscope.microscope_id,
                 "magnification": 20000,
                 "started_at": "2026-06-10T00:00:00Z",
             },
@@ -251,7 +247,7 @@ async def test_acquisition_create_carries_lc_id(
             "montage_id": "MONTAGE_LC_001",
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "kind": "montage",
             "lc_id": lc["lc_id"],
         },
@@ -272,7 +268,7 @@ async def test_acquisition_create_unknown_lc_id_404(
             "montage_id": "MONTAGE_LC_002",
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "kind": "montage",
             "lc_id": str(uuid.uuid4()),
         },

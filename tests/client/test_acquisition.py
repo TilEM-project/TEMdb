@@ -9,7 +9,7 @@ from temdb.models import AcquisitionCreate, AcquisitionUpdate
 
 API = "http://test/api/v2"
 NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
-MICROSCOPE_ID = str(uuid4())
+MICROSCOPE_ID = "TEM-01"
 
 
 def _resource():

@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -8,10 +7,10 @@ from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
 
 async def test_lens_correction_roundtrip(session):
-    scope = MicroscopeSQLModel(label="TEM-01")
+    scope = MicroscopeSQLModel(microscope_id="TEM-01")
     session.add(scope)
     await session.flush()
-    assert scope.microscope_id is not None
+    assert scope.id is not None
     lc = LensCorrectionSQLModel(
         microscope_id=scope.microscope_id,
         magnification=20000,
@@ -26,7 +25,7 @@ async def test_lens_correction_roundtrip(session):
 
 async def test_lens_correction_requires_microscope(session):
     lc = LensCorrectionSQLModel(
-        microscope_id=uuid.uuid4(),
+        microscope_id="TEM-01",
         magnification=20000,
         started_at=datetime.now(timezone.utc),
     )

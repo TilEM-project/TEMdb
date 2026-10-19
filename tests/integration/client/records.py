@@ -14,7 +14,7 @@ from temdb.models import (
 
 
 def acquisition_payload(
-    acquisition_id: str, roi_id: str, microscope_id: uuid.UUID, dataset_id: uuid.UUID
+    acquisition_id: str, roi_id: str, microscope_id: str, dataset_id: uuid.UUID
 ) -> AcquisitionCreate:
     return AcquisitionCreate(
         acquisition_id=acquisition_id,
@@ -133,7 +133,7 @@ class Records:
     async def microscope(self):
         return await self._once(
             "microscope",
-            lambda: self.client.microscope.create(MicroscopeCreate(label="scope-1")),
+            lambda: self.client.microscope.create(MicroscopeCreate(microscope_id="scope-1")),
         )
 
     async def dataset(self):

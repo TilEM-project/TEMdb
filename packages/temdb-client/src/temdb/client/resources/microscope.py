@@ -12,9 +12,9 @@ class MicroscopeResource(BaseResource):
         payload = await self._post("microscopes", data=data.model_dump(exclude_unset=True, mode="json"))
         return MicroscopeResponse.model_validate(payload)
 
-    async def get(self, id_or_label: str) -> MicroscopeResponse:
-        """Get a microscope by UUID microscope_id or unique label."""
-        return MicroscopeResponse.model_validate(await self._get(f"microscopes/{id_or_label}"))
+    async def get(self, microscope_id: str) -> MicroscopeResponse:
+        """Get a microscope by its microscope_id."""
+        return MicroscopeResponse.model_validate(await self._get(f"microscopes/{microscope_id}"))
 
     async def list(self, skip: int = 0, limit: int = 50) -> list[MicroscopeResponse]:
         """List microscopes."""

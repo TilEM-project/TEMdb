@@ -14,7 +14,7 @@ from temdb.models import (
 
 API = "http://test/api/v2"
 
-SCOPE_ID = str(uuid.uuid4())
+SCOPE_ID = "TEM-01"
 LC_ID = str(uuid.uuid4())
 NOW = datetime(2026, 6, 10, tzinfo=timezone.utc)
 
@@ -31,8 +31,8 @@ def _scope_resource():
 
 def _scope_payload(**extra) -> dict:
     return {
-        "microscope_id": SCOPE_ID,
-        "label": "TEM-01",
+        "id": 1,
+        "microscope_id": "TEM-01",
         "microscope_type": "TEM",
         "created_at": NOW.isoformat(),
         "updated_at": NOW.isoformat(),

@@ -8,7 +8,7 @@ from .base import TEMDBRecord
 
 
 class LensCorrectionBase(TEMDBRecord):
-    microscope_id: uuid.UUID
+    microscope_id: str
     magnification: int
     started_at: datetime
     source_run_id: uuid.UUID | None = None

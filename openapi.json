@@ -132,7 +132,6 @@
           },
           "microscope_id": {
             "description": "Microscope that executes this run",
-            "format": "uuid",
             "title": "Microscope Id",
             "type": "string"
           },
@@ -631,7 +630,6 @@
           },
           "microscope_id": {
             "description": "Microscope that executed this run",
-            "format": "uuid",
             "title": "Microscope Id",
             "type": "string"
           },
@@ -3011,7 +3009,6 @@
             "type": "integer"
           },
           "microscope_id": {
-            "format": "uuid",
             "title": "Microscope Id",
             "type": "string"
           },
@@ -3162,7 +3159,6 @@
             "type": "integer"
           },
           "microscope_id": {
-            "format": "uuid",
             "title": "Microscope Id",
             "type": "string"
           },
@@ -3476,11 +3472,6 @@
             "description": "Free-form fields outside the schema; an update merges keys and null removes one",
             "title": "Extra"
           },
-          "label": {
-            "description": "Unique human handle, e.g. 'TEM-01'",
-            "title": "Label",
-            "type": "string"
-          },
           "location": {
             "anyOf": [
               {
@@ -3494,17 +3485,9 @@
             "title": "Location"
           },
           "microscope_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional client-supplied UUIDv7",
-            "title": "Microscope Id"
+            "description": "Unique readable identifier, e.g. 'T1'",
+            "title": "Microscope Id",
+            "type": "string"
           },
           "microscope_type": {
             "default": "TEM",
@@ -3538,7 +3521,7 @@
           }
         },
         "required": [
-          "label"
+          "microscope_id"
         ],
         "title": "MicroscopeCreate",
         "type": "object"
@@ -3563,10 +3546,10 @@
             "description": "Free-form fields outside the schema; an update merges keys and null removes one",
             "title": "Extra"
           },
-          "label": {
-            "description": "Unique human handle, e.g. 'TEM-01'",
-            "title": "Label",
-            "type": "string"
+          "id": {
+            "description": "Internal integer primary key",
+            "title": "Id",
+            "type": "integer"
           },
           "location": {
             "anyOf": [
@@ -3581,7 +3564,7 @@
             "title": "Location"
           },
           "microscope_id": {
-            "format": "uuid",
+            "description": "Unique readable identifier, e.g. 'T1'",
             "title": "Microscope Id",
             "type": "string"
           },
@@ -3629,8 +3612,8 @@
           }
         },
         "required": [
+          "id",
           "microscope_id",
-          "label",
           "created_at"
         ],
         "title": "MicroscopeResponse",
@@ -10413,7 +10396,6 @@
             "schema": {
               "anyOf": [
                 {
-                  "format": "uuid",
                   "type": "string"
                 },
                 {
@@ -10543,7 +10525,6 @@
             "name": "microscope_id",
             "required": true,
             "schema": {
-              "format": "uuid",
               "title": "Microscope Id",
               "type": "string"
             }
@@ -10777,16 +10758,16 @@
         ]
       }
     },
-    "/api/v2/microscopes/{id_or_label}": {
+    "/api/v2/microscopes/{microscope_id}": {
       "get": {
-        "operationId": "get_microscope_api_v2_microscopes__id_or_label__get",
+        "operationId": "get_microscope_api_v2_microscopes__microscope_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "id_or_label",
+            "name": "microscope_id",
             "required": true,
             "schema": {
-              "title": "Id Or Label",
+              "title": "Microscope Id",
               "type": "string"
             }
           }
@@ -10817,9 +10798,7 @@
         "tags": [
           "Microscopes"
         ]
-      }
-    },
-    "/api/v2/microscopes/{microscope_id}": {
+      },
       "patch": {
         "operationId": "update_microscope_api_v2_microscopes__microscope_id__patch",
         "parameters": [

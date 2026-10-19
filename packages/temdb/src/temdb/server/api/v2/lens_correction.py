@@ -59,7 +59,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
 
 @lens_correction_api.get("/lens-corrections", response_model=list[LensCorrectionResponse])
 async def list_lens_corrections(
-    microscope_id: uuid.UUID | None = Query(None),
+    microscope_id: str | None = Query(None),
     magnification: int | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -83,7 +83,7 @@ async def list_lens_corrections(
 # NOTE: /current must be declared before /{lc_id} so the literal path wins.
 @lens_correction_api.get("/lens-corrections/current", response_model=LensCorrectionResponse)
 async def get_current_lens_correction(
-    microscope_id: uuid.UUID = Query(...),
+    microscope_id: str = Query(...),
     magnification: int = Query(...),
     session: AsyncSession = Depends(get_async_session),
 ):
