@@ -112,11 +112,17 @@ uv run ruff format .
 
 ### Pre-commit Hooks
 
+Install the hooks once per clone with `uv run pre-commit install`; it covers every worktree of the clone. Until
+then nothing runs on commit.
+
 Pre-commit hooks run automatically on `git commit`:
 - Trailing whitespace and EOF fixes
 - YAML/TOML validation
 - Ruff linting and formatting
 - Debug statement detection
+- Regenerating `docs/` (`generate_schema_diagram.py`) and `openapi.json` (`temdb-openapi`) when server or model
+  source changes. CI fails if either is stale. If a hook rewrites them, the commit stops: `git add` the regenerated
+  files and commit again.
 
 Run manually: `uv run pre-commit run --all-files`
 
