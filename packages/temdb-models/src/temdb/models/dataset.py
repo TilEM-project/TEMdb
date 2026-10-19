@@ -27,10 +27,10 @@ class DatasetCreate(DatasetBase):
 
 
 class DatasetUpdate(TEMDBRecord):
-    description: str | None = None
-    status: DatasetStatus | None = None
-    size_class: SizeClass | None = None
-    metadata_json: dict[str, Any] | None = None
+    description: str | None = Field(None, description="Human description of the dataset")
+    status: DatasetStatus = Field(None, description="Lifecycle status")
+    size_class: SizeClass = Field(None, description="Planner size class; drives tile partitioning")
+    metadata_json: dict[str, Any] | None = Field(None, description="Free-form metadata")
 
 
 class DatasetResponse(DatasetBase):

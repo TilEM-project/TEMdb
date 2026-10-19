@@ -74,7 +74,7 @@ class SectionPosition(TEMDBModel):
 class SectionBase(TEMDBRecord):
     """Base section fields."""
 
-    section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
+    section_number: int = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
     optical_image: dict[str, OpticalImage] | None = Field(
         None,
@@ -106,7 +106,8 @@ class SectionCreate(SectionBase):
 class SectionUpdate(SectionBase):
     """Schema for updating a section."""
 
-    condition: str | None = Field(None, description="Physical condition of the section")
+    timestamp: datetime = Field(None, description="Timestamp of section creation/cutting")
+    condition: str = Field(None, description="Physical condition of the section")
     condition_reason: str | None = Field(None, description="Reason for the current condition")
 
     @model_validator(mode="before")
@@ -118,8 +119,8 @@ class SectionUpdate(SectionBase):
 
     @field_validator("condition")
     @classmethod
-    def validate_condition(cls, value: str | None) -> str | None:
-        if value is not None and value not in SECTION_CONDITIONS:
+    def validate_condition(cls, value: str) -> str:
+        if value not in SECTION_CONDITIONS:
             raise ValueError(f"condition must be one of {SECTION_CONDITIONS}")
         return value
 

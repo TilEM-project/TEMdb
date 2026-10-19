@@ -112,7 +112,7 @@ class SubstrateLayoutCreate(SubstrateLayoutBase):
 class SubstrateLayoutUpdate(SubstrateLayoutBase):
     """Schema for updating a substrate layout."""
 
-    media_type: SubstrateType | None = Field(None, description="Type of substrate")
+    media_type: SubstrateType = Field(None, description="Type of substrate")
 
 
 class SubstrateLayoutResponse(SubstrateLayoutBase):

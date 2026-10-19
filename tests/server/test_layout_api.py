@@ -84,6 +84,16 @@ async def test_layout_shape_params_that_are_not_an_object_are_rejected(async_cli
 
 
 @pytest.mark.asyncio
+async def test_layout_patch_rejects_null_media_type(async_client: AsyncClient):
+    await async_client.post("/api/v2/layouts", json=_layout_payload("LAYOUT_NULL_MEDIA"))
+
+    patched = await async_client.patch("/api/v2/layouts/LAYOUT_NULL_MEDIA", json={"media_type": None})
+
+    assert patched.status_code == 422
+    assert [error["loc"] for error in patched.json()["context"]["errors"]] == [["body", "media_type"]]
+
+
+@pytest.mark.asyncio
 async def test_layout_cannot_be_deleted_when_it_has_substrates(async_client: AsyncClient, test_layout, test_substrate):
     response = await async_client.delete(f"/api/v2/layouts/{test_layout.layout_id}")
     assert response.status_code == 409

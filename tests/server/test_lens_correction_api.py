@@ -116,6 +116,16 @@ async def test_microscope_list_and_patch(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_microscope_patch_rejects_null_for_a_required_field(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-10")
+
+    patched = await async_client.patch(f"/api/v2/microscopes/{scope['microscope_id']}", json={"microscope_type": None})
+
+    assert patched.status_code == 422
+    assert [error["loc"] for error in patched.json()["context"]["errors"]] == [["body", "microscope_type"]]
+
+
+@pytest.mark.asyncio
 async def test_lc_create_unknown_microscope_404(async_client: AsyncClient):
     r = await async_client.post(
         "/api/v2/lens-corrections",

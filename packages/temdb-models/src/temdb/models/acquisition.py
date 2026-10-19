@@ -63,8 +63,8 @@ class StorageLocationCreate(TEMDBModel):
 
 
 class AcquisitionBase(TEMDBRecord):
-    hardware_settings: HardwareParams | None = None
-    acquisition_settings: AcquisitionParams | None = None
+    hardware_settings: HardwareParams = Field(None, description="Hardware settings of acquisition")
+    acquisition_settings: AcquisitionParams = Field(None, description="Acquisition settings of acquisition")
     calibration_info: Calibration | None = None
     tilt_angle_deg: float | None = Field(None, description="Tilt angle of acquisition in degrees")
     storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
