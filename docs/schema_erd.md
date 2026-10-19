@@ -37,7 +37,7 @@ erDiagram
         string specimen_id
         string roi_id
         string acquisition_task_id
-        UUID microscope_id
+        string microscope_id
         UUID dataset_id
         string kind
         UUID lc_id
@@ -116,7 +116,7 @@ erDiagram
     }
     LensCorrectionSQLModel {
         UUID lc_id
-        UUID microscope_id
+        string microscope_id
         int magnification
         datetime started_at
         UUID source_run_id
@@ -128,8 +128,7 @@ erDiagram
         object extra
     }
     MicroscopeSQLModel {
-        UUID microscope_id
-        string label
+        string microscope_id
         string microscope_type
         string model
         string location

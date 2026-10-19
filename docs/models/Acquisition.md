@@ -10,7 +10,7 @@
 | `specimen_id` | string | Specimen identifier |
 | `roi_id` | string | ROI identifier |
 | `acquisition_task_id` | string | Parent task identifier |
-| `microscope_id` | UUID | Microscope that executed this run |
+| `microscope_id` | string | Microscope that executed this run |
 | `dataset_id` | UUID | Dataset this acquisition belongs to (UUIDv7) |
 | `kind` | string | Run kind: montage or lens_correction |
 | `lc_id` | UUID | Lens correction applied to this run |

@@ -4,8 +4,7 @@
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `microscope_id` | UUID | Optional client-supplied UUIDv7 |
-| `label` | string | Unique human handle, e.g. 'TEM-01' |
+| `microscope_id` | string | Unique readable identifier, e.g. 'T1' |
 | `microscope_type` | string | Instrument type |
 | `model` | string | Manufacturer model |
 | `location` | string | Physical location |

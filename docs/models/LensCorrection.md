@@ -5,7 +5,7 @@
 | Field Name | Type | Description |
 |------------|------|-------------|
 | `lc_id` | UUID | Optional client-supplied UUIDv7 |
-| `microscope_id` | UUID |  |
+| `microscope_id` | string |  |
 | `magnification` | int |  |
 | `started_at` | datetime |  |
 | `source_run_id` | UUID |  |
