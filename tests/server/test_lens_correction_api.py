@@ -185,6 +185,24 @@ async def test_lc_create_honors_client_lc_id(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_lc_create_duplicate_lc_id_409(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-09")
+    payload = {
+        "lc_id": str(uuid.uuid4()),
+        "microscope_id": scope["microscope_id"],
+        "magnification": 4000,
+        "started_at": "2026-06-10T00:00:00Z",
+    }
+    assert (await async_client.post("/api/v2/lens-corrections", json=payload)).status_code == 201
+
+    duplicate = await async_client.post("/api/v2/lens-corrections", json=payload)
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error_code"] == "CONFLICT"
+    assert payload["lc_id"] in duplicate.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-09")
     create_response = await async_client.post(
