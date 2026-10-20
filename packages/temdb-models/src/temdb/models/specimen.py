@@ -4,12 +4,10 @@ from typing import Any
 from pydantic import ConfigDict, Field
 
 from .base import TEMDBModel
-from .file_storage import FileObject
 
 
 class SpecimenBase(TEMDBModel):
     description: str | None = Field(None, description="Description of specimen, used for additional notes.")
-    specimen_images: dict[str, FileObject] | None = Field(None, description="Images of specimen")
     functional_imaging_metadata: dict[str, Any] | None = Field(
         None,
         description="Functional imaging metadata of specimen, optional links to other datasets",

@@ -78,29 +78,3 @@ async def test_get_specimen_blocks(async_client: AsyncClient, test_specimen, tes
     assert response_data[0]["specimen_id"] == test_specimen.specimen_id
     assert response_data[0]["block_id"] == test_block.block_id
     assert response_data[0]["id"] == test_block.id
-
-
-@pytest.mark.asyncio
-async def test_update_specimen_images(async_client: AsyncClient, test_specimen):
-    """Test storing and clearing specimen images as named file objects."""
-    images = {
-        "overview": {
-            "protocol": "s3",
-            "server": "http://localhost:9000",
-            "bucket": "specimens",
-            "key": "overview.jpg",
-        }
-    }
-    response = await async_client.patch(
-        f"/api/v2/specimens/{test_specimen.specimen_id}",
-        json={"specimen_images": images},
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["specimen_images"] == images
-
-    clear_response = await async_client.patch(
-        f"/api/v2/specimens/{test_specimen.specimen_id}",
-        json={"specimen_images": {}},
-    )
-    assert clear_response.status_code == 200, clear_response.text
-    assert clear_response.json()["specimen_images"] == {}
