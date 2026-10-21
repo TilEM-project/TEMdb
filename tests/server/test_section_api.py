@@ -197,6 +197,21 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_create_section_with_unknown_substrate_is_not_found(async_client: AsyncClient, test_cutting_session):
+    section_data = {
+        "cutting_session_id": test_cutting_session.cutting_session_id,
+        "section_number": 1,
+        "media_id": "NON_EXISTENT_MEDIA_ID",
+        "aperture_index": 0,
+    }
+
+    response = await async_client.post("/api/v2/sections", json=section_data)
+    assert response.status_code == 404
+    assert "Substrate" in response.json()["detail"]
+    assert "not found" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, test_cutting_session, test_layout):
     """Test creating sections with duplicate IDs in the same batch."""
     timestamp = int(datetime.now(timezone.utc).timestamp())

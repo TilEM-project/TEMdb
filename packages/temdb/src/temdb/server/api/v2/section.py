@@ -251,8 +251,12 @@ async def create_section(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
         )
-    if validation_row[1] is not None:
-        check_aperture_index(section_data.aperture_index, validation_row[1], section_data.media_id)
+    if validation_row[1] is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Substrate '{section_data.media_id}' not found",
+        )
+    check_aperture_index(section_data.aperture_index, validation_row[1], section_data.media_id)
     new_section = SectionSQLModel(
         section_id=new_section_id,
         section_number=section_data.section_number,
