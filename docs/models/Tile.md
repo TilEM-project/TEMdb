@@ -6,12 +6,13 @@
 |------------|------|-------------|
 | `dataset_id` | UUID |  |
 | `run_id` | UUID |  |
+| `row` | int |  |
+| `col` | int |  |
+| `retake` | int | Capture number at this position within the run; 0 is the first |
 | `raster_index` | int | Index of the tile in the raster |
-| `tile_id` | UUID | Unique tile identifier |
 | `stage_x_nm` | float |  |
 | `stage_y_nm` | float |  |
-| `montage_row` | int |  |
-| `montage_col` | int |  |
+| `stage_z_nm` | float |  |
 | `focus_score` | float | Focus score of the tile |
 | `min_value` | float | Minimum pixel value of the tile |
 | `max_value` | float | Maximum pixel value of the tile |
@@ -23,4 +24,3 @@
 | `supertile_raster_position` | object | Row, column raster position of the supertile |
 | `created_at` | datetime |  |
 | `updated_at` | datetime |  |
-| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |

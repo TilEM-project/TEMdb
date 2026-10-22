@@ -1,10 +1,13 @@
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from temdb.models import SectionQuality
-from temdb.server.sqlmodels import ROISQLModel, SectionSQLModel
+from temdb.server.api.v2.section import mark_apertures_used
+from temdb.server.sqlmodels import ROISQLModel, SectionSQLModel, SubstrateSQLModel
 
 
 @pytest.mark.asyncio
@@ -509,3 +512,18 @@ async def test_list_sections_by_quality_pages_matches(async_client: AsyncClient,
 
     response = await async_client.get("/api/v2/sections", params={"quality": SectionQuality.BROKEN.value, "limit": 1})
     assert [section["section_id"] for section in response.json()] == [broken.section_id]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_section_creates_on_one_substrate_do_not_deadlock(test_db_manager, test_substrate):
+    async with test_db_manager.async_session_factory() as inserting, test_db_manager.async_session_factory() as marking:
+        try:
+            await inserting.execute(
+                select(SubstrateSQLModel.id)
+                .where(SubstrateSQLModel.media_id == test_substrate.media_id)
+                .with_for_update(read=True, key_share=True)
+            )
+            await asyncio.wait_for(mark_apertures_used(marking, test_substrate.media_id, [0]), timeout=5)
+        finally:
+            await inserting.rollback()
+            await marking.rollback()

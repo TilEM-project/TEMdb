@@ -177,7 +177,7 @@ class AcquisitionResource(BaseResource):
         return TileDeleteAllResult.model_validate(await self._request("DELETE", endpoint))
 
     async def delete_tiles_bulk(self, acquisition_id: str, tile_ids: builtins.list[str]) -> TileBulkDeleteResult:
-        """Deletes specified tiles from an acquisition; IDs with no tile are listed in not_found.
+        """Deletes the acquisition's tiles with these tile_ids; tile_ids not found in it are listed in not_found.
 
         Raises TEMdbConflictError if the acquisition is marked 'complete'.
         """
@@ -204,7 +204,7 @@ class AcquisitionResource(BaseResource):
     ) -> builtins.list[TileResponse] | builtins.list[dict[str, Any]]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
         all_tiles: builtins.list = []
-        cursor: int | None = None
+        cursor: str | None = None
         while True:
             page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
             tiles, metadata = (

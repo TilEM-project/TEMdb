@@ -61,11 +61,12 @@ def _acquisition_payload(**extra) -> dict:
 
 def _tile_payload(**extra) -> dict:
     return {
-        "tile_id": str(uuid4()),
+        "tile_id": "M001_r000_c000",
         "acquisition_id": "ACQ001",
         "raster_index": 0,
         "stage_position": {"x": 0.0, "y": 0.0},
         "raster_position": {"row": 0, "col": 0},
+        "retake": 0,
         "focus_score": 0.95,
         "min_value": 5.0,
         "max_value": 255.0,
@@ -156,8 +157,8 @@ async def test_add_tile_accepts_kwargs_via_decorator():
 async def test_update_tile_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _tile_payload(focus_score=0.5)
-    out = await res.update_tile("ACQ001", "T1", focus_score=0.5)
-    assert request.await_args.args[:2] == ("PATCH", "acquisitions/ACQ001/tiles/T1")
+    out = await res.update_tile("ACQ001", "M001_r000_c000", focus_score=0.5)
+    assert request.await_args.args[:2] == ("PATCH", "acquisitions/ACQ001/tiles/M001_r000_c000")
     assert request.await_args.kwargs["json"] == {"focus_score": 0.5}
     assert out.focus_score == 0.5
 

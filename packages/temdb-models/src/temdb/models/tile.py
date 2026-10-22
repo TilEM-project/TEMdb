@@ -1,9 +1,8 @@
-import uuid
 from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel, TEMDBRecord
+from .base import TEMDBModel
 from .enums import MatchPosition
 from .utils.uri import URI
 
@@ -11,6 +10,7 @@ from .utils.uri import URI
 class StagePosition(TEMDBModel):
     x: float = Field(..., description="X axis stage position in nm")
     y: float = Field(..., description="Y axis stage position in nm")
+    z: float | None = Field(None, description="Z axis stage position in nm")
 
 
 class RasterPosition(TEMDBModel):
@@ -35,13 +35,12 @@ class Matcher(TEMDBModel):
     qY: list[float] = Field(..., description="Y position of the points in the reference tile")
 
 
-class TileBase(TEMDBRecord):
+class TileBase(TEMDBModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     stage_position: StagePosition | None = Field(
         None, description="Stage position of the tile in stage coordinates in nm"
     )
-    raster_position: RasterPosition | None = Field(None, description="Row, column raster position of the tile")
     focus_score: float | None = Field(None, description="Focus score of the tile")
     min_value: float | None = Field(None, description="Minimum pixel value of the tile")
     max_value: float | None = Field(None, description="Maximum pixel value of the tile")
@@ -56,27 +55,27 @@ class TileBase(TEMDBRecord):
 
 
 class TileCreate(TileBase):
-    tile_id: uuid.UUID | None = Field(None, description="Unique tile identifier (minted server-side if omitted)")
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
+    retake: int = Field(0, ge=0, le=32767, description="Capture number at this position within the run; 0 is the first")
     image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
 
 class TileUpdate(TileBase):
     stage_position: StagePosition = Field(None, description="Stage position of the tile in stage coordinates in nm")
-    raster_position: RasterPosition = Field(None, description="Row, column raster position of the tile")
     image_path: URI.Type = Field(None, description="URL to the image of the tile")
 
 
 class TileResponse(TileBase):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
-    tile_id: str = Field(..., description="Unique tile identifier")
+    tile_id: str = Field(..., description="{montage_id}_r{row:03d}_c{col:03d}, plus _a{retake} for a retake")
     acquisition_id: str = Field(..., description="Parent acquisition ID")
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
+    retake: int = Field(..., description="Capture number at this position within the run; 0 is the first")
     image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
     created_at: datetime | None = None
@@ -85,9 +84,9 @@ class TileResponse(TileBase):
 
 
 class TileBulkDeleteResult(TEMDBModel):
-    requested: int = Field(..., description="Distinct tile IDs in the request")
+    requested: int = Field(..., description="Distinct tile_ids in the request")
     deleted: int = Field(..., description="Tiles deleted")
-    not_found: list[str] = Field(..., description="Requested IDs with no tile in this acquisition")
+    not_found: list[str] = Field(..., description="Requested tile_ids not found in this acquisition")
 
 
 class TileDeleteAllResult(TEMDBModel):

@@ -339,14 +339,13 @@ async def test_tile(
     return await _seed(
         test_db_manager,
         TileSQLModel(
-            tile_id=uuid7(),
             dataset_id=test_dataset.dataset_id,
             run_id=test_acquisition.run_id,
             raster_index=1,
             stage_x_nm=100.0,
             stage_y_nm=200.0,
-            montage_row=0,
-            montage_col=0,
+            row=0,
+            col=0,
             focus_score=0.95,
             min_value=0,
             max_value=255,

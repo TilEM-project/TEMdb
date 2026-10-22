@@ -148,12 +148,13 @@ erDiagram
     TileSQLModel {
         UUID dataset_id
         UUID run_id
+        int row
+        int col
+        int retake
         int raster_index
-        UUID tile_id
         float stage_x_nm
         float stage_y_nm
-        int montage_row
-        int montage_col
+        float stage_z_nm
         float focus_score
         float min_value
         float max_value
@@ -163,6 +164,5 @@ erDiagram
         object matcher
         string supertile_id
         object supertile_raster_position
-        object extra
     }
 ```

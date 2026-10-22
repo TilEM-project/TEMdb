@@ -14,11 +14,12 @@ API = "http://test/api/v2"
 
 def _tile(raster_index: int) -> dict:
     return {
-        "tile_id": f"018f-{raster_index}",
+        "tile_id": f"M_r000_c{raster_index:03d}",
         "acquisition_id": "ACQ1",
         "raster_index": raster_index,
         "stage_position": {"x": 0.0, "y": 0.0},
         "raster_position": {"row": 0, "col": raster_index},
+        "retake": 0,
         "focus_score": 0.9,
         "min_value": 0,
         "max_value": 255,
@@ -64,6 +65,29 @@ async def test_get_all_tiles_forwards_bbox_params():
     assert first_call.kwargs["params"]["x_max"] == 20.0
     assert second_call.kwargs["params"]["x_min"] == 10.0
     assert second_call.kwargs["params"]["x_max"] == 20.0
+
+
+@pytest.mark.asyncio
+async def test_get_all_tiles_rejects_unknown_keyword():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+
+    with pytest.raises(TypeError):
+        await res.get_all_tiles("ACQ1", xmin=10.0)
+
+    request.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_all_tiles_returns_requested_fields():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {"tiles": [{"tile_id": "M_r000_c000"}], "metadata": {"has_more": False}}
+
+    tiles = await res.get_all_tiles("ACQ1", fields=["tile_id"])
+
+    assert request.await_args.kwargs["params"]["fields"] == ["tile_id"]
+    assert tiles == [{"tile_id": "M_r000_c000"}]
 
 
 @pytest.mark.asyncio
@@ -159,7 +183,7 @@ async def test_update_tile_sends_patch_and_returns_model():
     method, endpoint = request.await_args.args[0], request.await_args.args[1]
     assert (method, endpoint) == ("PATCH", "acquisitions/ACQ1/tiles/018f-7")
     assert request.await_args.kwargs["json"] == {"focus_score": 0.95}
-    assert out.tile_id == "018f-7"
+    assert out.tile_id == "M_r000_c007"
     assert out.focus_score == 0.9
 
 
@@ -183,7 +207,7 @@ async def test_update_tiles_bulk_sends_patch_and_returns_models():
         "018f-0": {"focus_score": 0.91},
         "018f-1": {"stage_position": {"x": 10.0, "y": 20.0}},
     }
-    assert [tile.tile_id for tile in out] == ["018f-0", "018f-1"]
+    assert [tile.tile_id for tile in out] == ["M_r000_c000", "M_r000_c001"]
 
 
 @pytest.mark.asyncio

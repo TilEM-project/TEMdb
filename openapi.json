@@ -5338,6 +5338,18 @@
             "description": "Y axis stage position in nm",
             "title": "Y",
             "type": "number"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Z axis stage position in nm",
+            "title": "Z"
           }
         },
         "required": [
@@ -5908,7 +5920,7 @@
             "type": "integer"
           },
           "not_found": {
-            "description": "Requested IDs with no tile in this acquisition",
+            "description": "Requested tile_ids not found in this acquisition",
             "items": {
               "type": "string"
             },
@@ -5916,7 +5928,7 @@
             "type": "array"
           },
           "requested": {
-            "description": "Distinct tile IDs in the request",
+            "description": "Distinct tile_ids in the request",
             "title": "Requested",
             "type": "integer"
           }
@@ -5932,19 +5944,6 @@
       "TileCreate": {
         "additionalProperties": false,
         "properties": {
-          "extra": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
-            "title": "Extra"
-          },
           "focus_score": {
             "anyOf": [
               {
@@ -6022,6 +6021,14 @@
             "$ref": "#/components/schemas/RasterPosition",
             "description": "Row, column raster position of the tile"
           },
+          "retake": {
+            "default": 0,
+            "description": "Capture number at this position within the run; 0 is the first",
+            "maximum": 32767.0,
+            "minimum": 0.0,
+            "title": "Retake",
+            "type": "integer"
+          },
           "stage_position": {
             "$ref": "#/components/schemas/StagePosition",
             "description": "Stage position of the tile in stage coordinates in nm"
@@ -6060,26 +6067,13 @@
               }
             ],
             "description": "Row, column raster position of the supertile"
-          },
-          "tile_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Unique tile identifier (minted server-side if omitted)",
-            "title": "Tile Id"
           }
         },
         "required": [
           "stage_position",
-          "raster_position",
           "image_path",
-          "raster_index"
+          "raster_index",
+          "raster_position"
         ],
         "title": "TileCreate",
         "type": "object"
@@ -6153,19 +6147,6 @@
             ],
             "title": "Created At"
           },
-          "extra": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
-            "title": "Extra"
-          },
           "focus_score": {
             "anyOf": [
               {
@@ -6243,6 +6224,11 @@
             "$ref": "#/components/schemas/RasterPosition",
             "description": "Row, column raster position of the tile"
           },
+          "retake": {
+            "description": "Capture number at this position within the run; 0 is the first",
+            "title": "Retake",
+            "type": "integer"
+          },
           "stage_position": {
             "$ref": "#/components/schemas/StagePosition",
             "description": "Stage position of the tile in stage coordinates in nm"
@@ -6283,7 +6269,7 @@
             "description": "Row, column raster position of the supertile"
           },
           "tile_id": {
-            "description": "Unique tile identifier",
+            "description": "{montage_id}_r{row:03d}_c{col:03d}, plus _a{retake} for a retake",
             "title": "Tile Id",
             "type": "string"
           },
@@ -6314,11 +6300,12 @@
         },
         "required": [
           "stage_position",
-          "raster_position",
           "image_path",
           "tile_id",
           "acquisition_id",
-          "raster_index"
+          "raster_index",
+          "raster_position",
+          "retake"
         ],
         "title": "TileResponse",
         "type": "object"
@@ -6359,19 +6346,6 @@
       "TileUpdate": {
         "additionalProperties": false,
         "properties": {
-          "extra": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
-            "title": "Extra"
-          },
           "focus_score": {
             "anyOf": [
               {
@@ -6439,10 +6413,6 @@
             ],
             "description": "Minimum pixel value of the tile",
             "title": "Min Value"
-          },
-          "raster_position": {
-            "$ref": "#/components/schemas/RasterPosition",
-            "description": "Row, column raster position of the tile"
           },
           "stage_position": {
             "$ref": "#/components/schemas/StagePosition",
@@ -7895,7 +7865,7 @@
     },
     "/api/v2/acquisitions/{acquisition_id}/tile-count": {
       "get": {
-        "description": "Get the total count of tiles associated with an acquisition.",
+        "description": "Get the number of positions imaged in an acquisition; retakes of a position count once.",
         "operationId": "get_tile_count_api_v2_acquisitions__acquisition_id__tile_count_get",
         "parameters": [
           {
@@ -7942,7 +7912,7 @@
     },
     "/api/v2/acquisitions/{acquisition_id}/tiles": {
       "get": {
-        "description": "Retrieve tiles associated with a specific acquisition.",
+        "description": "Retrieve an acquisition's tiles, every retake included, in (row, col, retake) order.",
         "operationId": "get_tiles_from_acquisition_api_v2_acquisitions__acquisition_id__tiles_get",
         "parameters": [
           {
@@ -7955,20 +7925,20 @@
             }
           },
           {
-            "description": "Last raster_index seen",
+            "description": "next_cursor of the previous page, as 'row,col,retake'",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Last raster_index seen",
+              "description": "next_cursor of the previous page, as 'row,col,retake'",
               "title": "Cursor"
             }
           },
@@ -8204,7 +8174,7 @@
     },
     "/api/v2/acquisitions/{acquisition_id}/tiles/bulk": {
       "delete": {
-        "description": "Delete the listed tiles of an acquisition; IDs with no tile in it are returned in not_found.\n\nError if the acquisition is marked 'complete'.",
+        "description": "Delete the acquisition's tiles with these tile_ids; tile_ids not found in it are returned in not_found.\n\nError if the acquisition is marked 'complete'.",
         "operationId": "delete_tiles_from_acquisition_bulk_api_v2_acquisitions__acquisition_id__tiles_bulk_delete",
         "parameters": [
           {
@@ -8222,7 +8192,6 @@
             "application/json": {
               "schema": {
                 "items": {
-                  "format": "uuid",
                   "type": "string"
                 },
                 "minItems": 1,
@@ -8423,7 +8392,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a specific tile by its tile_id (UUID), verifying acquisition parent.",
+        "description": "Retrieve one tile of an acquisition by its tile_id.",
         "operationId": "get_tile_from_acquisition_api_v2_acquisitions__acquisition_id__tiles__tile_id__get",
         "parameters": [
           {
@@ -10744,7 +10713,7 @@
     },
     "/api/v2/qc/{acquisition_id}/focus-scores": {
       "get": {
-        "description": "Retrieves the focus score for every tile associated with the\nspecified `acquisition_id`. Includes summary statistics.",
+        "description": "Retrieves the focus score of every position imaged in the\nspecified `acquisition_id`, from its newest retake. Includes summary statistics.",
         "operationId": "get_acquisition_focus_scores_api_v2_qc__acquisition_id__focus_scores_get",
         "parameters": [
           {

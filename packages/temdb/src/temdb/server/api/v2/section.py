@@ -44,7 +44,7 @@ async def mark_apertures_used(session: AsyncSession, media_id: str, aperture_ind
     substrate = await session.scalar(
         select(SubstrateSQLModel)
         .where(SubstrateSQLModel.media_id == media_id)
-        .with_for_update()
+        .with_for_update(key_share=True)
         .execution_options(populate_existing=True)
     )
     statuses = list(substrate.aperture_status)

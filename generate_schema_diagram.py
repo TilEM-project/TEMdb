@@ -180,13 +180,13 @@ def main():
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
     full_erd_content = generate_erd_markdown(all_models, {m.__name__ for m in all_models})
     with open(DOCS_DIR / "schema_erd.md", "w") as f:
-        f.write(f"# Database Schema ERD\n\n{full_erd_content}")
+        f.write(f"# Database Schema ERD\n\n{full_erd_content}\n")
 
     for group_name, core_models_set in WORKFLOW_GROUPS.items():
         group_erd_content = generate_erd_markdown(all_models, core_models_set)
         group_erd_filename = DOCS_DIR / f"schema_{group_name}_erd.md"
         with open(group_erd_filename, "w") as f:
-            f.write(f"# {group_name} Workflow Schema.\n\n{group_erd_content}")
+            f.write(f"# {group_name} Workflow Schema.\n\n{group_erd_content}\n")
 
     MODELS_DOCS_DIR.mkdir(parents=True, exist_ok=True)
     for model in all_models:

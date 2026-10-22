@@ -215,14 +215,13 @@ class TestDataIntegration:
         async with self.db_manager.async_session_factory() as session:
             await ensure_tile_partition(session, acquisition.dataset_id)
             tile = TileSQLModel(
-                tile_id=uuid7(),
                 dataset_id=acquisition.dataset_id,
                 run_id=acquisition.run_id,
                 raster_index=raster_index,
                 stage_x_nm=float(raster_index),
                 stage_y_nm=float(raster_index),
-                montage_row=raster_index // 10,
-                montage_col=raster_index % 10,
+                row=raster_index // 10,
+                col=raster_index % 10,
                 focus_score=0.9,
                 min_value=0.0,
                 max_value=65535.0,
@@ -336,7 +335,6 @@ class TestDataIntegration:
         task = await self.create_acquisition_task(specimen, block, roi)
         acquisition = await self.create_acquisition(specimen, roi, task)
         tile = await self.create_tile(acquisition, 1)
-        assert tile.tile_id is not None
         assert tile.raster_index == 1
         assert tile.run_id == acquisition.run_id
 
@@ -351,7 +349,7 @@ class TestDataIntegration:
                 )
             ).first()
         assert fetched_tile is not None
-        assert fetched_tile.tile_id == tile.tile_id
+        assert (fetched_tile.row, fetched_tile.col, fetched_tile.retake) == (tile.row, tile.col, 0)
 
     @pytest.mark.asyncio
     async def test_multiple_tiles_creation(self):
@@ -383,6 +381,6 @@ class TestDataIntegration:
             ).all()
         assert len(fetched_tiles) == num_tiles
         for i in range(num_tiles):
-            assert fetched_tiles[i].tile_id == created_tiles[i].tile_id
+            assert (fetched_tiles[i].row, fetched_tiles[i].col) == (created_tiles[i].row, created_tiles[i].col)
             assert fetched_tiles[i].raster_index == i
             assert fetched_tiles[i].run_id == acquisition.run_id

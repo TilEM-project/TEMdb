@@ -21,7 +21,6 @@ async def test_records_created_without_extra_have_an_empty_extra(client, records
         "dataset": await records.dataset(),
         "acquisition": await records.acquisition(),
         "lens_correction": lens_correction,
-        "tile": (await records.tiles())[0],
     }
     assert {name: record.extra for name, record in made.items()} == {name: {} for name in made}
 

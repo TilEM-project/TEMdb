@@ -14,6 +14,7 @@ from temdb.models import (
 )
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import AcquisitionSQLModel, TileSQLModel
+from temdb.server.sqlmodels.tile import format_tile_id
 
 qc_api = APIRouter(
     prefix="/qc",
@@ -97,8 +98,8 @@ async def get_acquisition_focus_scores(
     session: AsyncSession = Depends(get_async_session),
 ):
     """
-    Retrieves the focus score for every tile associated with the
-    specified `acquisition_id`. Includes summary statistics.
+    Retrieves the focus score of every position imaged in the
+    specified `acquisition_id`, from its newest retake. Includes summary statistics.
     """
     logger.info(f"Fetching focus scores for acquisition_id: {acquisition_id}")
 
@@ -115,19 +116,21 @@ async def get_acquisition_focus_scores(
     if acq_obj.dataset_id is None:
         tiles = []
     else:
-        tiles = (
+        newest_per_position = (
             await session.scalars(
                 select(TileSQLModel)
                 .where(
                     TileSQLModel.dataset_id == acq_obj.dataset_id,
                     TileSQLModel.run_id == acq_obj.run_id,
                 )
-                .order_by(TileSQLModel.raster_index)
+                .distinct(TileSQLModel.row, TileSQLModel.col)
+                .order_by(TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake.desc())
             )
         ).all()
+        tiles = sorted(newest_per_position, key=lambda tile: tile.raster_index)
     tiles_data = [
         TileFocusScore(
-            tile_id=str(tile.tile_id),
+            tile_id=format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake),
             raster_index=tile.raster_index,
             focus_score=tile.focus_score,
         )
