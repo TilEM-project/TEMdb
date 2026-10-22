@@ -43,12 +43,13 @@ class TestSectionCreate:
     def test_valid_section_create(self):
         section = SectionCreate(
             cutting_session_id="CUT001",
-            section_number=1,
+            timestamp=datetime(2026, 9, 4, 16, 0),
             media_id="MEDIA001",
             aperture_index=0,
+            cut_count=3,
         )
         assert section.cutting_session_id == "CUT001"
-        assert section.section_number == 1
+        assert section.cut_count == 3
         assert section.media_id == "MEDIA001"
         assert section.aperture_index == 0
 
@@ -59,7 +60,7 @@ class TestSectionCreate:
     def test_optional_fields(self):
         section = SectionCreate(
             cutting_session_id="CUT001",
-            section_number=1,
+            timestamp=datetime(2026, 9, 4, 16, 0),
             media_id="MEDIA001",
             aperture_index=0,
             barcode="BC123456",

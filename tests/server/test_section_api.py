@@ -65,10 +65,10 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
     response_data = response.json()
     assert response_data["media_id"] == substrate_id_hr
 
-    section_id_hr = f"{substrate_id_hr}_S99"
+    section_id_hr = f"{substrate_id_hr}_S1"
     section_data = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
-        "section_number": 99,
+        "timestamp": "2026-09-04T16:00:00+00:00",
         "media_id": substrate_id_hr,
         "aperture_index": 0,
         "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
@@ -82,7 +82,7 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
     assert response_data["cutting_session_id"] == test_cutting_session.cutting_session_id
     assert response_data["block_id"] == test_cutting_session.block_id
     assert response_data["specimen_id"] == test_cutting_session.specimen_id
-    assert response_data["section_number"] == 99
+    assert response_data["section_number"] == 1
     assert response_data["barcode"] == "BC123456789"
     assert response_data["run_parameters"]["cutting_thickness_um"] == 45.5
     assert response_data["run_parameters"]["water_added"] is True
@@ -111,11 +111,10 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
     sections_data = []
     for i in range(5):
         substrate_idx = i % 2
-        section_number = i + 1
         sections_data.append(
             {
                 "cutting_session_id": test_cutting_session.cutting_session_id,
-                "section_number": section_number,
+                "timestamp": f"2026-09-04T16:0{i}:00+00:00",
                 "media_id": f"{media_base}_{substrate_idx}",
                 "aperture_index": i % 3,
                 "optical_image": {"inspection": {"image_path": f"http://example.com/image_{i}.png"}},
@@ -131,7 +130,7 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
 
     for i, section in enumerate(created_sections):
         substrate_idx = i % 2
-        section_number = i + 1
+        section_number = i // 2 + 1
         expected_section_id = f"{media_base}_{substrate_idx}_S{section_number}"
 
         assert section["section_id"] == expected_section_id
@@ -167,7 +166,7 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
     sections_data = [
         {
             "cutting_session_id": "NON_EXISTENT_SESSION_ID",
-            "section_number": 1,
+            "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": test_substrate.media_id,
             "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://foobar.com/image.png"}},
@@ -176,7 +175,7 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
 
     response = await async_client.post("/api/v2/sections/batch", json=sections_data)
     assert response.status_code == 404
-    assert "CuttingSession" in response.json()["detail"]
+    assert "Cutting Session" in response.json()["detail"]
     assert "not found" in response.json()["detail"]
 
 
@@ -186,7 +185,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
     sections_data = [
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
-            "section_number": 1,
+            "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": "NON_EXISTENT_MEDIA_ID",
             "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
@@ -203,7 +202,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
 async def test_create_section_with_unknown_substrate_is_not_found(async_client: AsyncClient, test_cutting_session):
     section_data = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
-        "section_number": 1,
+        "timestamp": "2026-09-04T16:00:00+00:00",
         "media_id": "NON_EXISTENT_MEDIA_ID",
         "aperture_index": 0,
     }
@@ -215,8 +214,7 @@ async def test_create_section_with_unknown_substrate_is_not_found(async_client: 
 
 
 @pytest.mark.asyncio
-async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, test_cutting_session, test_layout):
-    """Test creating sections with duplicate IDs in the same batch."""
+async def test_create_sections_batch_duplicate_placements(async_client: AsyncClient, test_cutting_session, test_layout):
     timestamp = int(datetime.now(timezone.utc).timestamp())
     media_id = f"TEST_SUB_DUP_{timestamp}"
 
@@ -231,14 +229,14 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
     sections_data = [
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
-            "section_number": 1,
+            "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": media_id,
             "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://image.server.com/image1.png"}},
         },
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
-            "section_number": 1,
+            "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": media_id,
             "aperture_index": 0,
             "optical_image": {"inspection": {"image_path": "http://some.other.place.com/image2.png"}},
@@ -246,8 +244,8 @@ async def test_create_sections_batch_duplicate_ids(async_client: AsyncClient, te
     ]
 
     response = await async_client.post("/api/v2/sections/batch", json=sections_data)
-    assert response.status_code == 409
-    assert "duplicate" in response.json()["detail"].lower()
+    assert response.status_code == 422
+    assert "more than once" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -292,14 +290,14 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
     """Test deleting a section successfully (when it has no dependencies like ROIs)."""
     section_data = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
-        "section_number": 100,
+        "timestamp": "2026-09-04T16:00:00+00:00",
         "media_id": test_substrate.media_id,
         "aperture_index": 0,
     }
 
-    section_id_hr = f"{test_substrate.media_id}_S100"
     create_response = await async_client.post("/api/v2/sections", json=section_data)
     assert create_response.status_code == 201
+    section_id_hr = create_response.json()["section_id"]
 
     delete_path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{section_id_hr}"
     delete_response = await async_client.delete(delete_path)
@@ -394,7 +392,7 @@ async def test_section_on_an_aperture_the_layout_does_not_have_is_422(
     section = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "media_id": test_substrate.media_id,
-        "section_number": 1,
+        "timestamp": "2026-09-04T16:00:00+00:00",
         "aperture_index": 3,
     }
     assert (await async_client.post("/api/v2/sections", json=section)).status_code == 422
@@ -421,7 +419,7 @@ async def test_section_on_a_blank_has_no_aperture_and_keeps_its_position(
         json={
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "media_id": test_substrate.media_id,
-            "section_number": 1,
+            "timestamp": "2026-09-04T16:00:00+00:00",
             "position": {"x": 12.5, "y": -3.0},
         },
     )
@@ -446,12 +444,12 @@ async def test_placing_a_section_marks_its_aperture_used_but_leaves_damaged_alon
     assert created.status_code == 201
     session_id = test_cutting_session.cutting_session_id
 
-    for number, aperture in ((1, 0), (2, 1)):
+    for aperture in (0, 1):
         response = await async_client.post(
             "/api/v2/sections",
             json={
                 "cutting_session_id": session_id,
-                "section_number": number,
+                "timestamp": f"2026-09-04T16:0{aperture}:00+00:00",
                 "media_id": media_id,
                 "aperture_index": aperture,
             },
@@ -479,10 +477,25 @@ async def test_batch_marks_each_substrates_apertures_used(async_client: AsyncCli
         assert (await async_client.post("/api/v2/substrates", json=body)).status_code == 201
     session_id = test_cutting_session.cutting_session_id
     batch = [
-        {"cutting_session_id": session_id, "section_number": 10, "media_id": "TEST_SUB_BATCH_A", "aperture_index": 0},
-        {"cutting_session_id": session_id, "section_number": 11, "media_id": "TEST_SUB_BATCH_A", "aperture_index": 1},
-        {"cutting_session_id": session_id, "section_number": 12, "media_id": "TEST_SUB_BATCH_B", "aperture_index": 2},
-        {"cutting_session_id": session_id, "section_number": 13, "media_id": "TEST_SUB_BATCH_B"},
+        {
+            "cutting_session_id": session_id,
+            "timestamp": "2026-09-04T16:00:00+00:00",
+            "media_id": "TEST_SUB_BATCH_A",
+            "aperture_index": 0,
+        },
+        {
+            "cutting_session_id": session_id,
+            "timestamp": "2026-09-04T16:01:00+00:00",
+            "media_id": "TEST_SUB_BATCH_A",
+            "aperture_index": 1,
+        },
+        {
+            "cutting_session_id": session_id,
+            "timestamp": "2026-09-04T16:02:00+00:00",
+            "media_id": "TEST_SUB_BATCH_B",
+            "aperture_index": 2,
+        },
+        {"cutting_session_id": session_id, "timestamp": "2026-09-04T16:03:00+00:00", "media_id": "TEST_SUB_BATCH_B"},
     ]
     assert (await async_client.post("/api/v2/sections/batch", json=batch)).status_code == 201
 

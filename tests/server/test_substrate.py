@@ -232,13 +232,13 @@ async def test_apertures_lists_each_apertures_shape_status_and_sections(
     async_client: AsyncClient, test_substrate, test_layout, test_cutting_session
 ):
     await async_client.patch(f"/api/v2/substrates/{test_substrate.media_id}", json={"aperture_status": {"1": "used"}})
-    for section_number, placement in ((1, {"aperture_index": 1}), (2, {"position": {"x": 20.0, "y": 5.0}})):
+    for minute, placement in ((0, {"aperture_index": 1}), (1, {"position": {"x": 20.0, "y": 5.0}})):
         response = await async_client.post(
             "/api/v2/sections",
             json={
                 "cutting_session_id": test_cutting_session.cutting_session_id,
                 "media_id": test_substrate.media_id,
-                "section_number": section_number,
+                "timestamp": f"2026-09-04T16:0{minute}:00+00:00",
                 **placement,
             },
         )

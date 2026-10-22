@@ -21,7 +21,10 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "sections"
     __table_args__ = (
-        UniqueConstraint("cutting_session_id", "section_number", name="uq_sections_session_number"),
+        UniqueConstraint("media_id", "section_number", name="uq_sections_media_number"),
+        UniqueConstraint(
+            "media_id", "aperture_index", "timestamp", name="uq_sections_placement", postgresql_nulls_not_distinct=True
+        ),
         ForeignKeyConstraint(
             ["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"], name="fk_sections_block"
         ),
@@ -38,6 +41,7 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
     section_id: Mapped[str] = mapped_column(String, index=True, unique=True)
     section_number: Mapped[int] = mapped_column()
+    cut_count: Mapped[int | None] = mapped_column(nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

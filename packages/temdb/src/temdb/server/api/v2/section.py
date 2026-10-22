@@ -1,13 +1,14 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import ApertureStatus, APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import BaseError
 from temdb.server.sqlmodels import (
     CuttingSessionSQLModel,
     SectionSQLModel,
@@ -213,76 +214,118 @@ async def get_section(
     return section_obj
 
 
-@section_api.post("/sections", status_code=status.HTTP_201_CREATED, response_model=SectionResponse)
+def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> SectionSQLModel:
+    """The section a create asks for, without its number and section_id, which are assigned when it is new."""
+    return SectionSQLModel(
+        cut_count=data.cut_count,
+        timestamp=data.timestamp,
+        cutting_session_id=cut_session.cutting_session_id,
+        block_id=cut_session.block_id,
+        specimen_id=cut_session.specimen_id,
+        media_id=data.media_id,
+        optical_image=_dump_images(data.optical_image) if data.optical_image is not None else None,
+        aperture_index=data.aperture_index,
+        position=dump_position(data.position),
+        barcode=data.barcode,
+        condition=data.condition,
+        condition_reason=data.condition_reason,
+        section_metrics=data.section_metrics.model_dump(mode="json") if data.section_metrics is not None else None,
+        run_parameters=data.run_parameters.model_dump(mode="json") if data.run_parameters is not None else None,
+        created_at=data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(data.extra),
+    )
+
+
+async def _stored_at_placement(session: AsyncSession, row: SectionSQLModel) -> SectionSQLModel | None:
+    """The stored section with the row's (media_id, aperture_index, timestamp), raising 409 KEY_IN_USE if it differs."""
+    stored = await session.scalar(
+        select(SectionSQLModel).where(
+            SectionSQLModel.media_id == row.media_id,
+            SectionSQLModel.aperture_index.is_not_distinct_from(row.aperture_index),
+            SectionSQLModel.timestamp == row.timestamp,
+        )
+    )
+    if stored is None:
+        return None
+    compared = (
+        "cutting_session_id",
+        "cut_count",
+        "optical_image",
+        "position",
+        "barcode",
+        "section_metrics",
+        "run_parameters",
+        "extra",
+    )
+    differing = [field for field in compared if getattr(stored, field) != getattr(row, field)]
+    if differing:
+        raise BaseError(
+            f"Section '{stored.section_id}' is already at this placement with different {', '.join(differing)}",
+            status_code=status.HTTP_409_CONFLICT,
+            error_code="KEY_IN_USE",
+        )
+    return stored
+
+
+async def _lock_substrate(session: AsyncSession, media_id: str) -> SubstrateSQLModel:
+    """The substrate, locked so its section numbers are handed out one create at a time; 404 if it does not exist."""
+    substrate = await session.scalar(
+        select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id).with_for_update(key_share=True)
+    )
+    if substrate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Substrate '{media_id}' not found")
+    return substrate
+
+
+async def _cutting_session(session: AsyncSession, cutting_session_id: str) -> CuttingSessionSQLModel:
+    cut_session = await session.scalar(
+        select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
+    )
+    if cut_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Cutting Session with ID '{cutting_session_id}' not found"
+        )
+    return cut_session
+
+
+async def _number(session: AsyncSession, row: SectionSQLModel) -> None:
+    """Give a new section the next number on its substrate; the caller holds the substrate lock."""
+    highest = await session.scalar(
+        select(func.max(SectionSQLModel.section_number)).where(SectionSQLModel.media_id == row.media_id)
+    )
+    row.section_number = (highest or 0) + 1
+    row.section_id = f"{row.media_id}_S{row.section_number}"
+
+
+@section_api.post(
+    "/sections",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SectionResponse,
+    responses={
+        status.HTTP_200_OK: {"model": SectionResponse, "description": "The section was already stored"},
+        status.HTTP_409_CONFLICT: {"model": APIErrorResponse, "description": "Same placement, different values"},
+    },
+)
 async def create_section(
     section_data: SectionCreate,
+    response: Response,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Create a new section."""
-    new_section_id = f"{section_data.media_id}_S{section_data.section_number}"
-    validation_row = (
-        await session.execute(
-            select(
-                CuttingSessionSQLModel,
-                func.cardinality(SubstrateSQLModel.aperture_status),
-                SectionSQLModel.id,
-            )
-            .select_from(CuttingSessionSQLModel)
-            .outerjoin(SubstrateSQLModel, SubstrateSQLModel.media_id == section_data.media_id)
-            .outerjoin(
-                SectionSQLModel,
-                and_(
-                    SectionSQLModel.section_id == new_section_id,
-                    SectionSQLModel.cutting_session_id == CuttingSessionSQLModel.cutting_session_id,
-                ),
-            )
-            .where(CuttingSessionSQLModel.cutting_session_id == section_data.cutting_session_id)
-        )
-    ).first()
-    cut_obj = validation_row[0] if validation_row else None
-    if cut_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Cutting Session with ID '{section_data.cutting_session_id}' not found",
-        )
-    existing_ref = validation_row[2]
-    if existing_ref is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Section with ID '{new_section_id}' already exists in session '{section_data.cutting_session_id}'",
-        )
-    if validation_row[1] is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Substrate '{section_data.media_id}' not found",
-        )
-    check_aperture_index(section_data.aperture_index, validation_row[1], section_data.media_id)
-    new_section = SectionSQLModel(
-        section_id=new_section_id,
-        section_number=section_data.section_number,
-        cutting_session_id=cut_obj.cutting_session_id,
-        timestamp=section_data.timestamp or datetime.now(timezone.utc),
-        block_id=cut_obj.block_id,
-        specimen_id=cut_obj.specimen_id,
-        optical_image=(_dump_images(section_data.optical_image) if section_data.optical_image is not None else None),
-        section_metrics=(
-            section_data.section_metrics.model_dump(mode="json") if section_data.section_metrics is not None else None
-        ),
-        run_parameters=(
-            section_data.run_parameters.model_dump(mode="json") if section_data.run_parameters is not None else None
-        ),
-        media_id=section_data.media_id,
-        aperture_index=section_data.aperture_index,
-        position=dump_position(section_data.position),
-        barcode=section_data.barcode,
-        created_at=section_data.created_at or datetime.now(timezone.utc),
-        extra=drop_null_keys(section_data.extra),
-    )
-    session.add(new_section)
-    await mark_apertures_used(session, section_data.media_id, [section_data.aperture_index])
+    """Create a section, numbered next on its substrate; a section already at this placement is returned (200)."""
+    cut_session = await _cutting_session(session, section_data.cutting_session_id)
+    substrate = await _lock_substrate(session, section_data.media_id)
+    check_aperture_index(section_data.aperture_index, len(substrate.aperture_status), section_data.media_id)
+    row = _section_row(section_data, cut_session)
+    stored = await _stored_at_placement(session, row)
+    if stored is not None:
+        response.status_code = status.HTTP_200_OK
+        return stored
+    await _number(session, row)
+    session.add(row)
+    await mark_apertures_used(session, row.media_id, [row.aperture_index])
     await session.commit()
-    await session.refresh(new_section)
-    return new_section
+    await session.refresh(row)
+    return row
 
 
 @section_api.post(
@@ -293,7 +336,7 @@ async def create_section(
     responses={
         status.HTTP_400_BAD_REQUEST: {"model": APIErrorResponse, "description": "Invalid input data"},
         status.HTTP_404_NOT_FOUND: {"model": APIErrorResponse, "description": "Parent resource not found"},
-        status.HTTP_409_CONFLICT: {"model": APIErrorResponse, "description": "Duplicate section ID"},
+        status.HTTP_409_CONFLICT: {"model": APIErrorResponse, "description": "Same placement, different values"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": APIErrorResponse, "description": "Internal server error"},
     },
 )
@@ -301,90 +344,42 @@ async def create_sections_batch(
     sections_data: list[SectionCreate],
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Creates multiple Section documents from a list."""
+    """Create sections in request order, each as POST /sections would; nothing is stored if any item fails."""
     if not sections_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Section data list cannot be empty.",
         )
-
-    sections_to_insert: list[SectionSQLModel] = []
-    session_cache: dict[str, CuttingSessionSQLModel] = {}
-    substrate_cache: dict[str, SubstrateSQLModel] = {}
-    seen_ids: set[str] = set()
-
-    for idx, section_create in enumerate(sections_data):
-        session_id = section_create.cutting_session_id
-        media_id = section_create.media_id
-        if session_id not in session_cache:
-            session_result = await session.scalars(
-                select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == session_id)
-            )
-            cut_session = session_result.one_or_none()
-            if cut_session is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"CuttingSession '{session_id}' not found for item {idx}.",
-                )
-            session_cache[session_id] = cut_session
-        cut_session = session_cache[session_id]
-
-        if media_id not in substrate_cache:
-            substrate_result = await session.scalars(
-                select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id)
-            )
-            substrate = substrate_result.one_or_none()
-            if substrate is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Substrate '{media_id}' not found for item {idx}.",
-                )
-            substrate_cache[media_id] = substrate
-        check_aperture_index(section_create.aperture_index, len(substrate_cache[media_id].aperture_status), media_id)
-
-        section_id = f"{media_id}_S{section_create.section_number}"
-        if section_id in seen_ids:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="duplicate section IDs in batch")
-        seen_ids.add(section_id)
-
-        section_doc = SectionSQLModel(
-            section_id=section_id,
-            section_number=section_create.section_number,
-            timestamp=section_create.timestamp or datetime.now(timezone.utc),
-            cutting_session_id=cut_session.cutting_session_id,
-            block_id=cut_session.block_id,
-            specimen_id=cut_session.specimen_id,
-            media_id=media_id,
-            optical_image=(
-                _dump_images(section_create.optical_image) if section_create.optical_image is not None else None
-            ),
-            aperture_index=section_create.aperture_index,
-            position=dump_position(section_create.position),
-            barcode=section_create.barcode,
-            section_metrics=(
-                section_create.section_metrics.model_dump(mode="json")
-                if section_create.section_metrics is not None
-                else None
-            ),
-            run_parameters=(
-                section_create.run_parameters.model_dump(mode="json")
-                if section_create.run_parameters is not None
-                else None
-            ),
-            created_at=section_create.created_at or datetime.now(timezone.utc),
-            extra=drop_null_keys(section_create.extra),
+    placements = [(item.media_id, item.aperture_index, item.timestamp) for item in sections_data]
+    if len(set(placements)) != len(placements):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="a placement (media_id, aperture_index, timestamp) appears more than once in the batch",
         )
-        sections_to_insert.append(section_doc)
-
-    session.add_all(sections_to_insert)
-    for media_id in sorted({item.media_id for item in sections_to_insert}):
+    sessions = {
+        sid: await _cutting_session(session, sid) for sid in {item.cutting_session_id for item in sections_data}
+    }
+    substrates = {media_id: await _lock_substrate(session, media_id) for media_id in sorted({p[0] for p in placements})}
+    result = []
+    for item in sections_data:
+        check_aperture_index(item.aperture_index, len(substrates[item.media_id].aperture_status), item.media_id)
+        row = _section_row(item, sessions[item.cutting_session_id])
+        stored = await _stored_at_placement(session, row)
+        if stored is not None:
+            result.append(stored)
+            continue
+        await _number(session, row)
+        session.add(row)
+        await session.flush()
+        result.append(row)
+    for media_id in substrates:
         await mark_apertures_used(
-            session, media_id, [item.aperture_index for item in sections_to_insert if item.media_id == media_id]
+            session, media_id, [item.aperture_index for item in sections_data if item.media_id == media_id]
         )
     await session.commit()
-    for item in sections_to_insert:
-        await session.refresh(item)
-    return sections_to_insert
+    for row in result:
+        await session.refresh(row)
+    return result
 
 
 @section_api.patch("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)

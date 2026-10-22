@@ -5,7 +5,8 @@
 | Field Name | Type | Description |
 |------------|------|-------------|
 | `section_id` | string | Unique, system-generated ID for the section |
-| `section_number` | int | Sequential section number within the cutting session |
+| `section_number` | int | Number TEMdb assigned on the substrate, in create order |
+| `cut_count` | int | Cut counter reported by the sectioning device; not unique, it can restart |
 | `timestamp` | datetime | Timestamp of section creation/cutting |
 | `cutting_session_id` | string | ID of the cutting session |
 | `block_id` | string | ID of the block |

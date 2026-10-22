@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from temdb.client.exceptions import TEMdbNotFoundError
@@ -6,8 +8,10 @@ from temdb.client.exceptions import TEMdbNotFoundError
 async def test_section_create(client, records):
     await records.cutting_session()
     await records.substrate()
-    created = await client.section.create(section_number=2, cutting_session_id="CS1", media_id="M1")
-    assert (await client.section.get("CS1", created.section_id)).section_number == 2
+    created = await client.section.create(
+        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc), cutting_session_id="CS1", media_id="M1"
+    )
+    assert (await client.section.get("CS1", created.section_id)).section_number == 1
 
 
 async def test_section_get(client, records):
