@@ -26,7 +26,6 @@ class ROIPayload(TEMDBModel):
     aperture_image: URI.Type | None = Field(None, description="URL of aperture image")
     optical_pixel_size: float | None = Field(None, description="Optical resolution in nm per pixel")
     scale_y: float | None = Field(None, description="Scaling factor for y-axis")
-    barcode: int | str | None = Field(None, description="Barcode of ROI if present")
     rois: list[Any] | None = Field(None, description="List of ROIs")
     bucket: str | None = Field(None, description="Bucket of ROI")
     roi_mask: URI.Type | None = Field(None, description="URL of ROI mask")

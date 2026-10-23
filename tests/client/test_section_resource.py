@@ -45,7 +45,7 @@ async def test_create_rejects_model_plus_kwargs():
     with pytest.raises(TypeError):
         await res.create(
             SectionCreate(cutting_session_id="CUT001", media_id="MEDIA001", timestamp=NOW),
-            barcode="conflict",
+            cut_count=7,
         )
 
 

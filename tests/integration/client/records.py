@@ -107,7 +107,6 @@ class Records:
                 timestamp=datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
                 cutting_session_id="CS1",
                 media_id="M1",
-                barcode="BC1",
                 aperture_index=0,
             ),
         )

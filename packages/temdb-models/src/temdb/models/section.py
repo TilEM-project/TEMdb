@@ -82,7 +82,6 @@ class SectionBase(TEMDBRecord):
         None,
         description="Optical image collected before imaging",
     )
-    barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
     aperture_index: int | None = Field(
         None, ge=0, description="Index of the layout aperture holding this section; empty for a section on a blank"
     )

@@ -63,7 +63,6 @@ class TestSectionCreate:
             timestamp=datetime(2026, 9, 4, 16, 0),
             media_id="MEDIA001",
             aperture_index=0,
-            barcode="BC123456",
             optical_image={
                 "inspection": {
                     "image_path": "http://example.com/image.png",
@@ -73,7 +72,6 @@ class TestSectionCreate:
             section_metrics=SectionMetrics(quality=SectionQuality.GOOD),
             run_parameters=SectioningRunParameters(cutting_thickness_um=50.0, water_added=True),
         )
-        assert section.barcode == "BC123456"
         assert section.section_metrics.quality == SectionQuality.GOOD
         assert section.run_parameters.cutting_thickness_um == 50.0
         assert section.run_parameters.water_added is True

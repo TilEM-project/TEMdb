@@ -204,7 +204,6 @@ def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> Se
         optical_image=_dump_images(data.optical_image) if data.optical_image is not None else None,
         aperture_index=data.aperture_index,
         position=dump_position(data.position),
-        barcode=data.barcode,
         condition=data.condition,
         condition_reason=data.condition_reason,
         section_metrics=data.section_metrics.model_dump(mode="json") if data.section_metrics is not None else None,
@@ -230,7 +229,6 @@ async def _stored_at_placement(session: AsyncSession, row: SectionSQLModel) -> S
         "cut_count",
         "optical_image",
         "position",
-        "barcode",
         "section_metrics",
         "run_parameters",
         "extra",
@@ -428,22 +426,4 @@ async def list_sections_by_media(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_position is not supported")
     statement = statement.order_by(SectionSQLModel.section_number, SectionSQLModel.id)
     sections = await session.scalars(statement.offset(skip).limit(limit))
-    return sections.all()
-
-
-@section_api.get("/sections/barcode/{barcode}", response_model=list[SectionResponse])
-async def get_sections_by_barcode(
-    barcode: str,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Retrieve sections by barcode."""
-    sections = await session.scalars(
-        select(SectionSQLModel)
-        .where(SectionSQLModel.barcode == barcode)
-        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
-        .offset(skip)
-        .limit(limit)
-    )
     return sections.all()

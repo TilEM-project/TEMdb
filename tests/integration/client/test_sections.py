@@ -16,7 +16,7 @@ async def test_section_create(client, records):
 
 async def test_section_get(client, records):
     section = await records.section()
-    assert (await client.section.get(section.section_id)).barcode == "BC1"
+    assert (await client.section.get(section.section_id)).media_id == "M1"
 
 
 async def test_section_list_by_session(client, records):
@@ -34,8 +34,8 @@ async def test_section_list_all(client, records):
 
 async def test_section_update(client, records):
     section = await records.section()
-    updated = await client.section.update(section.section_id, barcode="BC2")
-    assert updated.barcode == "BC2"
+    updated = await client.section.update(section.section_id, cut_count=7)
+    assert updated.cut_count == 7
 
 
 async def test_section_delete(client, records):
@@ -60,9 +60,3 @@ async def test_section_list_by_specimen(client, records):
 async def test_section_list_by_media(client, records):
     section = await records.section()
     assert [s.section_id for s in await client.section.list_by_media("M1")] == [section.section_id]
-
-
-async def test_section_list_by_barcode(client, records):
-    section = await records.section()
-    assert [s.section_id for s in await client.section.list_by_barcode("BC1")] == [section.section_id]
-    assert await client.section.list_by_barcode("BC-NONE") == []

@@ -3832,21 +3832,6 @@
             "description": "Flag if auto generated ROI was used",
             "title": "Auto Roi"
           },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode of ROI if present",
-            "title": "Barcode"
-          },
           "bucket": {
             "anyOf": [
               {
@@ -4242,18 +4227,6 @@
             "description": "Index of the layout aperture holding this section; empty for a section on a blank",
             "title": "Aperture Index"
           },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode scanned for this section, if any",
-            "title": "Barcode"
-          },
           "condition": {
             "default": "ok",
             "description": "Physical condition of the section",
@@ -4589,18 +4562,6 @@
             "description": "Index of the layout aperture holding this section; empty for a section on a blank",
             "title": "Aperture Index"
           },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode scanned for this section, if any",
-            "title": "Barcode"
-          },
           "block_id": {
             "description": "ID of the block",
             "title": "Block Id",
@@ -4801,18 +4762,6 @@
             ],
             "description": "Index of the layout aperture holding this section; empty for a section on a blank",
             "title": "Aperture Index"
-          },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode scanned for this section, if any",
-            "title": "Barcode"
           },
           "condition": {
             "description": "Physical condition of the section",
@@ -11761,76 +11710,6 @@
           }
         },
         "summary": "Create Section",
-        "tags": [
-          "Sections"
-        ]
-      }
-    },
-    "/api/v2/sections/barcode/{barcode}": {
-      "get": {
-        "description": "Retrieve sections by barcode.",
-        "operationId": "get_sections_by_barcode_api_v2_sections_barcode__barcode__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "barcode",
-            "required": true,
-            "schema": {
-              "title": "Barcode",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "skip",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Skip",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SectionResponse"
-                  },
-                  "title": "Response Get Sections By Barcode Api V2 Sections Barcode  Barcode  Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Sections By Barcode",
         "tags": [
           "Sections"
         ]

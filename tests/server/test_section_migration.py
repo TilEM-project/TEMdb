@@ -123,7 +123,7 @@ async def section_ids(database_url: str) -> list[str]:
     return list(ids)
 
 
-async def test_upgrade_keeps_the_highest_numbered_section_of_each_shared_placement(fresh_database_url):
+async def test_upgrade_keeps_highest_numbered_duplicate(fresh_database_url):
     assert _run_alembic(fresh_database_url, "upgrade", "d5e6f7a8b9c0").returncode == 0
     await seed_overwritten_groups(fresh_database_url)
 
@@ -133,7 +133,7 @@ async def test_upgrade_keeps_the_highest_numbered_section_of_each_shared_placeme
     assert await section_ids(fresh_database_url) == ["001123_S10", "001123_S11", "001123_S8"]
 
 
-async def test_upgrade_stops_when_a_section_it_would_delete_has_an_roi(fresh_database_url):
+async def test_upgrade_stops_if_duplicate_has_roi(fresh_database_url):
     assert _run_alembic(fresh_database_url, "upgrade", "d5e6f7a8b9c0").returncode == 0
     await seed_overwritten_groups(fresh_database_url, roi_on="001123_S6")
 

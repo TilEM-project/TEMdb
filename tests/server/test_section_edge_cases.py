@@ -21,9 +21,7 @@ def _path(section_id: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_several_sections_on_one_aperture_at_different_times_are_kept_apart(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_one_aperture_two_times_is_two_sections(async_client: AsyncClient, test_cutting_session, test_substrate):
     first = await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB001", 0, 1))
     second = await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB001", 3, 1))
 
@@ -32,9 +30,7 @@ async def test_several_sections_on_one_aperture_at_different_times_are_kept_apar
 
 
 @pytest.mark.asyncio
-async def test_a_lost_cut_is_created_lost_without_an_aperture(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_lost_cut_has_no_aperture(async_client: AsyncClient, test_cutting_session, test_substrate):
     lost = _section(test_cutting_session, "SUB001", 0, None, condition="lost", condition_reason="lost in pickup")
 
     created = await async_client.post("/api/v2/sections", json=lost)
@@ -45,9 +41,7 @@ async def test_a_lost_cut_is_created_lost_without_an_aperture(
 
 
 @pytest.mark.asyncio
-async def test_a_qc_failure_is_created_damaged_with_its_reason(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_qc_failure_is_created_damaged(async_client: AsyncClient, test_cutting_session, test_substrate):
     response = await async_client.post(
         "/api/v2/sections",
         json=_section(test_cutting_session, "SUB001", 0, 2, condition="damaged", condition_reason="QC: no section"),
@@ -58,9 +52,7 @@ async def test_a_qc_failure_is_created_damaged_with_its_reason(
 
 
 @pytest.mark.asyncio
-async def test_a_condition_outside_the_vocabulary_is_422(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_unknown_condition_is_422(async_client: AsyncClient, test_cutting_session, test_substrate):
     response = await async_client.post(
         "/api/v2/sections", json=_section(test_cutting_session, "SUB001", 0, condition="missing")
     )
@@ -69,7 +61,7 @@ async def test_a_condition_outside_the_vocabulary_is_422(
 
 
 @pytest.mark.asyncio
-async def test_a_missed_placement_keeps_its_nearest_aperture_and_position_and_marks_it_used(
+async def test_missed_placement_keeps_aperture_and_position(
     async_client: AsyncClient, test_cutting_session, test_substrate
 ):
     response = await async_client.post(
@@ -84,9 +76,7 @@ async def test_a_missed_placement_keeps_its_nearest_aperture_and_position_and_ma
 
 
 @pytest.mark.asyncio
-async def test_correcting_an_aperture_onto_another_sections_placement_is_409(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_move_onto_taken_placement_is_409(async_client: AsyncClient, test_cutting_session, test_substrate):
     await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB001", 0, 1))
     other = (await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB001", 0, 2))).json()
 
@@ -97,7 +87,7 @@ async def test_correcting_an_aperture_onto_another_sections_placement_is_409(
 
 
 @pytest.mark.asyncio
-async def test_a_section_moved_to_another_substrate_is_a_new_section_and_the_old_one_lost(
+async def test_move_to_other_substrate_is_new_section(
     async_client: AsyncClient, test_cutting_session, test_substrate, test_layout
 ):
     await async_client.post(
@@ -116,7 +106,7 @@ async def test_a_section_moved_to_another_substrate_is_a_new_section_and_the_old
 
 
 @pytest.mark.asyncio
-async def test_a_resend_after_the_condition_changed_returns_the_stored_section(
+async def test_resend_after_condition_change_returns_stored(
     async_client: AsyncClient, test_cutting_session, test_substrate
 ):
     body = _section(test_cutting_session, "SUB001", 0)

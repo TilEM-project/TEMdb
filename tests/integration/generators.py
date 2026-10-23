@@ -104,7 +104,6 @@ def generate_section(
         ),
         "media_id": substrate.media_id,
         "aperture_index": 0,
-        "barcode": fake.ean13() if fake.boolean() else None,
         "created_at": datetime.now(timezone.utc),
     }
     defaults.update(kwargs)

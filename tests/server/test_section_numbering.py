@@ -18,9 +18,7 @@ def _section(test_cutting_session, test_substrate, minute: int, aperture: int | 
 
 
 @pytest.mark.asyncio
-async def test_sections_are_numbered_per_substrate_in_create_order(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_numbered_per_substrate(async_client: AsyncClient, test_cutting_session, test_substrate):
     first = await async_client.post("/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, 0))
     second = await async_client.post("/api/v2/sections", json=_section(test_cutting_session, test_substrate, 1, 1))
 
@@ -30,7 +28,7 @@ async def test_sections_are_numbered_per_substrate_in_create_order(
 
 
 @pytest.mark.asyncio
-async def test_a_client_section_number_is_rejected(async_client: AsyncClient, test_cutting_session, test_substrate):
+async def test_client_section_number_is_rejected(async_client: AsyncClient, test_cutting_session, test_substrate):
     response = await async_client.post(
         "/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, section_number=7)
     )
@@ -49,9 +47,7 @@ async def test_create_without_timestamp_is_422(async_client: AsyncClient, test_c
 
 
 @pytest.mark.asyncio
-async def test_resending_a_section_returns_the_stored_one(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_resend_returns_stored(async_client: AsyncClient, test_cutting_session, test_substrate):
     body = _section(test_cutting_session, test_substrate, 0, cut_count=5)
     created = await async_client.post("/api/v2/sections", json=body)
 
@@ -64,9 +60,7 @@ async def test_resending_a_section_returns_the_stored_one(
 
 
 @pytest.mark.asyncio
-async def test_same_placement_with_different_values_is_409_key_in_use(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_same_placement_different_values_is_409(async_client: AsyncClient, test_cutting_session, test_substrate):
     await async_client.post("/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, cut_count=5))
 
     response = await async_client.post(
@@ -78,7 +72,7 @@ async def test_same_placement_with_different_values_is_409_key_in_use(
 
 
 @pytest.mark.asyncio
-async def test_cut_count_is_stored_and_may_repeat(async_client: AsyncClient, test_cutting_session, test_substrate):
+async def test_cut_count_may_repeat(async_client: AsyncClient, test_cutting_session, test_substrate):
     first = await async_client.post(
         "/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, 0, cut_count=3)
     )
@@ -91,9 +85,7 @@ async def test_cut_count_is_stored_and_may_repeat(async_client: AsyncClient, tes
 
 
 @pytest.mark.asyncio
-async def test_lost_cuts_without_an_aperture_are_numbered_and_resent_safely(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_lost_cuts_are_numbered_and_resendable(async_client: AsyncClient, test_cutting_session, test_substrate):
     lost = _section(test_cutting_session, test_substrate, 0, aperture=None)
     created = await async_client.post("/api/v2/sections", json=lost)
     resent = await async_client.post("/api/v2/sections", json=lost)
@@ -106,9 +98,7 @@ async def test_lost_cuts_without_an_aperture_are_numbered_and_resent_safely(
 
 
 @pytest.mark.asyncio
-async def test_concurrent_creates_on_one_substrate_get_distinct_numbers(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_concurrent_creates_get_distinct_numbers(async_client: AsyncClient, test_cutting_session, test_substrate):
     responses = await asyncio.gather(
         *(
             async_client.post("/api/v2/sections", json=_section(test_cutting_session, test_substrate, minute, 0))
@@ -135,9 +125,7 @@ async def test_section_number_cannot_be_patched(async_client: AsyncClient, test_
 
 
 @pytest.mark.asyncio
-async def test_batch_numbers_sections_in_request_order_and_returns_stored_ones(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_batch_numbers_in_request_order(async_client: AsyncClient, test_cutting_session, test_substrate):
     batch = [_section(test_cutting_session, test_substrate, minute, minute) for minute in range(3)]
     created = await async_client.post("/api/v2/sections/batch", json=batch)
     resent = await async_client.post("/api/v2/sections/batch", json=batch)
@@ -148,7 +136,7 @@ async def test_batch_numbers_sections_in_request_order_and_returns_stored_ones(
 
 
 @pytest.mark.asyncio
-async def test_one_placement_twice_in_a_batch_is_422(async_client: AsyncClient, test_cutting_session, test_substrate):
+async def test_duplicate_placement_in_batch_is_422(async_client: AsyncClient, test_cutting_session, test_substrate):
     section = _section(test_cutting_session, test_substrate, 0)
 
     response = await async_client.post("/api/v2/sections/batch", json=[section, section])

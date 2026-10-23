@@ -72,7 +72,6 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
         "media_id": substrate_id_hr,
         "aperture_index": 0,
         "optical_image": {"inspection": {"image_path": "http://example.com/image.png"}},
-        "barcode": "BC123456789",
         "run_parameters": {"cutting_thickness_um": 45.5, "water_added": True},
     }
     response = await async_client.post("/api/v2/sections", json=section_data)
@@ -83,7 +82,6 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
     assert response_data["block_id"] == test_cutting_session.block_id
     assert response_data["specimen_id"] == test_cutting_session.specimen_id
     assert response_data["section_number"] == 1
-    assert response_data["barcode"] == "BC123456789"
     assert response_data["run_parameters"]["cutting_thickness_um"] == 45.5
     assert response_data["run_parameters"]["water_added"] is True
 
@@ -118,7 +116,6 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
                 "media_id": f"{media_base}_{substrate_idx}",
                 "aperture_index": i % 3,
                 "optical_image": {"inspection": {"image_path": f"http://example.com/image_{i}.png"}},
-                "barcode": f"BATCH{timestamp}_{i}",
             }
         )
 
@@ -139,7 +136,6 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
         assert section["block_id"] == test_cutting_session.block_id
         assert section["section_number"] == section_number
         assert section["media_id"] == f"{media_base}_{substrate_idx}"
-        assert section["barcode"] == f"BATCH{timestamp}_{i}"
 
         get_path = f"/api/v2/sections/{expected_section_id}"
         get_response = await async_client.get(get_path)

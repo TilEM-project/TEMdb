@@ -117,15 +117,3 @@ class SectionResource(BaseResource):
         return (
             [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
         )
-
-    async def list_by_barcode(
-        self, barcode: str, skip: int = 0, limit: int = 100, **kwargs: Any
-    ) -> list[SectionResponse]:
-        """List sections by barcode."""
-        endpoint = f"sections/barcode/{barcode}"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )

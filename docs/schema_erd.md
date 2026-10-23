@@ -161,7 +161,6 @@ erDiagram
         object optical_image
         int aperture_index
         object position
-        string barcode
         string condition
         string condition_reason
         object section_metrics

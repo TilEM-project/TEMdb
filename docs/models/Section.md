@@ -15,7 +15,6 @@
 | `optical_image` | object | Optical image collected before imaging |
 | `aperture_index` | int | Index of the layout aperture holding this section; empty for a section on a blank |
 | `position` | object | Where the section sits on the substrate, if known |
-| `barcode` | string | Barcode scanned for this section, if any |
 | `condition` | string | Physical condition of the section |
 | `condition_reason` | string | Reason for the current condition |
 | `section_metrics` | object | Metrics and parameters of the section |
