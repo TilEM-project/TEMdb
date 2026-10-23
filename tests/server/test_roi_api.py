@@ -304,3 +304,20 @@ async def test_get_child_rois_no_children(async_client: AsyncClient, test_roi):
     assert isinstance(response_data["children"], list)
     assert len(response_data["children"]) == 0
     assert response_data["metadata"]["total_children"] == 0
+
+
+@pytest.mark.asyncio
+async def test_roi_payload_drops_barcode(async_client: AsyncClient, test_section, test_substrate):
+    roi_data = {
+        "roi_number": 9002,
+        "section_id": test_section.section_id,
+        "specimen_id": test_section.specimen_id,
+        "block_id": test_section.block_id,
+        "substrate_media_id": test_substrate.media_id,
+        "payload": {"barcode": "00113206", "aperture_width_height": [100, 100]},
+    }
+
+    response = await async_client.post("/api/v2/rois", json=roi_data)
+
+    assert response.status_code == 201, response.text
+    assert "barcode" not in response.json()["roi_payload"]

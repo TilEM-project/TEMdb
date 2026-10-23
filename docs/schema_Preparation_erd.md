@@ -30,6 +30,7 @@ erDiagram
     SectionSQLModel {
         string section_id
         int section_number
+        int cut_count
         datetime timestamp
         string cutting_session_id
         string block_id
@@ -38,7 +39,6 @@ erDiagram
         object optical_image
         int aperture_index
         object position
-        string barcode
         string condition
         string condition_reason
         object section_metrics

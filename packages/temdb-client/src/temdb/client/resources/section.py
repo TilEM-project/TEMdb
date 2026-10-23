@@ -60,24 +60,21 @@ class SectionResource(BaseResource):
         response_data = await self._post("sections", data=section_data.model_dump(mode="json", exclude_unset=True))
         return SectionResponse.model_validate(response_data)
 
-    async def get(self, cutting_session_id: str, section_id: str) -> SectionResponse:
-        """Get a specific section by session and section ID."""
-        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}"
-        response_data = await self._get(endpoint)
+    async def get(self, section_id: str) -> SectionResponse:
+        """Get a section by its section_id."""
+        response_data = await self._get(f"sections/{section_id}")
         return SectionResponse.model_validate(response_data)
 
     @accepts_keywords(SectionUpdate)
-    async def update(self, cutting_session_id: str, section_id: str, section_data: SectionUpdate) -> SectionResponse:
-        """Update an existing section."""
-        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}"
+    async def update(self, section_id: str, section_data: SectionUpdate) -> SectionResponse:
+        """Update a section by its section_id."""
         update_payload = section_data.model_dump(exclude_unset=True)
-        response_data = await self._patch(endpoint, data=update_payload)
+        response_data = await self._patch(f"sections/{section_id}", data=update_payload)
         return SectionResponse.model_validate(response_data)
 
-    async def delete(self, cutting_session_id: str, section_id: str) -> None:
-        """Delete a section."""
-        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}"
-        await self._delete(endpoint)
+    async def delete(self, section_id: str) -> None:
+        """Delete a section by its section_id."""
+        await self._delete(f"sections/{section_id}")
 
     async def list_by_block(
         self, block_id: str, skip: int = 0, limit: int = 100, **kwargs: Any
@@ -115,18 +112,6 @@ class SectionResource(BaseResource):
         endpoint = f"sections/media/{media_id}"
         params = {"skip": skip, "limit": limit, "relative_position": relative_position}
         params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
-
-    async def list_by_barcode(
-        self, barcode: str, skip: int = 0, limit: int = 100, **kwargs: Any
-    ) -> list[SectionResponse]:
-        """List sections by barcode."""
-        endpoint = f"sections/barcode/{barcode}"
-        params = {"skip": skip, "limit": limit}
         params.update(kwargs)
         response_data = await self._get(endpoint, params=params)
         return (

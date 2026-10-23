@@ -34,8 +34,8 @@ def _section_payload(**extra) -> dict:
 async def test_create_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _section_payload(section_id="MEDIA001_S00002", section_number=2)
-    out = await res.create(cutting_session_id="CUT001", section_number=2, media_id="MEDIA001")
-    assert request.await_args.kwargs["json"]["section_number"] == 2
+    out = await res.create(cutting_session_id="CUT001", media_id="MEDIA001", timestamp=NOW, cut_count=7)
+    assert request.await_args.kwargs["json"]["cut_count"] == 7
     assert out.section_number == 2
 
 
@@ -44,8 +44,8 @@ async def test_create_rejects_model_plus_kwargs():
     res, _ = _resource()
     with pytest.raises(TypeError):
         await res.create(
-            SectionCreate(cutting_session_id="CUT001", section_number=1, media_id="MEDIA001"),
-            barcode="conflict",
+            SectionCreate(cutting_session_id="CUT001", media_id="MEDIA001", timestamp=NOW),
+            cut_count=7,
         )
 
 
@@ -63,8 +63,8 @@ async def test_list_by_session_uses_expected_path():
 async def test_update_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _section_payload(condition="damaged")
-    out = await res.update("CUT001", "MEDIA001_S00001", condition="damaged")
-    assert request.await_args.args[:2] == ("PATCH", "sections/sessions/CUT001/sections/MEDIA001_S00001")
+    out = await res.update("MEDIA001_S00001", condition="damaged")
+    assert request.await_args.args[:2] == ("PATCH", "sections/MEDIA001_S00001")
     assert request.await_args.kwargs["json"] == {"condition": "damaged"}
     assert out.condition == "damaged"
 

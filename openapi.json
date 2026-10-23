@@ -3832,21 +3832,6 @@
             "description": "Flag if auto generated ROI was used",
             "title": "Auto Roi"
           },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode of ROI if present",
-            "title": "Barcode"
-          },
           "bucket": {
             "anyOf": [
               {
@@ -4242,7 +4227,13 @@
             "description": "Index of the layout aperture holding this section; empty for a section on a blank",
             "title": "Aperture Index"
           },
-          "barcode": {
+          "condition": {
+            "default": "ok",
+            "description": "Physical condition of the section",
+            "title": "Condition",
+            "type": "string"
+          },
+          "condition_reason": {
             "anyOf": [
               {
                 "type": "string"
@@ -4251,8 +4242,8 @@
                 "type": "null"
               }
             ],
-            "description": "Barcode scanned for this section, if any",
-            "title": "Barcode"
+            "description": "Reason for the current condition",
+            "title": "Condition Reason"
           },
           "created_at": {
             "anyOf": [
@@ -4266,6 +4257,19 @@
             ],
             "description": "Creation timestamp; server-generated if omitted",
             "title": "Created At"
+          },
+          "cut_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cut counter reported by the sectioning device; not unique, it can restart",
+            "title": "Cut Count"
           },
           "cutting_session_id": {
             "description": "ID of the cutting session this section belongs to",
@@ -4338,28 +4342,15 @@
             ],
             "description": "Metrics and parameters of the section"
           },
-          "section_number": {
-            "description": "Sequential section number",
-            "exclusiveMinimum": 0.0,
-            "title": "Section Number",
-            "type": "integer"
-          },
           "timestamp": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "Timestamp of section creation/cutting",
-            "title": "Timestamp"
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
-          "section_number",
+          "timestamp",
           "cutting_session_id",
           "media_id"
         ],
@@ -4571,18 +4562,6 @@
             "description": "Index of the layout aperture holding this section; empty for a section on a blank",
             "title": "Aperture Index"
           },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode scanned for this section, if any",
-            "title": "Barcode"
-          },
           "block_id": {
             "description": "ID of the block",
             "title": "Block Id",
@@ -4617,6 +4596,19 @@
               }
             ],
             "title": "Created At"
+          },
+          "cut_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cut counter reported by the sectioning device; not unique, it can restart",
+            "title": "Cut Count"
           },
           "cutting_session_id": {
             "description": "ID of the cutting session",
@@ -4705,7 +4697,7 @@
             "description": "Metrics and parameters of the section"
           },
           "section_number": {
-            "description": "Sequential section number within the cutting session",
+            "description": "Number TEMdb assigned on the substrate, in create order",
             "exclusiveMinimum": 0.0,
             "title": "Section Number",
             "type": "integer"
@@ -4742,9 +4734,9 @@
           }
         },
         "required": [
-          "section_number",
           "id",
           "section_id",
+          "section_number",
           "cutting_session_id",
           "block_id",
           "specimen_id",
@@ -4771,18 +4763,6 @@
             "description": "Index of the layout aperture holding this section; empty for a section on a blank",
             "title": "Aperture Index"
           },
-          "barcode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Barcode scanned for this section, if any",
-            "title": "Barcode"
-          },
           "condition": {
             "description": "Physical condition of the section",
             "title": "Condition",
@@ -4799,6 +4779,19 @@
             ],
             "description": "Reason for the current condition",
             "title": "Condition Reason"
+          },
+          "cut_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cut counter reported by the sectioning device; not unique, it can restart",
+            "title": "Cut Count"
           },
           "extra": {
             "anyOf": [
@@ -4860,12 +4853,6 @@
               }
             ],
             "description": "Metrics and parameters of the section"
-          },
-          "section_number": {
-            "description": "Sequential section number within the cutting session",
-            "exclusiveMinimum": 0.0,
-            "title": "Section Number",
-            "type": "integer"
           },
           "timestamp": {
             "description": "Timestamp of section creation/cutting",
@@ -11668,7 +11655,7 @@
         ]
       },
       "post": {
-        "description": "Create a new section.",
+        "description": "Create a section, numbered next on its substrate; a section already at this placement is returned (200).",
         "operationId": "create_section_api_v2_sections_post",
         "requestBody": {
           "content": {
@@ -11681,6 +11668,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionResponse"
+                }
+              }
+            },
+            "description": "The section was already stored"
+          },
           "201": {
             "content": {
               "application/json": {
@@ -11690,6 +11687,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Same placement, different values"
           },
           "422": {
             "content": {
@@ -11708,79 +11715,9 @@
         ]
       }
     },
-    "/api/v2/sections/barcode/{barcode}": {
-      "get": {
-        "description": "Retrieve sections by barcode.",
-        "operationId": "get_sections_by_barcode_api_v2_sections_barcode__barcode__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "barcode",
-            "required": true,
-            "schema": {
-              "title": "Barcode",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "skip",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Skip",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SectionResponse"
-                  },
-                  "title": "Response Get Sections By Barcode Api V2 Sections Barcode  Barcode  Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Sections By Barcode",
-        "tags": [
-          "Sections"
-        ]
-      }
-    },
     "/api/v2/sections/batch": {
       "post": {
-        "description": "Creates multiple Section documents from a list.",
+        "description": "Create sections in request order, each as POST /sections would; nothing is stored if any item fails.",
         "operationId": "create_sections_batch_api_v2_sections_batch_post",
         "requestBody": {
           "content": {
@@ -11839,7 +11776,7 @@
                 }
               }
             },
-            "description": "Duplicate section ID"
+            "description": "Same placement, different values"
           },
           "422": {
             "content": {
@@ -12218,161 +12155,6 @@
         ]
       }
     },
-    "/api/v2/sections/sessions/{cutting_session_id}/sections/{section_id}": {
-      "delete": {
-        "description": "Delete a specific section.",
-        "operationId": "delete_section_api_v2_sections_sessions__cutting_session_id__sections__section_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Section",
-        "tags": [
-          "Sections"
-        ]
-      },
-      "get": {
-        "description": "Retrieve a specific section by its human-readable ID and its session's human-readable ID.",
-        "operationId": "get_section_api_v2_sections_sessions__cutting_session_id__sections__section_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SectionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Section",
-        "tags": [
-          "Sections"
-        ]
-      },
-      "patch": {
-        "description": "Update details of a specific section.",
-        "operationId": "update_section_api_v2_sections_sessions__cutting_session_id__sections__section_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SectionUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SectionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Section",
-        "tags": [
-          "Sections"
-        ]
-      }
-    },
     "/api/v2/sections/specimens/{specimen_id}": {
       "get": {
         "description": "Retrieve sections associated with a specific specimen using its human-readable ID.",
@@ -12438,6 +12220,134 @@
           }
         },
         "summary": "List Specimen Sections",
+        "tags": [
+          "Sections"
+        ]
+      }
+    },
+    "/api/v2/sections/{section_id}": {
+      "delete": {
+        "description": "Delete a section by its section_id.",
+        "operationId": "delete_section_api_v2_sections__section_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Section",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "get": {
+        "description": "Retrieve a section by its section_id.",
+        "operationId": "get_section_api_v2_sections__section_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Section",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "patch": {
+        "description": "Update a section by its section_id.",
+        "operationId": "update_section_api_v2_sections__section_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Section",
         "tags": [
           "Sections"
         ]

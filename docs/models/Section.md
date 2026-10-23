@@ -5,7 +5,8 @@
 | Field Name | Type | Description |
 |------------|------|-------------|
 | `section_id` | string | Unique, system-generated ID for the section |
-| `section_number` | int | Sequential section number within the cutting session |
+| `section_number` | int | Number TEMdb assigned on the substrate, in create order |
+| `cut_count` | int | Cut counter reported by the sectioning device; not unique, it can restart |
 | `timestamp` | datetime | Timestamp of section creation/cutting |
 | `cutting_session_id` | string | ID of the cutting session |
 | `block_id` | string | ID of the block |
@@ -14,7 +15,6 @@
 | `optical_image` | object | Optical image collected before imaging |
 | `aperture_index` | int | Index of the layout aperture holding this section; empty for a section on a blank |
 | `position` | object | Where the section sits on the substrate, if known |
-| `barcode` | string | Barcode scanned for this section, if any |
 | `condition` | string | Physical condition of the section |
 | `condition_reason` | string | Reason for the current condition |
 | `section_metrics` | object | Metrics and parameters of the section |

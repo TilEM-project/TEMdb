@@ -104,7 +104,10 @@ class Records:
         return await self._once(
             "section",
             lambda: self.client.section.create(
-                section_number=1, cutting_session_id="CS1", media_id="M1", barcode="BC1", aperture_index=0
+                timestamp=datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
+                cutting_session_id="CS1",
+                media_id="M1",
+                aperture_index=0,
             ),
         )
 
