@@ -127,7 +127,7 @@ async def test_section_number_cannot_be_patched(async_client: AsyncClient, test_
     ).json()
 
     response = await async_client.patch(
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{created['section_id']}",
+        f"/api/v2/sections/{created['section_id']}",
         json={"section_number": 9},
     )
 

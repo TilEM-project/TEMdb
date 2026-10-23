@@ -2,13 +2,13 @@ import pytest
 from httpx import AsyncClient
 
 
-def _section_path(test_cutting_session, test_section) -> str:
-    return f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}"
+def _section_path(test_section) -> str:
+    return f"/api/v2/sections/{test_section.section_id}"
 
 
 @pytest.mark.asyncio
 async def test_condition_lifecycle(async_client: AsyncClient, test_cutting_session, test_section):
-    path = _section_path(test_cutting_session, test_section)
+    path = _section_path(test_section)
 
     created = (await async_client.get(path)).json()
     assert created["condition"] == "ok"
@@ -28,7 +28,7 @@ async def test_condition_lifecycle(async_client: AsyncClient, test_cutting_sessi
 
 @pytest.mark.asyncio
 async def test_destroyed_writes_rejected(async_client: AsyncClient, test_cutting_session, test_section):
-    path = _section_path(test_cutting_session, test_section)
+    path = _section_path(test_section)
     response = await async_client.patch(path, json={"destroyed": True})
     assert response.status_code == 422
     assert "condition" in response.text
@@ -36,6 +36,6 @@ async def test_destroyed_writes_rejected(async_client: AsyncClient, test_cutting
 
 @pytest.mark.asyncio
 async def test_invalid_condition_rejected(async_client: AsyncClient, test_cutting_session, test_section):
-    path = _section_path(test_cutting_session, test_section)
+    path = _section_path(test_section)
     response = await async_client.patch(path, json={"condition": "broken"})
     assert response.status_code == 422

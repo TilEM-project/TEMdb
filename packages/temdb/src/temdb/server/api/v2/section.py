@@ -57,6 +57,13 @@ async def mark_apertures_used(session: AsyncSession, media_id: str, aperture_ind
         substrate.updated_at = datetime.now(timezone.utc)
 
 
+async def _section_or_404(session: AsyncSession, section_id: str) -> SectionSQLModel:
+    section_obj = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
+    if section_obj is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Section '{section_id}' not found")
+    return section_obj
+
+
 def dump_position(position):
     return position.model_dump(mode="json") if position is not None else None
 
@@ -176,42 +183,13 @@ async def list_specimen_sections(
     return sections.all()
 
 
-@section_api.get("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
+@section_api.get("/sections/{section_id}", response_model=SectionResponse)
 async def get_section(
-    cutting_session_id: str,
     section_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve a specific section by its human-readable ID and its session's human-readable ID."""
-    row = (
-        await session.execute(
-            select(
-                SectionSQLModel,
-                CuttingSessionSQLModel.id,
-                SubstrateSQLModel.id,
-            )
-            .select_from(SectionSQLModel)
-            .outerjoin(
-                CuttingSessionSQLModel,
-                CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
-            )
-            .outerjoin(
-                SubstrateSQLModel,
-                SubstrateSQLModel.media_id == SectionSQLModel.media_id,
-            )
-            .where(
-                SectionSQLModel.section_id == section_id,
-                SectionSQLModel.cutting_session_id == cutting_session_id,
-            )
-        )
-    ).first()
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
-        )
-    section_obj, _cutting_session_ref, _substrate_ref = row
-    return section_obj
+    """Retrieve a section by its section_id."""
+    return await _section_or_404(session, section_id)
 
 
 def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> SectionSQLModel:
@@ -382,26 +360,14 @@ async def create_sections_batch(
     return result
 
 
-@section_api.patch("/sections/sessions/{cutting_session_id}/sections/{section_id}", response_model=SectionResponse)
+@section_api.patch("/sections/{section_id}", response_model=SectionResponse)
 async def update_section(
-    cutting_session_id: str,
     section_id: str,
     updated_fields: SectionUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Update details of a specific section."""
-    section = await session.scalars(
-        select(SectionSQLModel).where(
-            SectionSQLModel.section_id == section_id,
-            SectionSQLModel.cutting_session_id == cutting_session_id,
-        )
-    )
-    section_obj = section.one_or_none()
-    if section_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
-        )
+    """Update a section by its section_id."""
+    section_obj = await _section_or_404(session, section_id)
     update_data = updated_fields.model_dump(
         exclude_unset=True,
     )
@@ -436,29 +402,13 @@ async def update_section(
     return section_obj
 
 
-@section_api.delete(
-    "/sections/sessions/{cutting_session_id}/sections/{section_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
+@section_api.delete("/sections/{section_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_section(
-    cutting_session_id: str,
     section_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Delete a specific section."""
-    section_obj = (
-        await session.scalars(
-            select(SectionSQLModel).where(
-                SectionSQLModel.section_id == section_id,
-                SectionSQLModel.cutting_session_id == cutting_session_id,
-            )
-        )
-    ).one_or_none()
-    if section_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
-        )
+    """Delete a section by its section_id."""
+    section_obj = await _section_or_404(session, section_id)
     await session.delete(section_obj)
     await session.commit()
     return None

@@ -16,8 +16,8 @@ def _section(cutting_session, media_id: str, minute: int, aperture: int | None =
     }
 
 
-def _path(cutting_session, section_id: str) -> str:
-    return f"/api/v2/sections/sessions/{cutting_session.cutting_session_id}/sections/{section_id}"
+def _path(section_id: str) -> str:
+    return f"/api/v2/sections/{section_id}"
 
 
 @pytest.mark.asyncio
@@ -90,8 +90,8 @@ async def test_correcting_an_aperture_onto_another_sections_placement_is_409(
     await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB001", 0, 1))
     other = (await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB001", 0, 2))).json()
 
-    moved_onto = await async_client.patch(_path(test_cutting_session, other["section_id"]), json={"aperture_index": 1})
-    moved_free = await async_client.patch(_path(test_cutting_session, other["section_id"]), json={"aperture_index": 0})
+    moved_onto = await async_client.patch(_path(other["section_id"]), json={"aperture_index": 1})
+    moved_free = await async_client.patch(_path(other["section_id"]), json={"aperture_index": 0})
 
     assert (moved_onto.status_code, moved_free.status_code) == (409, 200)
 
@@ -107,7 +107,7 @@ async def test_a_section_moved_to_another_substrate_is_a_new_section_and_the_old
 
     new = await async_client.post("/api/v2/sections", json=_section(test_cutting_session, "SUB002", 0))
     lost = await async_client.patch(
-        _path(test_cutting_session, old["section_id"]),
+        _path(old["section_id"]),
         json={"condition": "lost", "condition_reason": "moved to SUB002"},
     )
 
@@ -121,7 +121,7 @@ async def test_a_resend_after_the_condition_changed_returns_the_stored_section(
 ):
     body = _section(test_cutting_session, "SUB001", 0)
     created = (await async_client.post("/api/v2/sections", json=body)).json()
-    await async_client.patch(_path(test_cutting_session, created["section_id"]), json={"condition": "destroyed"})
+    await async_client.patch(_path(created["section_id"]), json={"condition": "destroyed"})
 
     resent = await async_client.post("/api/v2/sections", json=body)
 

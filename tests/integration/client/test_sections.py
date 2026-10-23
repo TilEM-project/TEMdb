@@ -11,12 +11,12 @@ async def test_section_create(client, records):
     created = await client.section.create(
         timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc), cutting_session_id="CS1", media_id="M1"
     )
-    assert (await client.section.get("CS1", created.section_id)).section_number == 1
+    assert (await client.section.get(created.section_id)).section_number == 1
 
 
 async def test_section_get(client, records):
     section = await records.section()
-    assert (await client.section.get("CS1", section.section_id)).barcode == "BC1"
+    assert (await client.section.get(section.section_id)).barcode == "BC1"
 
 
 async def test_section_list_by_session(client, records):
@@ -34,15 +34,15 @@ async def test_section_list_all(client, records):
 
 async def test_section_update(client, records):
     section = await records.section()
-    updated = await client.section.update("CS1", section.section_id, barcode="BC2")
+    updated = await client.section.update(section.section_id, barcode="BC2")
     assert updated.barcode == "BC2"
 
 
 async def test_section_delete(client, records):
     section = await records.section()
-    await client.section.delete("CS1", section.section_id)
+    await client.section.delete(section.section_id)
     with pytest.raises(TEMdbNotFoundError):
-        await client.section.get("CS1", section.section_id)
+        await client.section.get(section.section_id)
 
 
 async def test_section_list_by_block(client, records):

@@ -141,14 +141,12 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
         assert section["media_id"] == f"{media_base}_{substrate_idx}"
         assert section["barcode"] == f"BATCH{timestamp}_{i}"
 
-        session_id = test_cutting_session.cutting_session_id
-        get_path = f"/api/v2/sections/sessions/{session_id}/sections/{expected_section_id}"
+        get_path = f"/api/v2/sections/{expected_section_id}"
         get_response = await async_client.get(get_path)
         assert get_response.status_code == 200
 
     for i, section in enumerate(created_sections):
-        session_id = test_cutting_session.cutting_session_id
-        delete_path = f"/api/v2/sections/sessions/{session_id}/sections/{section['section_id']}"
+        delete_path = f"/api/v2/sections/{section['section_id']}"
         await async_client.delete(delete_path)
 
 
@@ -251,7 +249,7 @@ async def test_create_sections_batch_duplicate_placements(async_client: AsyncCli
 @pytest.mark.asyncio
 async def test_get_section(async_client: AsyncClient, test_cutting_session, test_section):
     """Test retrieving a specific section by human-readable IDs."""
-    path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}"
+    path = f"/api/v2/sections/{test_section.section_id}"
     response = await async_client.get(path)
     assert response.status_code == 200
     response_data = response.json()
@@ -263,7 +261,7 @@ async def test_get_section(async_client: AsyncClient, test_cutting_session, test
 @pytest.mark.asyncio
 async def test_get_section_not_found(async_client: AsyncClient, test_cutting_session):
     """Test retrieving a non-existent section."""
-    path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/NON_EXISTENT_SECTION"
+    path = "/api/v2/sections/NON_EXISTENT_SECTION"
     response = await async_client.get(path)
     assert response.status_code == 404
 
@@ -276,7 +274,7 @@ async def test_update_section(async_client: AsyncClient, test_cutting_session, t
         "run_parameters": {"cut_cycle": 0.6},
         "optical_image": {"test": {"image_path": "/allen/something/something/profit.jpg"}},
     }
-    path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}"
+    path = f"/api/v2/sections/{test_section.section_id}"
     response = await async_client.patch(path, json=update_data)
     assert response.status_code == 200
     response_data = response.json()
@@ -299,7 +297,7 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
     assert create_response.status_code == 201
     section_id_hr = create_response.json()["section_id"]
 
-    delete_path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{section_id_hr}"
+    delete_path = f"/api/v2/sections/{section_id_hr}"
     delete_response = await async_client.delete(delete_path)
     assert delete_response.status_code == 204
 
@@ -310,7 +308,7 @@ async def test_delete_section(async_client: AsyncClient, test_cutting_session, t
 @pytest.mark.asyncio
 async def test_delete_section_with_rois(async_client: AsyncClient, test_section, test_roi):
     """Test that deleting a section fails if it has associated ROIs."""
-    path = f"/api/v2/sections/sessions/{test_section.cutting_session_id}/sections/{test_section.section_id}"
+    path = f"/api/v2/sections/{test_section.section_id}"
     response = await async_client.delete(path)
     assert response.status_code == 409
     response_data = response.json()
@@ -404,7 +402,7 @@ async def test_section_cannot_move_to_an_aperture_the_layout_does_not_have(
     async_client: AsyncClient, test_cutting_session, test_section
 ):
     response = await async_client.patch(
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}",
+        f"/api/v2/sections/{test_section.section_id}",
         json={"aperture_index": 3},
     )
     assert response.status_code == 422
@@ -458,9 +456,7 @@ async def test_placing_a_section_marks_its_aperture_used_but_leaves_damaged_alon
     statuses = (await async_client.get(f"/api/v2/substrates/{media_id}")).json()["aperture_status"]
     assert statuses == ["used", "damaged", "available"]
 
-    moved = await async_client.patch(
-        f"/api/v2/sections/sessions/{session_id}/sections/{media_id}_S1", json={"aperture_index": 2}
-    )
+    moved = await async_client.patch(f"/api/v2/sections/{media_id}_S1", json={"aperture_index": 2})
     assert moved.status_code == 200
     statuses = (await async_client.get(f"/api/v2/substrates/{media_id}")).json()["aperture_status"]
     assert statuses == ["used", "damaged", "used"]

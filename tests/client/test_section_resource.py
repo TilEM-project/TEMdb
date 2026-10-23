@@ -63,8 +63,8 @@ async def test_list_by_session_uses_expected_path():
 async def test_update_accepts_kwargs_via_decorator():
     res, request = _resource()
     request.return_value = _section_payload(condition="damaged")
-    out = await res.update("CUT001", "MEDIA001_S00001", condition="damaged")
-    assert request.await_args.args[:2] == ("PATCH", "sections/sessions/CUT001/sections/MEDIA001_S00001")
+    out = await res.update("MEDIA001_S00001", condition="damaged")
+    assert request.await_args.args[:2] == ("PATCH", "sections/MEDIA001_S00001")
     assert request.await_args.kwargs["json"] == {"condition": "damaged"}
     assert out.condition == "damaged"
 

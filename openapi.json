@@ -12276,161 +12276,6 @@
         ]
       }
     },
-    "/api/v2/sections/sessions/{cutting_session_id}/sections/{section_id}": {
-      "delete": {
-        "description": "Delete a specific section.",
-        "operationId": "delete_section_api_v2_sections_sessions__cutting_session_id__sections__section_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Section",
-        "tags": [
-          "Sections"
-        ]
-      },
-      "get": {
-        "description": "Retrieve a specific section by its human-readable ID and its session's human-readable ID.",
-        "operationId": "get_section_api_v2_sections_sessions__cutting_session_id__sections__section_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SectionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Section",
-        "tags": [
-          "Sections"
-        ]
-      },
-      "patch": {
-        "description": "Update details of a specific section.",
-        "operationId": "update_section_api_v2_sections_sessions__cutting_session_id__sections__section_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SectionUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SectionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Section",
-        "tags": [
-          "Sections"
-        ]
-      }
-    },
     "/api/v2/sections/specimens/{specimen_id}": {
       "get": {
         "description": "Retrieve sections associated with a specific specimen using its human-readable ID.",
@@ -12496,6 +12341,134 @@
           }
         },
         "summary": "List Specimen Sections",
+        "tags": [
+          "Sections"
+        ]
+      }
+    },
+    "/api/v2/sections/{section_id}": {
+      "delete": {
+        "description": "Delete a section by its section_id.",
+        "operationId": "delete_section_api_v2_sections__section_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Section",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "get": {
+        "description": "Retrieve a section by its section_id.",
+        "operationId": "get_section_api_v2_sections__section_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Section",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "patch": {
+        "description": "Update a section by its section_id.",
+        "operationId": "update_section_api_v2_sections__section_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Section",
         "tags": [
           "Sections"
         ]
