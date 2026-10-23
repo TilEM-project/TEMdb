@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 from httpx import AsyncClient
+from minio.error import S3Error
 from sqlalchemy import select
 
 from temdb.models import SectionQuality
@@ -372,6 +373,54 @@ async def test_get_section_image_url_downloads_from_minio(
         download_response = await s3_client.get(presigned["url"])
     assert download_response.status_code == 200
     assert download_response.content == contents
+
+
+@pytest.mark.parametrize("method", ["GET", "DELETE"])
+@pytest.mark.parametrize("missing", ["section", "session", "image"])
+async def test_section_image_missing_resource_returns_404(
+    async_client, test_cutting_session, test_section, method, missing
+):
+    session_id = "MISSING_SESSION" if missing == "session" else test_cutting_session.cutting_session_id
+    section_id = "MISSING_SECTION" if missing == "section" else test_section.section_id
+    path = f"/api/v2/sections/sessions/{session_id}/sections/{section_id}/image"
+
+    response = await async_client.request(method, path)
+
+    assert response.status_code == 404, response.text
+
+
+async def test_delete_section_image_removes_object_and_clears_metadata(
+    async_client, test_db_manager, test_cutting_session, test_section, minio_s3
+):
+    image = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": f"sections/{test_section.section_id}.png",
+    }
+    contents = b"section image"
+    minio_s3["client"].put_object(image["bucket"], image["key"], io.BytesIO(contents), length=len(contents))
+    async with test_db_manager.async_session_factory() as session:
+        section = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.id == test_section.id))
+        section.optical_image = image
+        await session.commit()
+    path = (
+        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}/image"
+    )
+
+    response = await async_client.delete(path)
+
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+    with pytest.raises(S3Error) as error:
+        minio_s3["client"].stat_object(image["bucket"], image["key"])
+    assert error.value.code == "NoSuchKey"
+    async with test_db_manager.async_session_factory() as session:
+        section = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.id == test_section.id))
+        assert section is not None
+        assert section.optical_image is None
+    assert (await async_client.get(path)).status_code == 404
+    assert (await async_client.delete(path)).status_code == 404
 
 
 # @pytest.mark.asyncio

@@ -120,6 +120,11 @@ class SectionResource(BaseResource):
 
         return io.BufferedReader(response.raw)
 
+    async def delete_image(self, cutting_session_id: str, section_id: str) -> None:
+        """Delete the image associated with a specific section."""
+        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}/image"
+        await self._delete(endpoint)
+
     async def update(self, cutting_session_id: str, section_id: str, section_data: SectionUpdate) -> SectionResponse:
         """Update an existing section."""
         endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}"

@@ -158,3 +158,21 @@ async def test_get_image_closes_response_when_download_fails():
         await resource.get_image("CUT001", "SEC001")
 
     response.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_delete_image_awaits_delete_request():
+    resource, request = _resource()
+
+    await resource.delete_image("CUT001", "SEC001")
+
+    request.assert_awaited_once_with("DELETE", SECTION_URL)
+
+
+@pytest.mark.asyncio
+async def test_delete_image_propagates_request_failure():
+    resource, request = _resource()
+    request.side_effect = requests.HTTPError("delete failed")
+
+    with pytest.raises(requests.HTTPError, match="delete failed"):
+        await resource.delete_image("CUT001", "SEC001")

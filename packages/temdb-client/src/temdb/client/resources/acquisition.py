@@ -1,7 +1,9 @@
 import builtins
+import io
 from datetime import datetime
 from typing import Any
 
+import requests
 from pydantic import BaseModel
 
 from temdb.models import (
@@ -10,6 +12,8 @@ from temdb.models import (
     AcquisitionResponse,
     AcquisitionStatusFilter,
     AcquisitionUpdate,
+    FileObjectRequest,
+    FileObjectResponse,
     StorageLocation,
     StorageLocationCreate,
     TileBulkDeleteResult,
@@ -33,6 +37,10 @@ class PaginatedTileResponse(BaseModel):
 
 
 class AcquisitionResource(BaseResource):
+    def __init__(self, *args, **kwargs):
+        self._file_session = requests.Session()
+        super().__init__(*args, **kwargs)
+
     async def list(
         self,
         cursor: str | None = None,
@@ -193,10 +201,78 @@ class AcquisitionResource(BaseResource):
                 break
         return all_tiles
 
-    async def get_minimap_uri(self, acquisition_id: str) -> dict[str, str | None]:
-        """Get the calculated URI for the acquisition's minimap."""
-        endpoint = f"acquisitions/{acquisition_id}/minimap-uri"
-        return await self._get(endpoint)
+    async def put_image_url(
+        self, acquisition_id: str, tile_id: str, storage_location: FileObjectRequest | None = None
+    ) -> FileObjectResponse:
+        """Get a presigned URL for uploading an image for a specific tile."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}/image"
+        payload = storage_location.model_dump(exclude_unset=True) if storage_location else None
+        response_data = await self._post(endpoint, data=payload)
+        return FileObjectResponse.model_validate(response_data)
+
+    async def put_image_urls(
+        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None, expiration: int | None = None
+    ) -> builtins.dict[str, FileObjectResponse]:
+        """Get presigned URLs for uploading images for multiple tiles.
+
+        If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/images"
+        response_data = await self._post(
+            endpoint, data=tile_ids, params={"expiration": expiration} if expiration else None
+        )
+        return {tile_id: FileObjectResponse.model_validate(response) for tile_id, response in response_data.items()}
+
+    async def put_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        image_data: io.IOBase,
+        storage_location: FileObjectRequest | None = None,
+    ) -> FileObjectResponse:
+        """Upload an image for a specific tile."""
+        file_object = await self.put_image_url(acquisition_id, tile_id, storage_location)
+        response = self._file_session.put(file_object.url, data=image_data)
+        response.raise_for_status()
+        return file_object
+
+    async def get_image_url(
+        self, acquisition_id: str, tile_id: str, expiration: int | None = None
+    ) -> FileObjectResponse:
+        """Get a presigned URL for downloading an image for a specific tile."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}/image"
+        response_data = await self._get(endpoint, params={"expiration": expiration} if expiration else None)
+        return FileObjectResponse.model_validate(response_data)
+
+    async def get_image_urls(
+        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None, expiration: int | None = None
+    ) -> builtins.list[FileObjectResponse]:
+        """Get presigned URLs for downloading images for multiple tiles.
+
+        If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/images"
+        response_data = await self._get(
+            endpoint, json=tile_ids, params={"expiration": expiration} if expiration else None
+        )
+        return {tile_id: FileObjectResponse.model_validate(response) for tile_id, response in response_data.items()}
+
+    async def delete_image(self, acquisition_id: str, tile_id: str) -> None:
+        """Delete the image for a specific tile."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}/image"
+        await self._delete(endpoint)
+
+    async def delete_images(
+        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None
+    ) -> builtins.list[str]:
+        """Delete images for multiple tiles.
+
+        If tile_ids is None, all images will be deleted for the acquisition.
+
+        Returns a list of tile IDs for which images were successfully deleted.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/images"
+        return await self._delete(endpoint, json=tile_ids)
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""

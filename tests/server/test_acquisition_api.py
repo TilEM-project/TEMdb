@@ -1,10 +1,13 @@
+import io
 import json
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import null, update
+from minio.error import S3Error
+from sqlalchemy import null, select, update
 
 from temdb.server.config import config
 from temdb.server.ids import uuid7
@@ -42,6 +45,176 @@ async def _set_tiles_image_to_sql_null(test_db_manager, tile_ids: list[str]) -> 
             .values(image=null())
         )
         await session.commit()
+
+
+async def _store_tile_image(test_db_manager, minio_s3, tile_id):
+    contents = b"stored tile image"
+    image = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": f"tiles/{tile_id}.tif",
+    }
+    minio_s3["client"].put_object(image["bucket"], image["key"], io.BytesIO(contents), length=len(contents))
+    async with test_db_manager.async_session_factory() as session:
+        await session.execute(
+            update(TileSQLModel).where(TileSQLModel.tile_id == uuid.UUID(str(tile_id))).values(image=image)
+        )
+        await session.commit()
+    return image
+
+
+@pytest.fixture
+async def stored_tile_image(test_db_manager, minio_s3, test_tile):
+    return await _store_tile_image(test_db_manager, minio_s3, test_tile.tile_id)
+
+
+async def test_tile_image_upload_roundtrip(async_client, test_db_manager, test_acquisition, test_tile, minio_s3):
+    tile_id = str(test_tile.tile_id)
+    await _set_tiles_image_to_sql_null(test_db_manager, [tile_id])
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+    location = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": f"/tiles/{tile_id}.tif",
+        "expiration": 600,
+    }
+
+    response = await async_client.post(path, json=location)
+
+    assert response.status_code == 200, response.text
+    presigned = response.json()
+    assert presigned["key"] == f"tiles/{tile_id}.tif"
+    assert presigned["expiration"] == 600
+    async with httpx.AsyncClient() as storage:
+        uploaded = await storage.put(presigned["url"], content=b"new tile image")
+    assert uploaded.status_code == 200, uploaded.text
+    tile_response = await async_client.get(path.removesuffix("/image"))
+    assert tile_response.status_code == 200, tile_response.text
+    assert tile_response.json()["image"] == {key: presigned[key] for key in ("protocol", "server", "bucket", "key")}
+
+    response = await async_client.get(path, params={"expiration": 300})
+    assert response.status_code == 200, response.text
+    assert response.json()["expiration"] == 300
+    async with httpx.AsyncClient() as storage:
+        downloaded = await storage.get(response.json()["url"])
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.content == b"new tile image"
+
+
+async def test_tile_image_download_uses_stored_location(async_client, test_acquisition, test_tile, stored_tile_image):
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{test_tile.tile_id}/image"
+
+    response = await async_client.get(path, params={"expiration": 300})
+
+    assert response.status_code == 200, response.text
+    presigned = response.json()
+    assert {key: presigned[key] for key in stored_tile_image} == stored_tile_image
+    assert presigned["expiration"] == 300
+    async with httpx.AsyncClient() as storage:
+        downloaded = await storage.get(presigned["url"])
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.content == b"stored tile image"
+
+
+async def test_tile_image_delete_removes_object_and_clears_metadata(
+    async_client, test_db_manager, test_acquisition, test_tile, stored_tile_image, minio_s3
+):
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{test_tile.tile_id}/image"
+
+    response = await async_client.delete(path)
+
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+    with pytest.raises(S3Error) as error:
+        minio_s3["client"].stat_object(stored_tile_image["bucket"], stored_tile_image["key"])
+    assert error.value.code == "NoSuchKey"
+    async with test_db_manager.async_session_factory() as session:
+        tile = await session.scalar(select(TileSQLModel).where(TileSQLModel.tile_id == test_tile.tile_id))
+        assert tile is not None
+        assert tile.image is None
+    assert (await async_client.get(path)).status_code == 404
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+async def test_tile_image_rejects_another_acquisitions_tile(async_client, second_acquisition, test_tile, method):
+    path = f"/api/v2/acquisitions/{second_acquisition.acquisition_id}/tiles/{test_tile.tile_id}/image"
+
+    response = await async_client.request(method, path, json={"key": "/tile.tif"} if method == "POST" else None)
+
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+async def test_tile_image_missing_metadata_returns_error(
+    async_client, test_db_manager, test_acquisition, test_tile, method
+):
+    await _set_tiles_image_to_sql_null(test_db_manager, [str(test_tile.tile_id)])
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{test_tile.tile_id}/image"
+
+    response = await async_client.request(method, path)
+
+    assert response.status_code == (400 if method == "POST" else 404), response.text
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+@pytest.mark.parametrize("select_subset", [False, True])
+async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
+    async_client,
+    test_db_manager,
+    test_acquisition,
+    second_acquisition,
+    minio_s3,
+    method,
+    select_subset,
+):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 3)
+    other_id = (await _seed_tiles(async_client, second_acquisition.acquisition_id, 1))[0]
+    images = {
+        tile_id: await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in [*tile_ids[:2], other_id]
+    }
+    await _set_tiles_image_to_sql_null(test_db_manager, [tile_ids[2]])
+    selected = [tile_ids[0], tile_ids[2], other_id] if select_subset else None
+    expected = tile_ids[:1] if select_subset else tile_ids[:2]
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
+
+    response = await async_client.request(method, path, json=selected, params={"expiration": 300})
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert set(result) == set(expected)
+    if method == "DELETE":
+        async with test_db_manager.async_session_factory() as session:
+            tiles = {str(tile.tile_id): tile for tile in (await session.scalars(select(TileSQLModel))).all()}
+            assert set(tiles) == {*tile_ids, other_id}
+            for tile_id in expected:
+                assert tiles[tile_id].image is None
+        for tile_id in expected:
+            with pytest.raises(S3Error) as error:
+                minio_s3["client"].stat_object(images[tile_id]["bucket"], images[tile_id]["key"])
+            assert error.value.code == "NoSuchKey"
+    else:
+        for tile_id in expected:
+            assert result[tile_id]["expiration"] == 300
+            assert {key: result[tile_id][key] for key in images[tile_id]} == images[tile_id]
+            async with httpx.AsyncClient() as storage:
+                if method == "POST":
+                    transfer = await storage.put(result[tile_id]["url"], content=b"replacement tile image")
+                else:
+                    transfer = await storage.get(result[tile_id]["url"])
+                    assert transfer.content == b"stored tile image"
+            assert transfer.status_code == 200, transfer.text
+    untouched = [other_id] + (tile_ids[1:2] if select_subset else [])
+    for tile_id in untouched:
+        minio_s3["client"].stat_object(images[tile_id]["bucket"], images[tile_id]["key"])
+        response = await async_client.get(
+            f"/api/v2/acquisitions/"
+            f"{second_acquisition.acquisition_id if tile_id == other_id else test_acquisition.acquisition_id}"
+            f"/tiles/{tile_id}"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["image"] == images[tile_id]
 
 
 @pytest.mark.asyncio

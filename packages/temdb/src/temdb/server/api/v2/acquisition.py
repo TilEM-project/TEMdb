@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import boto3
+from botocore.exceptions import ClientError
 from fastapi import (
     APIRouter,
     Body,
@@ -24,14 +26,17 @@ from temdb.models import (
     AcquisitionFullMetadata,
     AcquisitionResponse,
     AcquisitionUpdate,
-    StorageLocation,
-    StorageLocationCreate,
+    FileObject,
+    FileObjectRequest,
+    FileObjectResponse,
+    StorageProtocol,
     TileBulkDeleteResult,
     TileCreate,
     TileDeleteAllResult,
     TileResponse,
     TileUpdate,
 )
+from temdb.server.config import config
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
@@ -733,6 +738,201 @@ def _tile_uuid_or_404(tile_id: str) -> uuid.UUID:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found")
 
 
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[uuid.UUID, FileObjectResponse])
+async def image_put_urls(
+    acquisition_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    tile_ids: list[str] | None = Body(None),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Generate presigned PUT URLs for tiles in an acquisition.
+
+    The tile_id list is optional; if omitted, all tiles in the acquisition are returned.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.image.isnot(None),
+    )
+    if tile_ids is not None:
+        tile_query = tile_query.where(TileSQLModel.tile_id.in_(tile_ids))
+    tiles = await session.scalars(tile_query)
+    tiles_obj = tiles.all()
+    if not tiles_obj:
+        raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
+    protocol = None
+    server = None
+    client = None
+    urls = {}
+    for tile in tiles_obj:
+        if tile.image is None:
+            continue
+        storage_location = FileObject.model_validate(tile.image)
+        if client is None or protocol != storage_location.protocol or server != storage_location.server:
+            match storage_location.protocol:
+                case StorageProtocol.S3:
+                    protocol = StorageProtocol.S3
+                    server = storage_location.server
+                    client = boto3.client("s3", endpoint_url=server)
+                case StorageProtocol.GCS:
+                    raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
+                case _:
+                    raise HTTPException(
+                        400, f"Tile {tile.tile_id} has unsupported protocol {storage_location.protocol}"
+                    )
+        try:
+            presigned_url = client.generate_presigned_url(
+                "put_object",
+                Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
+                ExpiresIn=expiration,
+            )
+            urls[tile.tile_id] = FileObjectResponse(
+                protocol=storage_location.protocol,
+                server=storage_location.server,
+                bucket=storage_location.bucket,
+                key=storage_location.key,
+                expiration=expiration,
+                url=presigned_url,
+            )
+        except ClientError as e:
+            logger.error(f"Error generating presigned URL for tile {tile.tile_id}: {e}")
+    return urls
+
+
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[uuid.UUID, FileObjectResponse])
+async def image_get_urls(
+    acquisition_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    tile_ids: list[str] | None = Body(None),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Generate presigned PUT URLs for tiles in an acquisition.
+
+    The tile_id list is optional; if omitted, all tiles in the acquisition are returned.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.image.isnot(None),
+    )
+    if tile_ids is not None:
+        tile_query = tile_query.where(TileSQLModel.tile_id.in_(tile_ids))
+    tiles = await session.scalars(tile_query)
+    tiles_obj = tiles.all()
+    if not tiles_obj:
+        raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
+    protocol = None
+    server = None
+    client = None
+    urls = {}
+    for tile in tiles_obj:
+        if tile.image is None:
+            continue
+        storage_location = FileObject.model_validate(tile.image)
+        if client is None or protocol != storage_location.protocol or server != storage_location.server:
+            match storage_location.protocol:
+                case StorageProtocol.S3:
+                    protocol = StorageProtocol.S3
+                    server = storage_location.server
+                    client = boto3.client("s3", endpoint_url=server)
+                case StorageProtocol.GCS:
+                    raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
+                case _:
+                    raise HTTPException(
+                        400, f"Tile {tile.tile_id} has unsupported protocol {storage_location.protocol}"
+                    )
+        try:
+            presigned_url = client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
+                ExpiresIn=expiration,
+            )
+            urls[tile.tile_id] = FileObjectResponse(
+                protocol=storage_location.protocol,
+                server=storage_location.server,
+                bucket=storage_location.bucket,
+                key=storage_location.key,
+                expiration=expiration,
+                url=presigned_url,
+            )
+        except ClientError as e:
+            logger.error(f"Error generating presigned URL for tile {tile.tile_id}: {e}")
+    return urls
+
+
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/images", response_model=list[uuid.UUID])
+async def delete_tile_images(
+    acquisition_id: str,
+    tile_ids: list[str] | None = Body(None),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete the images associated with specific tiles in an acquisition.
+
+    The tile_id list is optional; if omitted, all tiles in the acquisition are deleted.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.image.isnot(None),
+    )
+    if tile_ids is not None:
+        tile_query = tile_query.where(TileSQLModel.tile_id.in_(tile_ids))
+    tiles = await session.scalars(tile_query)
+    tiles_obj = tiles.all()
+    if not tiles_obj:
+        raise HTTPException(404, f"No tile images to delete for acquisition '{acquisition_id}'")
+    protocol = None
+    server = None
+    client = None
+    deleted_tiles = []
+    for tile in tiles_obj:
+        if tile.image is None:
+            continue
+        storage_location = FileObject.model_validate(tile.image)
+        if client is None or protocol != storage_location.protocol or server != storage_location.server:
+            match storage_location.protocol:
+                case StorageProtocol.S3:
+                    protocol = StorageProtocol.S3
+                    server = storage_location.server
+                    client = boto3.client("s3", endpoint_url=server)
+                case StorageProtocol.GCS:
+                    raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
+                case _:
+                    raise HTTPException(
+                        400, f"Tile {tile.tile_id} has unsupported protocol {storage_location.protocol}"
+                    )
+        try:
+            client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
+            tile.image = None
+            tile.updated_at = datetime.now(timezone.utc)
+            session.add(tile)
+            deleted_tiles.append(tile.tile_id)
+        except ClientError as e:
+            logger.error(f"Error deleting image for tile {tile.tile_id}: {e}")
+
+    await session.commit()
+
+    return deleted_tiles
+
+
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=TileResponse)
 async def get_tile_from_acquisition(
     acquisition_id: str,
@@ -760,103 +960,165 @@ async def get_tile_from_acquisition(
     return _tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id)
 
 
-def _current_storage_location(storage_locations: list[dict[str, Any]] | None) -> dict[str, Any] | None:
-    if not storage_locations:
-        return None
-    return next((loc for loc in storage_locations if loc.get("is_current")), None)
-
-
-@acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=AcquisitionResponse)
-async def add_storage_location(
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", response_model=FileObjectResponse)
+async def image_put_url(
     acquisition_id: str,
-    storage_location: StorageLocationCreate,
+    tile_id: str,
+    storage_location: FileObjectRequest | None = Body(None, description="Storage location for the tile image"),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Add a storage location entry to an acquisition."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    """Generate a presigned PUT URL for a tile in an acquisition.
+
+    The storage_location is optional; if omitted, the existing location is used.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile = await session.scalars(
+        select(TileSQLModel).where(
+            TileSQLModel.tile_id == tile_id,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
         )
-    ).first()
-    if row is None:
+    )
+    tile_obj = tile.one_or_none()
+    if tile_obj is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    if storage_location is None and tile_obj.image is None:
+        raise HTTPException(400, "No storage location provided and tile has no existing image")
+    if storage_location is None:
+        storage_location = FileObjectRequest.model_validate(tile_obj.image)
+    if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
+        dataset = (
+            await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == acq_obj.dataset_id))
+        ).one_or_none()
+        if dataset is None:
+            raise HTTPException(404, "Could not find dataset for tile")
+        if dataset.default_storage is not None:
+            storage_location = storage_location.apply_defaults(dataset.default_storage)
+
+        if config.default_storage is not None:
+            storage_location = storage_location.apply_defaults(config.default_storage)
+
+    if tile_obj.image is not None and storage_location != tile_obj.image:
+        raise HTTPException(400, "Delete the existing image for the tile before uploading a new one.")
+
+    storage_location.key = storage_location.key.lstrip("/")
+
+    match storage_location.protocol:
+        case StorageProtocol.S3:
+            client = boto3.client("s3", endpoint_url=storage_location.server)
+            expiration = storage_location.expiration or 3600
+            try:
+                presigned_url = client.generate_presigned_url(
+                    "put_object",
+                    Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
+                    ExpiresIn=expiration,
+                )
+            except ClientError as e:
+                logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
+                raise HTTPException(500, "Error generating presigned URL")
+            response = FileObjectResponse(
+                expiration=expiration,
+                url=presigned_url,
+                **storage_location.model_dump(exclude={"expiration"}),
+            )
+        case StorageProtocol.GCS:
+            raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
+        case _:
+            raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
+
+    if storage_location != tile_obj.image:
+        tile_obj.image = FileObject.model_validate(storage_location, from_attributes=True).model_dump()
+        tile_obj.updated_at = datetime.now(timezone.utc)
+        session.add(tile_obj)
+        await session.commit()
+
+    return response
+
+
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", response_model=FileObjectResponse)
+async def image_get_url(
+    acquisition_id: str,
+    tile_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Generate a presigned GET URL for a tile in an acquisition."""
+    tile = TileResponse.model_validate(await get_tile_from_acquisition(acquisition_id, tile_id, session))
+    if tile.image is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' has no image")
+    match tile.image.protocol:
+        case StorageProtocol.S3:
+            client = boto3.client("s3", endpoint_url=tile.image.server)
+            try:
+                presigned_url = client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": tile.image.bucket, "Key": tile.image.key},
+                    ExpiresIn=expiration,
+                )
+            except ClientError as e:
+                logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
+                raise HTTPException(500, "Error generating presigned URL")
+            return FileObjectResponse(
+                expiration=expiration,
+                url=presigned_url,
+                **tile.image.model_dump(exclude={"expiration"}),
+            )
+        case StorageProtocol.GCS:
+            raise HTTPException(501, f"Presigned URLs for {tile.image.protocol} are not implemented")
+        case _:
+            raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {tile.image.protocol}")
+
+
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tile_image(
+    acquisition_id: str,
+    tile_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete the image associated with a specific tile in an acquisition."""
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
+    tile = await session.scalars(
+        select(TileSQLModel).where(
+            TileSQLModel.tile_id == tile_id,
+            TileSQLModel.dataset_id == acq_obj.dataset_id,
+            TileSQLModel.run_id == acq_obj.run_id,
+        )
+    )
+    tile_obj = tile.one_or_none()
+    if tile_obj is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    if tile_obj.image is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' has no image to delete")
 
-    new_location = storage_location.model_dump(mode="json")
-    make_current = new_location.get("is_current", True)
-    new_location["is_current"] = make_current
-    if not new_location.get("date_added"):
-        new_location["date_added"] = datetime.now(timezone.utc).isoformat()
+    storage_location = FileObject.model_validate(tile_obj.image)
 
-    existing_locations = list(acq_obj.storage_locations or [])
-    if make_current:
-        for loc in existing_locations:
-            if isinstance(loc, dict):
-                loc["is_current"] = False
-    existing_locations.append(new_location)
+    match storage_location.protocol:
+        case StorageProtocol.S3:
+            client = boto3.client("s3", endpoint_url=storage_location.server)
+            try:
+                client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
+            except ClientError as e:
+                logger.error(f"Error deleting image for tile {tile_id}: {e}")
+                raise HTTPException(500, "Error deleting image")
+        case StorageProtocol.GCS:
+            raise HTTPException(501, f"Image deletion for {storage_location.protocol} is not implemented")
+        case _:
+            raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
 
-    acq_obj.storage_locations = existing_locations
-    session.add(acq_obj)
+    tile_obj.image = None
+    tile_obj.updated_at = datetime.now(timezone.utc)
+    session.add(tile_obj)
     await session.commit()
-    await session.refresh(acq_obj)
-    return acq_obj
-
-
-@acquisition_api.get(
-    "/acquisitions/{acquisition_id}/current-storage",
-    response_model=StorageLocation | None,
-)
-async def get_current_storage_location(
-    acquisition_id: str,
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Get the current storage location for an acquisition."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.first()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    return _current_storage_location(acq_obj.storage_locations)
-
-
-@acquisition_api.get(
-    "/acquisitions/{acquisition_id}/minimap-uri",
-    response_model=dict[str, str | None],
-)
-async def get_minimap_uri(
-    acquisition_id: str,
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Get the calculated URI for the acquisition's minimap image."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.first()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    current_location = _current_storage_location(acq_obj.storage_locations)
-    base_path = current_location.get("base_path") if current_location else None
-    return {"minimap_uri": f"{base_path}/minimap.png" if base_path else None}
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tile-count", response_model=dict[str, int])

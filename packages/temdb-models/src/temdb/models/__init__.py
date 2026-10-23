@@ -37,6 +37,7 @@ from temdb.models.enums import (
     TRANSFER_STATES,
     AcquisitionStatusFilter,
     SectionQuality,
+    StorageProtocol,
 )
 from temdb.models.error import APIErrorResponse
 from temdb.models.file_storage import (
@@ -114,6 +115,7 @@ __all__ = [
     # Enums
     "AcquisitionStatusFilter",
     "SectionQuality",
+    "StorageProtocol",
     # Vocab constants
     "RUN_STATUSES",
     "QC_STATES",

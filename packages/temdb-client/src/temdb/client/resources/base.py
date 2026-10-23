@@ -21,4 +21,4 @@ class BaseResource:
         return await self._request("PATCH", endpoint, json=data, **kwargs)
 
     async def _delete(self, endpoint: str, **kwargs) -> None:
-        await self._request("DELETE", endpoint, **kwargs)
+        return await self._request("DELETE", endpoint, **kwargs)

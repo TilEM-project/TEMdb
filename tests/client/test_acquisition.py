@@ -1,4 +1,130 @@
+import io
+from unittest.mock import AsyncMock, Mock
+
 import pytest
+import requests
+
+from temdb.client.resources.acquisition import AcquisitionResource
+from temdb.models import FileObjectRequest, FileObjectResponse
+
+
+@pytest.fixture
+def image_resource():
+    request = AsyncMock()
+    return AcquisitionResource(request, "http://api.example.com/api/v2"), request
+
+
+def _image_response():
+    return {
+        "protocol": "s3",
+        "server": "http://minio.example.com",
+        "bucket": "tiles",
+        "key": "tiles/tile.tif",
+        "url": "http://minio.example.com/tiles/tiles/tile.tif?signature=test",
+        "expiration": 600,
+    }
+
+
+@pytest.mark.parametrize("with_location", [False, True])
+async def test_tile_put_image_url_uses_api_put_route(image_resource, with_location):
+    resource, request = image_resource
+    request.return_value = _image_response()
+    location = (
+        FileObjectRequest(
+            protocol="s3",
+            server="http://minio.example.com",
+            bucket="tiles",
+            key="/tiles/tile.tif",
+            expiration=600,
+        )
+        if with_location
+        else None
+    )
+
+    result = await resource.put_image_url("ACQ001", "tile", location)
+
+    request.assert_awaited_once_with(
+        "POST",
+        "acquisitions/ACQ001/tiles/tile/image",
+        json=location.model_dump(exclude_unset=True) if location else None,
+    )
+    assert result == FileObjectResponse.model_validate(_image_response())
+
+
+@pytest.mark.parametrize("expiration", [None, 300])
+async def test_tile_get_image_url(image_resource, expiration):
+    resource, request = image_resource
+    request.return_value = _image_response()
+
+    result = await resource.get_image_url("ACQ001", "tile", expiration=expiration)
+
+    request.assert_awaited_once_with(
+        "GET",
+        "acquisitions/ACQ001/tiles/tile/image",
+        params={"expiration": expiration} if expiration is not None else None,
+    )
+    assert result == FileObjectResponse.model_validate(_image_response())
+
+
+@pytest.mark.parametrize("operation", ["put", "get"])
+@pytest.mark.parametrize("tile_ids", [None, ["tile"]])
+async def test_tile_bulk_image_urls_use_json_body_and_return_mapping(image_resource, operation, tile_ids):
+    resource, request = image_resource
+    request.return_value = {"tile": _image_response()}
+    method = getattr(resource, f"{operation}_image_urls")
+
+    result = await method("ACQ001", tile_ids=tile_ids, expiration=300)
+
+    request.assert_awaited_once_with(
+        "POST" if operation == "put" else "GET",
+        "acquisitions/ACQ001/tiles/images",
+        json=tile_ids,
+        params={"expiration": 300},
+    )
+    assert result == {"tile": FileObjectResponse.model_validate(_image_response())}
+
+
+@pytest.mark.parametrize("upload_fails", [False, True])
+async def test_tile_put_image_uploads_and_propagates_errors(image_resource, monkeypatch, upload_fails):
+    resource, _ = image_resource
+    file_object = FileObjectResponse.model_validate(_image_response())
+    resource.put_image_url = AsyncMock(return_value=file_object)
+    upload_response = Mock()
+    if upload_fails:
+        upload_response.raise_for_status.side_effect = requests.HTTPError("upload failed")
+    file_session = Mock()
+    file_session.put.return_value = upload_response
+    monkeypatch.setattr("requests.Session.put", file_session.put)
+    contents = io.BytesIO(b"tile image")
+
+    if upload_fails:
+        with pytest.raises(requests.HTTPError, match="upload failed"):
+            await resource.put_image("ACQ001", "tile", contents)
+    else:
+        assert await resource.put_image("ACQ001", "tile", contents) is file_object
+
+    resource.put_image_url.assert_awaited_once_with("ACQ001", "tile", None)
+    file_session.put.assert_called_once_with(file_object.url, data=contents)
+    upload_response.raise_for_status.assert_called_once_with()
+
+
+async def test_tile_delete_image(image_resource):
+    resource, request = image_resource
+
+    await resource.delete_image("ACQ001", "tile")
+
+    request.assert_awaited_once_with("DELETE", "acquisitions/ACQ001/tiles/tile/image")
+
+
+@pytest.mark.parametrize("tile_ids", [None, ["tile"]])
+async def test_tile_delete_images_awaits_request_and_returns_deleted_ids(image_resource, tile_ids):
+    resource, request = image_resource
+    request.return_value = ["tile"]
+
+    result = await resource.delete_images("ACQ001", tile_ids=tile_ids)
+
+    request.assert_awaited_once_with("DELETE", "acquisitions/ACQ001/tiles/images", json=tile_ids)
+    assert result == ["tile"]
 
 
 @pytest.mark.asyncio
