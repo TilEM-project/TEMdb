@@ -41,6 +41,8 @@ class FileObjectRequest(TEMDBModel):
     def apply_defaults(self, *defaults: "StorageDefault") -> "FileObjectRequest":
         """Apply default storage settings to the request."""
         for default in defaults:
+            if not isinstance(default, StorageDefault):
+                default = StorageDefault.model_validate(default)
             if self.protocol is None:
                 self.protocol = default.protocol
                 self.server = default.server

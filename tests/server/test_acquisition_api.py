@@ -2,9 +2,11 @@ import io
 import json
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
 import httpx
 import pytest
+from botocore.exceptions import ClientError
 from httpx import AsyncClient
 from minio.error import S3Error
 from sqlalchemy import null, select, update
@@ -215,6 +217,112 @@ async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
         )
         assert response.status_code == 200, response.text
         assert response.json()["image"] == images[tile_id]
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+@pytest.mark.parametrize("select_subset", [False, True])
+@pytest.mark.parametrize("failure", [None, "gcs", "storage"])
+async def test_bulk_tile_images_multiple_servers_and_errors(
+    async_client, test_db_manager, test_acquisition, monkeypatch, caplog, method, select_subset, failure
+):
+    tile_ids = await _seed_tiles(async_client, test_acquisition.acquisition_id, 4)
+    images = {
+        tile_id: {
+            **_tile_image(f"tiles/{index}.tif"),
+            "server": f"http://storage-{index % 2}.example.com",
+            "protocol": "gcs" if failure == "gcs" and index == 1 else "s3",
+        }
+        for index, tile_id in enumerate(tile_ids)
+    }
+    async with test_db_manager.async_session_factory() as session:
+        for tile_id, image in images.items():
+            await session.execute(
+                update(TileSQLModel).where(TileSQLModel.tile_id == uuid.UUID(tile_id)).values(image=image)
+            )
+        await session.commit()
+    clients = {image["server"]: Mock() for image in images.values()}
+    failed_id = tile_ids[1]
+
+    def presign(server, operation, Params, ExpiresIn):
+        if failure == "storage" and Params["Key"] == images[failed_id]["key"]:
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "presign denied"}}, operation)
+        return f"{server}/{Params['Key']}?operation={operation}&expiration={ExpiresIn}"
+
+    def delete_object(Bucket, Key):
+        if failure == "storage" and Key == images[failed_id]["key"]:
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "delete denied"}}, "DeleteObject")
+
+    for server, client in clients.items():
+        client.generate_presigned_url.side_effect = lambda operation, Params, ExpiresIn, server=server: presign(
+            server, operation, Params, ExpiresIn
+        )
+        client.delete_object.side_effect = delete_object
+    factory = Mock(side_effect=lambda service, endpoint_url: clients[endpoint_url])
+    monkeypatch.setattr("boto3.client", factory)
+    selected = tile_ids[:3] if select_subset else None
+    requested = tile_ids[:3] if select_subset else tile_ids
+
+    response = await async_client.request(
+        method,
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
+        json=selected,
+        params={"expiration": 300},
+    )
+
+    assert response.status_code == (501 if failure == "gcs" else 200), response.text
+    async with test_db_manager.async_session_factory() as session:
+        stored = {str(tile.tile_id): tile.image for tile in (await session.scalars(select(TileSQLModel))).all()}
+    if failure == "gcs":
+        assert stored == images
+        assert "not implemented" in response.json()["detail"]
+        return
+    expected = set(requested) - ({failed_id} if failure == "storage" else set())
+    assert set(response.json()) == expected
+    assert {call.kwargs["endpoint_url"] for call in factory.call_args_list} == set(clients)
+    if failure == "storage":
+        assert ("delete denied" if method == "DELETE" else "presign denied") in caplog.text
+    for tile_id, image in images.items():
+        assert stored[tile_id] == (None if method == "DELETE" and tile_id in expected else image)
+    operation = "delete_object" if method == "DELETE" else "generate_presigned_url"
+    for server, client in clients.items():
+        calls = getattr(client, operation).call_args_list
+        expected_keys = {images[tile_id]["key"] for tile_id in requested if images[tile_id]["server"] == server}
+        actual_keys = {call.kwargs["Key"] if method == "DELETE" else call.kwargs["Params"]["Key"] for call in calls}
+        assert actual_keys == expected_keys
+        assert len(calls) == len(expected_keys)
+    if method != "DELETE":
+        for tile_id in expected:
+            result = response.json()[tile_id]
+            assert result["server"] == images[tile_id]["server"]
+            assert result["expiration"] == 300
+            assert result["url"] == (
+                f"{images[tile_id]['server']}/{images[tile_id]['key']}"
+                f"?operation={'put_object' if method == 'POST' else 'get_object'}&expiration=300"
+            )
+
+
+@pytest.mark.parametrize("operation", ["bulk", "all", "single"])
+async def test_tile_deletion_preserves_tiles_with_images(
+    async_client, test_db_manager, test_acquisition, test_tile, operation
+):
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    path = f"{base}/{test_tile.tile_id}" if operation == "single" else f"{base}/{operation}"
+
+    response = await async_client.request(
+        "DELETE", path, json=[str(test_tile.tile_id)] if operation == "bulk" else None
+    )
+
+    if operation == "single":
+        assert response.status_code == 404, response.text
+    else:
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] == 0
+        if operation == "bulk":
+            assert response.json()["not_found"] == [str(test_tile.tile_id)]
+    async with test_db_manager.async_session_factory() as session:
+        tile = await session.scalar(select(TileSQLModel).where(TileSQLModel.tile_id == test_tile.tile_id))
+        assert tile is not None
+        assert tile.image == test_tile.image
 
 
 @pytest.mark.asyncio

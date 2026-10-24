@@ -990,7 +990,7 @@ async def image_put_url(
     if storage_location is None and tile_obj.image is None:
         raise HTTPException(400, "No storage location provided and tile has no existing image")
     if storage_location is None:
-        storage_location = FileObjectRequest.model_validate(tile_obj.image)
+        storage_location = FileObject.model_validate(tile_obj.image)
     if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
         dataset = (
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == acq_obj.dataset_id))
@@ -1003,15 +1003,15 @@ async def image_put_url(
         if config.default_storage is not None:
             storage_location = storage_location.apply_defaults(config.default_storage)
 
-    if tile_obj.image is not None and storage_location != tile_obj.image:
-        raise HTTPException(400, "Delete the existing image for the tile before uploading a new one.")
-
     storage_location.key = storage_location.key.lstrip("/")
+
+    if tile_obj.image is not None and storage_location.model_dump(exclude={"expiration"}) != tile_obj.image:
+        raise HTTPException(400, "Delete the existing image for the tile before uploading a new one.")
 
     match storage_location.protocol:
         case StorageProtocol.S3:
             client = boto3.client("s3", endpoint_url=storage_location.server)
-            expiration = storage_location.expiration or 3600
+            expiration = getattr(storage_location, "expiration", None) or 3600
             try:
                 presigned_url = client.generate_presigned_url(
                     "put_object",
@@ -1031,7 +1031,7 @@ async def image_put_url(
         case _:
             raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
 
-    if storage_location != tile_obj.image:
+    if storage_location.model_dump(exclude={"expiration"}) != tile_obj.image:
         tile_obj.image = FileObject.model_validate(storage_location, from_attributes=True).model_dump()
         tile_obj.updated_at = datetime.now(timezone.utc)
         session.add(tile_obj)

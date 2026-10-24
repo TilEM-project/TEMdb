@@ -482,7 +482,7 @@ async def get_sections_by_barcode(
 async def image_put_url(
     cutting_session_id: str,
     section_id: str,
-    storage_location: FileObjectRequest | None = Body(..., description="Storage location details for the image"),
+    storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Generate a pre-signed URL for uploading an image for a specific section."""
@@ -504,7 +504,7 @@ async def image_put_url(
             detail="Storage location must be provided.",
         )
     if storage_location is None:
-        storage_location = section_obj.optical_image
+        storage_location = FileObject.model_validate(section_obj.optical_image)
     if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
         cutting_session = await session.scalars(
             select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
@@ -532,7 +532,10 @@ async def image_put_url(
 
     storage_location.key = storage_location.key.lstrip("/")
 
-    if section_obj.optical_image is not None and storage_location != section_obj.optical_image:
+    if (
+        section_obj.optical_image is not None
+        and storage_location.model_dump(exclude={"expiration"}) != section_obj.optical_image
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Delete the existing image for section '{section_id}' before uploading a new one.",
@@ -541,7 +544,7 @@ async def image_put_url(
     match storage_location.protocol:
         case StorageProtocol.S3:
             client = boto3.client("s3", endpoint_url=storage_location.server)
-            expiration = storage_location.expiration or 3600
+            expiration = getattr(storage_location, "expiration", None) or 3600
             try:
                 presigned_url = client.generate_presigned_url(
                     "put_object",
@@ -570,10 +573,11 @@ async def image_put_url(
                 detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
             )
 
-    section_obj.optical_image = _to_json_compatible(storage_location)
-    section_obj.updated_at = datetime.now(timezone.utc)
-    session.add(section_obj)
-    await session.commit()
+    if storage_location.model_dump(exclude={"expiration"}) != section_obj.optical_image:
+        section_obj.optical_image = FileObject.model_validate(storage_location, from_attributes=True).model_dump()
+        section_obj.updated_at = datetime.now(timezone.utc)
+        session.add(section_obj)
+        await session.commit()
 
     return response
 
