@@ -5,6 +5,7 @@ from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
@@ -123,7 +124,7 @@ async def get_acquisition_focus_scores(
                     TileSQLModel.dataset_id == acq_obj.dataset_id,
                     TileSQLModel.run_id == acq_obj.run_id,
                 )
-                .distinct(TileSQLModel.row, TileSQLModel.col)
+                .ext(distinct_on(TileSQLModel.row, TileSQLModel.col))
                 .order_by(TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake.desc())
             )
         ).all()

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from temdb.client.exceptions import TEMdbNotFoundError
@@ -6,13 +8,11 @@ from temdb.client.exceptions import TEMdbNotFoundError
 async def test_roi_create(client, records):
     section = await records.section()
     created = await client.roi.create(
-        roi_number=2,
+        created_at=datetime(2026, 1, 1, 3, tzinfo=timezone.utc),
         section_id=section.section_id,
-        specimen_id="SP1",
-        block_id="B1",
-        substrate_media_id="M1",
+        payload={"vertices": [[0, 0], [10, 0], [10, 10]], "rotation_angle": 0.0},
     )
-    assert (await client.roi.get(created.roi_id)).roi_number == 2
+    assert (await client.roi.get(created.roi_id)).roi_id == "M1.A0000.R001"
 
 
 async def test_roi_get(client, records):
@@ -47,12 +47,10 @@ async def test_roi_delete(client, records):
 async def test_roi_get_children(client, records):
     parent = await records.roi()
     child = await client.roi.create(
-        roi_number=2,
+        created_at=datetime(2026, 1, 1, 3, tzinfo=timezone.utc),
         section_id=parent.section_id,
-        specimen_id="SP1",
-        block_id="B1",
-        substrate_media_id="M1",
-        parent_roi_id=parent.roi_id,
+        parent_created_at=parent.created_at,
+        payload={"vertices": [[0, 0], [5, 0], [5, 5]], "rotation_angle": 0.0},
     )
     assert [r.roi_id for r in (await client.roi.get_children(parent.roi_id)).children] == [child.roi_id]
 

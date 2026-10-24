@@ -119,26 +119,13 @@ def generate_roi(
     substrate_media_id: str = "SUB001",
     **kwargs,
 ) -> ROISQLModel:
-    if parent_roi:
-        roi_id = f"{parent_roi.roi_id}.ROI{roi_number:03d}"
-        hierarchy_level = parent_roi.hierarchy_level + 1
-    else:
-        roi_id = (
-            f"{section.specimen_id}.{section.block_id}.{section.cutting_session_id}"
-            f".{section.section_id}.{substrate_media_id}.ROI{roi_number:03d}"
-        )
-        hierarchy_level = 1
-
     defaults = {
-        "roi_id": roi_id,
+        "roi_id": f"{substrate_media_id}.A{section.aperture_index:04d}.R{roi_number:03d}",
         "roi_number": roi_number,
         "section_id": section.section_id,
-        "block_id": section.block_id,
-        "specimen_id": section.specimen_id,
         "substrate_media_id": substrate_media_id,
-        "hierarchy_level": hierarchy_level,
+        "aperture_index": section.aperture_index,
         "parent_roi_id": parent_roi.roi_id if parent_roi else None,
-        "section_number": section.section_number,
         "roi_payload": {
             "aperture_image": fake.file_path(extension="png") if fake.boolean() else None,
             "optical_pixel_size": (fake.pyfloat(min_value=100.0, max_value=1000.0) if fake.boolean() else None),

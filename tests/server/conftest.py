@@ -196,19 +196,16 @@ async def test_roi(
     return await _seed(
         test_db_manager,
         ROISQLModel(
-            roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI001",
+            roi_id="SUB001.A0000.R001",
             roi_number=1,
             section_id=test_section.section_id,
-            block_id=test_section.block_id,
-            specimen_id=test_section.specimen_id,
             substrate_media_id="SUB001",
-            hierarchy_level=1,
+            aperture_index=0,
             parent_roi_id=None,
             updated_at=datetime.now(timezone.utc),
-            section_number=test_section.section_number,
-            roi_payload={},
+            roi_payload={"vertices": [[0, 0], [10, 0], [10, 10]], "rotation_angle": 0.0, "buffer_size": 0.0},
             dataset_id=test_dataset.dataset_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime(2026, 10, 23, 9, 0, tzinfo=timezone.utc),
         ),
     )
 
@@ -218,18 +215,15 @@ async def test_roi2(init_db, test_db_manager: DatabaseManager, test_section: Sec
     return await _seed(
         test_db_manager,
         ROISQLModel(
-            roi_id="SPEC001.BLK001.CS001.SEC001.SUB001.ROI002",
+            roi_id="SUB001.A0000.R002",
             roi_number=2,
             section_id=test_section.section_id,
-            block_id=test_section.block_id,
-            specimen_id=test_section.specimen_id,
             substrate_media_id=test_section.media_id,
-            hierarchy_level=1,
+            aperture_index=0,
             parent_roi_id=None,
             updated_at=datetime.now(timezone.utc),
-            section_number=test_section.section_number,
-            roi_payload={},
-            created_at=datetime.now(timezone.utc),
+            roi_payload={"vertices": [[0, 0], [10, 0], [10, 10]], "rotation_angle": 0.0, "buffer_size": 0.0},
+            created_at=datetime(2026, 10, 23, 9, 1, tzinfo=timezone.utc),
         ),
     )
 

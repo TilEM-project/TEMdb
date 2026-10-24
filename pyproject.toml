@@ -49,7 +49,7 @@ asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "--strict-markers"
+addopts = "--strict-markers -n auto"
 markers = ["db: needs the testcontainers Postgres (Docker)"]
 
 [tool.coverage.run]

@@ -9,7 +9,6 @@ erDiagram
     AcquisitionTaskSQLModel ||--o{ AcquisitionTaskSQLModel : "superseded_by"
     BlockSQLModel ||--o{ AcquisitionTaskSQLModel : "specimen_id, block_id"
     BlockSQLModel ||--o{ CuttingSessionSQLModel : "specimen_id, block_id"
-    BlockSQLModel ||--o{ ROISQLModel : "specimen_id, block_id"
     BlockSQLModel ||--o{ SectionSQLModel : "specimen_id, block_id"
     CuttingSessionSQLModel ||--o{ SectionSQLModel : "cutting_session_id"
     DatasetSQLModel ||--o{ AcquisitionSQLModel : "dataset_id"
@@ -141,13 +140,10 @@ erDiagram
         string roi_id
         int roi_number
         string section_id
-        string block_id
-        string specimen_id
         string substrate_media_id
-        int hierarchy_level
+        int aperture_index
         string parent_roi_id
         UUID dataset_id
-        int section_number
         object roi_payload
         object extra
     }

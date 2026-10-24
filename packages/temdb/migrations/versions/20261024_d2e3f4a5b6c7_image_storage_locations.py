@@ -1,7 +1,7 @@
 """Add structured image storage while retaining legacy tile paths.
 
-Revision ID: a9b0c1d2e3f4
-Revises: f8a9b0c1d2e3
+Revision ID: d2e3f4a5b6c7
+Revises: b0c1d2e3f4a5
 """
 
 from collections.abc import Sequence
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "a9b0c1d2e3f4"
-down_revision: str | Sequence[str] | None = "f8a9b0c1d2e3"
+revision: str = "d2e3f4a5b6c7"
+down_revision: str | Sequence[str] | None = "b0c1d2e3f4a5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

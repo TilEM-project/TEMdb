@@ -1,7 +1,20 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 
 from temdb.server.sqlmodels import AcquisitionTaskSQLModel
+
+drawn = datetime(2026, 10, 23, 10, 0, tzinfo=timezone.utc)
+
+
+def _roi(section, minutes: int = 0, payload: dict | None = None, **fields) -> dict:
+    return {
+        "section_id": section.section_id,
+        "created_at": (drawn + timedelta(minutes=minutes)).isoformat(),
+        "payload": {"vertices": [[0, 0], [10, 0], [10, 10]], "rotation_angle": 0.0, **(payload or {})},
+        **fields,
+    }
 
 
 @pytest.mark.asyncio
@@ -32,46 +45,46 @@ async def test_list_rois_filtered(
 
 
 @pytest.mark.asyncio
+async def test_list_filters_parents(async_client: AsyncClient, test_roi, test_section):
+    """is_parent_roi=true lists ROIs with a sub-ROI, false those without."""
+    child = await async_client.post(
+        "/api/v2/rois", json=_roi(test_section, minutes=5, parent_created_at=test_roi.created_at.isoformat())
+    )
+    assert child.status_code == 201, child.text
+
+    parents = await async_client.get("/api/v2/rois", params={"is_parent_roi": True})
+    others = await async_client.get("/api/v2/rois", params={"is_parent_roi": False})
+
+    assert [roi["roi_id"] for roi in parents.json()] == [test_roi.roi_id]
+    assert [roi["roi_id"] for roi in others.json()] == [child.json()["roi_id"]]
+
+
+@pytest.mark.asyncio
 async def test_create_roi(async_client: AsyncClient, test_section, test_substrate):
     """Test creating a new top-level ROI."""
-    roi_data = {
-        "roi_number": 9001,
-        "section_id": test_section.section_id,
-        "specimen_id": test_section.specimen_id,
-        "block_id": test_section.block_id,
-        "substrate_media_id": test_substrate.media_id,
-        "section_number": test_section.section_number,
-        "payload": {"aperture_width_height": [100, 100]},
-    }
+    roi_data = _roi(test_section, payload={"aperture_width_height": [100, 100]})
     response = await async_client.post("/api/v2/rois", json=roi_data)
     assert response.status_code == 201
     response_data = response.json()
     assert isinstance(response_data["id"], int)
-    assert response_data["roi_id"].endswith("ROI9001")  # Check hierarchical ID format
+    assert response_data["roi_id"] == "SUB001.A0000.R001"
     assert response_data["section_id"] == test_section.section_id
-    assert response_data["block_id"] == test_section.block_id
-    assert response_data["specimen_id"] == test_section.specimen_id
+    assert response_data["aperture_index"] == test_section.aperture_index
     assert response_data["parent_roi_id"] is None
     assert response_data["is_parent"] is False
     assert response_data["roi_payload"]["aperture_width_height"] == [100, 100]
 
 
 @pytest.mark.asyncio
-async def test_create_child_roi(async_client: AsyncClient, test_roi, test_substrate):
+async def test_create_child_roi(async_client: AsyncClient, test_roi, test_section):
     """Test creating a child ROI linked to a parent."""
-    child_roi_data = {
-        "roi_number": 1,
-        "section_id": test_roi.section_id,
-        "parent_roi_id": test_roi.roi_id,
-        "specimen_id": test_roi.specimen_id,
-        "block_id": test_roi.block_id,
-        "substrate_media_id": test_substrate.media_id,
-        "payload": {"aperture_width_height": [50, 50]},
-    }
+    child_roi_data = _roi(
+        test_section, parent_created_at=test_roi.created_at.isoformat(), payload={"aperture_width_height": [50, 50]}
+    )
     response = await async_client.post("/api/v2/rois", json=child_roi_data)
-    assert response.status_code == 201
+    assert response.status_code == 201, response.text
     response_data = response.json()
-    assert response_data["roi_id"].startswith(test_roi.roi_id)  # Should extend parent ID
+    assert response_data["roi_id"] == "SUB001.A0000.R002"
     assert response_data["section_id"] == test_roi.section_id
     assert response_data["parent_roi_id"] == test_roi.roi_id
 
@@ -87,18 +100,14 @@ async def test_create_child_roi(async_client: AsyncClient, test_roi, test_substr
 async def test_create_rois_batch(async_client: AsyncClient, test_section, test_substrate):
     """Test creating multiple ROIs in a batch request."""
     rois_data = [
-        {
-            "roi_number": 8000 + i,
-            "section_id": test_section.section_id,
-            "specimen_id": test_section.specimen_id,
-            "block_id": test_section.block_id,
-            "substrate_media_id": test_substrate.media_id,
-            "section_number": test_section.section_number,
-            "payload": {
+        _roi(
+            test_section,
+            minutes=i,
+            payload={
                 "aperture_width_height": [100 + i * 10, 100 + i * 10],
                 "aperture_centroid": [500 + i * 50, 500 + i * 50],
             },
-        }
+        )
         for i in range(3)
     ]
 
@@ -110,10 +119,8 @@ async def test_create_rois_batch(async_client: AsyncClient, test_section, test_s
 
     # Verify all ROIs were created correctly
     for i, roi in enumerate(created_rois):
-        assert roi["roi_id"].endswith(f"ROI{8000 + i}")  # Check hierarchical ID format
+        assert roi["roi_id"] == f"SUB001.A0000.R{i + 1:03d}"
         assert roi["section_id"] == test_section.section_id
-        assert roi["specimen_id"] == test_section.specimen_id
-        assert roi["block_id"] == test_section.block_id
         assert roi["roi_payload"]["aperture_width_height"] == [100 + i * 10, 100 + i * 10]
 
     # Test retrieving created ROIs and clean up
@@ -132,52 +139,41 @@ async def test_create_rois_batch_empty(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_rois_batch_invalid_section(async_client: AsyncClient):
+async def test_create_rois_batch_invalid_section(async_client: AsyncClient, test_section):
     """Test creating ROIs with an invalid section ID."""
-    rois_data = [
-        {
-            "roi_number": 8500,
-            "section_id": "NON_EXISTENT_SECTION_ID",
-            "specimen_id": "test_specimen",
-            "block_id": "test_block",
-            "substrate_media_id": "SUB001",
-            "section_number": 1,
-            "payload": {"aperture_width_height": [100, 100]},
-        }
-    ]
+    rois_data = [_roi(test_section, section_id="NON_EXISTENT_SECTION_ID")]
 
     response = await async_client.post("/api/v2/rois/batch", json=rois_data)
     assert response.status_code == 404
-    assert "not found for ROI item" in response.json()["detail"]
+    assert "NON_EXISTENT_SECTION_ID" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
-async def test_create_rois_batch_duplicate_ids(async_client: AsyncClient, test_section, test_substrate):
-    """Test creating ROIs with duplicate IDs in the same batch."""
-    rois_data = [
-        {
-            "roi_number": 9500,
-            "section_id": test_section.section_id,
-            "specimen_id": test_section.specimen_id,
-            "block_id": test_section.block_id,
-            "substrate_media_id": test_substrate.media_id,
-            "section_number": test_section.section_number,
-            "payload": {"aperture_width_height": [100, 100]},
-        },
-        {
-            "roi_number": 9500,
-            "section_id": test_section.section_id,
-            "specimen_id": test_section.specimen_id,
-            "block_id": test_section.block_id,
-            "substrate_media_id": test_substrate.media_id,
-            "section_number": test_section.section_number,
-            "payload": {"aperture_width_height": [200, 200]},
-        },
-    ]
+async def test_batch_stores_repeat_once(async_client: AsyncClient, test_section, test_substrate):
+    """One ROI twice in a batch is stored once and returned for both items."""
+    response = await async_client.post("/api/v2/rois/batch", json=[_roi(test_section), _roi(test_section)])
 
-    response = await async_client.post("/api/v2/rois/batch", json=rois_data)
-    assert response.status_code == 409
-    assert "duplicate" in response.json()["detail"].lower()
+    assert response.status_code == 201, response.text
+    assert [roi["roi_id"] for roi in response.json()] == ["SUB001.A0000.R001", "SUB001.A0000.R001"]
+
+
+@pytest.mark.asyncio
+async def test_batch_resend_reports_children(async_client: AsyncClient, test_section, test_roi):
+    """A batch resending a stored ROI that has sub-ROIs returns it with is_parent true."""
+    child = await async_client.post(
+        "/api/v2/rois", json=_roi(test_section, minutes=5, parent_created_at=test_roi.created_at.isoformat())
+    )
+    assert child.status_code == 201, child.text
+    resend = {
+        "section_id": test_section.section_id,
+        "created_at": test_roi.created_at.isoformat(),
+        "payload": test_roi.roi_payload,
+    }
+
+    response = await async_client.post("/api/v2/rois/batch", json=[resend])
+
+    assert response.status_code == 201, response.text
+    assert response.json()[0]["is_parent"] is True
 
 
 @pytest.mark.asyncio
@@ -224,14 +220,7 @@ async def test_update_roi_no_data(async_client: AsyncClient, test_roi):
 @pytest.mark.asyncio
 async def test_delete_roi(async_client: AsyncClient, test_section, test_substrate):
     """Test deleting an ROI successfully (when it has no dependencies)."""
-    roi_data = {
-        "roi_number": 9002,
-        "section_id": test_section.section_id,
-        "specimen_id": test_section.specimen_id,
-        "block_id": test_section.block_id,
-        "substrate_media_id": test_substrate.media_id,
-        "section_number": test_section.section_number,
-    }
+    roi_data = _roi(test_section)
     create_response = await async_client.post("/api/v2/rois", json=roi_data)
     assert create_response.status_code == 201
     created_roi_id = create_response.json()["roi_id"]
@@ -266,17 +255,10 @@ async def test_list_section_rois(async_client: AsyncClient, test_section, test_r
 
 
 @pytest.mark.asyncio
-async def test_get_child_rois(async_client: AsyncClient, test_roi, test_substrate):
+async def test_get_child_rois(async_client: AsyncClient, test_roi, test_section):
     """Test retrieving child ROIs for a parent ROI."""
     parent_roi_id = test_roi.roi_id
-    child_roi_data = {
-        "roi_number": 1,
-        "section_id": test_roi.section_id,
-        "parent_roi_id": parent_roi_id,
-        "specimen_id": test_roi.specimen_id,
-        "block_id": test_roi.block_id,
-        "substrate_media_id": test_substrate.media_id,
-    }
+    child_roi_data = _roi(test_section, parent_created_at=test_roi.created_at.isoformat())
     cr_resp = await async_client.post("/api/v2/rois", json=child_roi_data)
     assert cr_resp.status_code == 201
     child_roi_id = cr_resp.json()["roi_id"]
@@ -308,14 +290,7 @@ async def test_get_child_rois_no_children(async_client: AsyncClient, test_roi):
 
 @pytest.mark.asyncio
 async def test_roi_payload_drops_barcode(async_client: AsyncClient, test_section, test_substrate):
-    roi_data = {
-        "roi_number": 9002,
-        "section_id": test_section.section_id,
-        "specimen_id": test_section.specimen_id,
-        "block_id": test_section.block_id,
-        "substrate_media_id": test_substrate.media_id,
-        "payload": {"barcode": "00113206", "aperture_width_height": [100, 100]},
-    }
+    roi_data = _roi(test_section, payload={"barcode": "00113206", "aperture_width_height": [100, 100]})
 
     response = await async_client.post("/api/v2/rois", json=roi_data)
 

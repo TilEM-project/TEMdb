@@ -89,16 +89,13 @@ async def test_list_acquisition_tasks_skip_destroyed(
         await session.refresh(destroyed_section)
 
         destroyed_roi = ROISQLModel(
-            roi_id="SPEC001.BLK001.CS001.SEC002.SUB001.ROI001",
-            roi_number=1,
+            roi_id="SUB001.A0000.R009",
+            roi_number=9,
             section_id=destroyed_section.section_id,
-            block_id=test_block.block_id,
-            specimen_id=test_specimen.specimen_id,
             substrate_media_id="SUB001",
-            hierarchy_level=1,
+            aperture_index=0,
             parent_roi_id=None,
             updated_at=datetime.now(timezone.utc),
-            section_number=destroyed_section.section_number,
             roi_payload={},
             created_at=datetime.now(timezone.utc),
         )

@@ -46,7 +46,7 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    cutting_session_id: Mapped[str] = mapped_column(ForeignKey("cutting_sessions.cutting_session_id"))
+    cutting_session_id: Mapped[str] = mapped_column(ForeignKey("cutting_sessions.cutting_session_id"), index=True)
     block_id: Mapped[str] = mapped_column(String)
     specimen_id: Mapped[str] = mapped_column(String)
     media_id: Mapped[str] = mapped_column(ForeignKey("substrates.media_id"), index=True)

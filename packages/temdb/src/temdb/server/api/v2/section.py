@@ -26,6 +26,7 @@ from temdb.server.exception_handlers import BaseError
 from temdb.server.sqlmodels import (
     BlockSQLModel,
     CuttingSessionSQLModel,
+    ROISQLModel,
     SectionSQLModel,
     SubstrateSQLModel,
 )
@@ -76,7 +77,7 @@ async def mark_apertures_used(session: AsyncSession, media_id: str, aperture_ind
         substrate.updated_at = datetime.now(timezone.utc)
 
 
-async def _section_or_404(session: AsyncSession, section_id: str) -> SectionSQLModel:
+async def section_or_404(session: AsyncSession, section_id: str) -> SectionSQLModel:
     section_obj = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
     if section_obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Section '{section_id}' not found")
@@ -208,7 +209,7 @@ async def get_section(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve a section by its section_id."""
-    return await _section_or_404(session, section_id)
+    return await section_or_404(session, section_id)
 
 
 def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> SectionSQLModel:
@@ -262,8 +263,8 @@ async def _stored_at_placement(session: AsyncSession, row: SectionSQLModel) -> S
     return stored
 
 
-async def _lock_substrate(session: AsyncSession, media_id: str) -> SubstrateSQLModel:
-    """The substrate, locked so its section numbers are handed out one create at a time; 404 if it does not exist."""
+async def lock_substrate(session: AsyncSession, media_id: str) -> SubstrateSQLModel:
+    """The substrate, locked so section and ROI numbers are handed out one create at a time; 404 if missing."""
     substrate = await session.scalar(
         select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id).with_for_update(key_share=True)
     )
@@ -308,7 +309,7 @@ async def create_section(
 ):
     """Create a section, numbered next on its substrate; a section already at this placement is returned (200)."""
     cut_session = await _cutting_session(session, section_data.cutting_session_id)
-    substrate = await _lock_substrate(session, section_data.media_id)
+    substrate = await lock_substrate(session, section_data.media_id)
     check_aperture_index(section_data.aperture_index, len(substrate.aperture_status), section_data.media_id)
     row = _section_row(section_data, cut_session)
     stored = await _stored_at_placement(session, row)
@@ -354,7 +355,7 @@ async def create_sections_batch(
     sessions = {
         sid: await _cutting_session(session, sid) for sid in {item.cutting_session_id for item in sections_data}
     }
-    substrates = {media_id: await _lock_substrate(session, media_id) for media_id in sorted({p[0] for p in placements})}
+    substrates = {media_id: await lock_substrate(session, media_id) for media_id in sorted({p[0] for p in placements})}
     result = []
     for item in sections_data:
         check_aperture_index(item.aperture_index, len(substrates[item.media_id].aperture_status), item.media_id)
@@ -384,7 +385,7 @@ async def update_section(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update a section by its section_id."""
-    section_obj = await _section_or_404(session, section_id)
+    section_obj = await section_or_404(session, section_id)
     update_data = updated_fields.model_dump(
         exclude_unset=True,
     )
@@ -400,6 +401,13 @@ async def update_section(
     optical_image = update_data.pop("optical_image", None)
     if optical_image is not None:
         section_obj.optical_image = jsonable_encoder(optical_image)
+    if "aperture_index" in update_data and update_data["aperture_index"] != section_obj.aperture_index:
+        rois = (await session.scalars(select(ROISQLModel.roi_id).where(ROISQLModel.section_id == section_id))).all()
+        if rois:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Section '{section_id}' cannot move to another aperture while ROIs {', '.join(rois)} are on it",
+            )
     if update_data.get("aperture_index") is not None:
         aperture_count = await session.scalar(
             select(func.cardinality(SubstrateSQLModel.aperture_status)).where(
@@ -425,7 +433,7 @@ async def delete_section(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Delete a section by its section_id."""
-    section_obj = await _section_or_404(session, section_id)
+    section_obj = await section_or_404(session, section_id)
     await session.delete(section_obj)
     await session.commit()
     return None

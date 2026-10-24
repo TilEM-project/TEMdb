@@ -216,7 +216,7 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_section_with_unknown_substrate_is_not_found(async_client: AsyncClient, test_cutting_session):
+async def test_unknown_substrate_is_404(async_client: AsyncClient, test_cutting_session):
     section_data = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "timestamp": "2026-09-04T16:00:00+00:00",
@@ -418,9 +418,7 @@ async def test_list_sections_by_media(async_client: AsyncClient, test_section):
 
 
 @pytest.mark.asyncio
-async def test_section_on_an_aperture_the_layout_does_not_have_is_422(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_aperture_outside_layout_is_422(async_client: AsyncClient, test_cutting_session, test_substrate):
     section = {
         "cutting_session_id": test_cutting_session.cutting_session_id,
         "media_id": test_substrate.media_id,
@@ -432,9 +430,7 @@ async def test_section_on_an_aperture_the_layout_does_not_have_is_422(
 
 
 @pytest.mark.asyncio
-async def test_section_cannot_move_to_an_aperture_the_layout_does_not_have(
-    async_client: AsyncClient, test_cutting_session, test_section
-):
+async def test_move_outside_layout_is_422(async_client: AsyncClient, test_cutting_session, test_section):
     response = await async_client.patch(
         f"/api/v2/sections/{test_section.section_id}",
         json={"aperture_index": 3},
@@ -443,9 +439,7 @@ async def test_section_cannot_move_to_an_aperture_the_layout_does_not_have(
 
 
 @pytest.mark.asyncio
-async def test_section_on_a_blank_has_no_aperture_and_keeps_its_position(
-    async_client: AsyncClient, test_cutting_session, test_substrate
-):
+async def test_blank_section_keeps_position(async_client: AsyncClient, test_cutting_session, test_substrate):
     response = await async_client.post(
         "/api/v2/sections",
         json={
@@ -461,9 +455,7 @@ async def test_section_on_a_blank_has_no_aperture_and_keeps_its_position(
 
 
 @pytest.mark.asyncio
-async def test_placing_a_section_marks_its_aperture_used_but_leaves_damaged_alone(
-    async_client: AsyncClient, test_cutting_session, test_layout
-):
+async def test_placement_marks_aperture_used(async_client: AsyncClient, test_cutting_session, test_layout):
     media_id = "TEST_SUB_MARKS_USED"
     created = await async_client.post(
         "/api/v2/substrates",
@@ -558,7 +550,7 @@ async def test_list_sections_by_quality_pages_matches(async_client: AsyncClient,
 
 
 @pytest.mark.asyncio
-async def test_concurrent_section_creates_on_one_substrate_do_not_deadlock(test_db_manager, test_substrate):
+async def test_concurrent_creates_do_not_deadlock(test_db_manager, test_substrate):
     async with test_db_manager.async_session_factory() as inserting, test_db_manager.async_session_factory() as marking:
         try:
             await inserting.execute(
