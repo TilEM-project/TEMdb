@@ -1,15 +1,30 @@
 import logging
 from datetime import datetime, timezone
 
+import boto3
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import ApertureStatus, APIErrorResponse, SectionCreate, SectionQuality, SectionResponse, SectionUpdate
+from temdb.models import (
+    ApertureStatus,
+    APIErrorResponse,
+    FileObject,
+    FileObjectRequest,
+    FileObjectResponse,
+    SectionCreate,
+    SectionQuality,
+    SectionResponse,
+    SectionUpdate,
+    StorageProtocol,
+)
+from temdb.server.config import config
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import BaseError
 from temdb.server.sqlmodels import (
+    BlockSQLModel,
     CuttingSessionSQLModel,
     SectionSQLModel,
     SubstrateSQLModel,
@@ -24,8 +39,12 @@ section_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-def _dump_images(data):
-    return {key: val.model_dump(mode="json") for key, val in data.items()}
+def _to_json_compatible(value):
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    return jsonable_encoder(value)
 
 
 def check_aperture_index(aperture_index: int | None, aperture_count: int, media_id: str) -> None:
@@ -201,7 +220,7 @@ def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> Se
         block_id=cut_session.block_id,
         specimen_id=cut_session.specimen_id,
         media_id=data.media_id,
-        optical_image=_dump_images(data.optical_image) if data.optical_image is not None else None,
+        optical_image=_to_json_compatible(data.optical_image) if data.optical_image is not None else None,
         aperture_index=data.aperture_index,
         position=dump_position(data.position),
         condition=data.condition,
@@ -427,3 +446,218 @@ async def list_sections_by_media(
     statement = statement.order_by(SectionSQLModel.section_number, SectionSQLModel.id)
     sections = await session.scalars(statement.offset(skip).limit(limit))
     return sections.all()
+
+
+@section_api.post("/sections/{section_id}/image", response_model=FileObjectResponse)
+async def image_put_url(
+    section_id: str,
+    storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Generate a pre-signed URL for uploading an image for a specific section."""
+    section = await session.scalars(
+        select(SectionSQLModel).where(
+            SectionSQLModel.section_id == section_id,
+        )
+    )
+    section_obj = section.one_or_none()
+    if section_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Section '{section_id}' not found",
+        )
+    if storage_location is None and section_obj.optical_image is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Storage location must be provided.",
+        )
+    if storage_location is None:
+        storage_location = FileObject.model_validate(section_obj.optical_image)
+    if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
+        cutting_session = await session.scalars(
+            select(CuttingSessionSQLModel).where(
+                CuttingSessionSQLModel.cutting_session_id == section_obj.cutting_session_id
+            )
+        )
+        cutting_session_obj = cutting_session.one_or_none()
+        if cutting_session_obj is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Cutting Session '{section_obj.cutting_session_id}' not found",
+            )
+        block = await session.scalars(
+            select(BlockSQLModel).where(BlockSQLModel.block_id == cutting_session_obj.block_id)
+        )
+        block_obj = block.one_or_none()
+        if block_obj is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Block '{cutting_session_obj.block_id}' not found",
+            )
+        if block_obj.default_storage is not None:
+            storage_location = storage_location.apply_defaults(block_obj.default_storage)
+
+        if config.default_storage is not None:
+            storage_location = storage_location.apply_defaults(config.default_storage)
+
+    storage_location.key = storage_location.key.lstrip("/")
+
+    if (
+        section_obj.optical_image is not None
+        and storage_location.model_dump(exclude={"expiration"}) != section_obj.optical_image
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Delete the existing image for section '{section_id}' before uploading a new one.",
+        )
+
+    match storage_location.protocol:
+        case StorageProtocol.S3:
+            client = boto3.client("s3", endpoint_url=storage_location.server)
+            expiration = getattr(storage_location, "expiration", None) or 3600
+            try:
+                presigned_url = client.generate_presigned_url(
+                    "put_object",
+                    Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
+                    ExpiresIn=expiration,
+                )
+            except ClientError as e:
+                logger.error(f"Error generating presigned URL: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error generating presigned URL for S3.",
+                )
+            response = FileObjectResponse(
+                expiration=expiration,
+                url=presigned_url,
+                **storage_location.model_dump(exclude={"expiration"}),
+            )
+        case StorageProtocol.GCS:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Storage protocol '{storage_location.protocol}' is not yet implemented.",
+            )
+        case _:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
+            )
+
+    if storage_location.model_dump(exclude={"expiration"}) != section_obj.optical_image:
+        section_obj.optical_image = FileObject.model_validate(storage_location, from_attributes=True).model_dump()
+        section_obj.updated_at = datetime.now(timezone.utc)
+        session.add(section_obj)
+        await session.commit()
+
+    return response
+
+
+@section_api.get("/sections/{section_id}/image", response_model=FileObjectResponse)
+async def image_get_url(
+    section_id: str,
+    expiration: int = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Generate a pre-signed URL for downloading an image for a specific section."""
+    section = await session.scalars(
+        select(SectionSQLModel).where(
+            SectionSQLModel.section_id == section_id,
+        )
+    )
+    section_obj = section.one_or_none()
+    if section_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Section '{section_id}' not found",
+        )
+    if section_obj.optical_image is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No image found for section '{section_id}'",
+        )
+
+    storage_location = FileObject.model_validate(section_obj.optical_image)
+
+    match storage_location.protocol:
+        case StorageProtocol.S3:
+            client = boto3.client("s3", endpoint_url=storage_location.server)
+            try:
+                presigned_url = client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
+                    ExpiresIn=expiration,
+                )
+            except ClientError as e:
+                logger.error(f"Error generating presigned URL: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error generating presigned URL for S3.",
+                )
+            return FileObjectResponse(
+                expiration=expiration,
+                url=presigned_url,
+                **storage_location.model_dump(),
+            )
+        case StorageProtocol.GCS:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Storage protocol '{storage_location.protocol}' is not yet implemented.",
+            )
+        case _:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
+            )
+
+
+@section_api.delete("/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_image(
+    section_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete the image associated with a specific section."""
+    section = await session.scalars(
+        select(SectionSQLModel).where(
+            SectionSQLModel.section_id == section_id,
+        )
+    )
+    section_obj = section.one_or_none()
+    if section_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Section '{section_id}' not found",
+        )
+    if section_obj.optical_image is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No image found for section '{section_id}'",
+        )
+
+    storage_location = FileObject.model_validate(section_obj.optical_image)
+
+    match storage_location.protocol:
+        case StorageProtocol.S3:
+            client = boto3.client("s3", endpoint_url=storage_location.server)
+            try:
+                client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
+            except ClientError as e:
+                logger.error(f"Error deleting object from S3: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Error deleting object from S3.",
+                )
+        case StorageProtocol.GCS:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Storage protocol '{storage_location.protocol}' is not yet implemented.",
+            )
+        case _:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
+            )
+
+    section_obj.optical_image = None
+    section_obj.updated_at = datetime.now(timezone.utc)
+    session.add(section_obj)
+    await session.commit()

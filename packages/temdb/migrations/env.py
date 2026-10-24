@@ -16,6 +16,10 @@ MIGRATION_LOCK_KEY = 7_323_488_513_002_001
 def include_object(obj, name, type_, reflected, compare_to):
     if type_ == "table" and name.startswith("tile_d_"):
         return False
+    # Retain legacy image data until it can be migrated to explicit storage locations.
+    if type_ == "column" and reflected and compare_to is None:
+        if (obj.table.name, name) in {("tiles", "image_path"), ("specimens", "specimen_images")}:
+            return False
     return True
 
 

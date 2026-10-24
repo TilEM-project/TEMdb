@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,14 @@ from ..utils import drop_null_keys, merge_extra
 block_api = APIRouter(
     tags=["Blocks"],
 )
+
+
+def _to_json_compatible(value):
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    return jsonable_encoder(value)
 
 
 @block_api.get("/blocks", response_model=list[BlockResponse])
@@ -90,6 +99,7 @@ async def create_block(
         block_id=block_data.block_id,
         specimen_id=block_data.specimen_id,
         microCT_info=block_data.microCT_info,
+        default_storage=_to_json_compatible(block_data.default_storage),
         created_at=block_data.created_at or datetime.now(timezone.utc),
         description=block_data.description,
         extra=drop_null_keys(block_data.extra),
@@ -143,6 +153,8 @@ async def update_block(
     )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    if "default_storage" in update_data:
+        block_obj.default_storage = _to_json_compatible(update_data.pop("default_storage"))
     extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(block_obj, field, value)

@@ -24,14 +24,15 @@ class BaseResource:
         return await self._request("PATCH", endpoint, json=data, **kwargs)
 
     async def _delete(self, endpoint: str, **kwargs) -> None:
-        await self._request("DELETE", endpoint, **kwargs)
+        return await self._request("DELETE", endpoint, **kwargs)
 
 
 def accepts_keywords(model):
     """Let a create/update method take the model's fields as keywords instead of a built model."""
 
     def decorate(method):
-        parameters = list(inspect.signature(method).parameters)[1:]
+        signature = inspect.signature(method)
+        parameters = list(signature.parameters)[1:]
 
         @wraps(method)
         async def wrapper(self, *args, **kwargs):
@@ -40,6 +41,9 @@ def accepts_keywords(model):
             named = [key for key, value in kwargs.items() if isinstance(value, model)]
             if named:
                 args = (*args, kwargs.pop(named[0]))
+            if not kwargs and signature.parameters[parameters[-1]].default is None:
+                if len(args) == len(parameters) - 1 or (len(args) == len(parameters) and args[-1] is None):
+                    return await method(self, *args)
             if args and isinstance(args[-1], model):
                 if kwargs:
                     raise TypeError(f"Pass a {model.__name__} or its fields as keywords, not both")

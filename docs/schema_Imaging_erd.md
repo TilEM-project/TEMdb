@@ -75,6 +75,7 @@ erDiagram
         UUID dataset_id
         string name
         string description
+        object default_storage
         string specimen_id
         UUID parent_dataset_id
         string status
@@ -160,7 +161,7 @@ erDiagram
         float max_value
         float mean_value
         float std_value
-        string image_path
+        object image
         object matcher
         string supertile_id
         object supertile_raster_position

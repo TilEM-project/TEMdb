@@ -1,11 +1,13 @@
+import io
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from temdb.client.resources.acquisition import AcquisitionResource
-from temdb.models import AcquisitionCreate, AcquisitionUpdate
+from temdb.models import AcquisitionCreate, AcquisitionUpdate, FileObjectRequest, FileObjectResponse
 
 API = "http://test/api/v2"
 NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
@@ -72,7 +74,12 @@ def _tile_payload(**extra) -> dict:
         "max_value": 255.0,
         "mean_value": 120.0,
         "std_value": 15.0,
-        "image_path": "s3://bucket/tile-0.tiff",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": "s3://bucket/tile-0.tiff",
+        },
         **extra,
     }
 
@@ -146,7 +153,12 @@ async def test_add_tile_accepts_kwargs_via_decorator():
         max_value=255.0,
         mean_value=120.0,
         std_value=15.0,
-        image_path="s3://bucket/tile-0.tiff",
+        image={
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": "s3://bucket/tile-0.tiff",
+        },
     )
     assert request.await_args.args[:2] == ("POST", "acquisitions/ACQ001/tiles")
     assert request.await_args.kwargs["json"]["raster_index"] == 0
@@ -163,11 +175,146 @@ async def test_update_tile_accepts_kwargs_via_decorator():
     assert out.focus_score == 0.5
 
 
-@pytest.mark.asyncio
-async def test_add_storage_location_accepts_kwargs_via_decorator():
-    res, request = _resource()
-    request.return_value = _acquisition_payload()
-    out = await res.add_storage_location("ACQ001", location_type="s3", base_path="s3://bucket/acq", metadata={})
-    assert request.await_args.args[:2] == ("POST", "acquisitions/ACQ001/storage-locations")
-    assert request.await_args.kwargs["json"]["location_type"] == "s3"
-    assert out.acquisition_id == "ACQ001"
+@pytest.fixture
+def image_resource():
+    request = AsyncMock()
+    return AcquisitionResource(request, "http://api.example.com/api/v2"), request
+
+
+def _image_response():
+    return {
+        "protocol": "s3",
+        "server": "http://minio.example.com",
+        "bucket": "tiles",
+        "key": "tiles/tile.tif",
+        "url": "http://minio.example.com/tiles/tiles/tile.tif?signature=test",
+        "expiration": 600,
+    }
+
+
+@pytest.mark.parametrize("with_location", [False, True])
+async def test_tile_put_image_url_uses_api_put_route(image_resource, with_location):
+    resource, request = image_resource
+    request.return_value = _image_response()
+    location = (
+        FileObjectRequest(
+            protocol="s3",
+            server="http://minio.example.com",
+            bucket="tiles",
+            key="/tiles/tile.tif",
+            expiration=600,
+        )
+        if with_location
+        else None
+    )
+
+    result = await resource.put_image_url("ACQ001", "tile", location)
+
+    request.assert_awaited_once_with(
+        "POST",
+        "acquisitions/ACQ001/tiles/tile/image",
+        json=location.model_dump(exclude_unset=True) if location else None,
+    )
+    assert result == FileObjectResponse.model_validate(_image_response())
+
+
+@pytest.mark.parametrize("expiration", [None, 300])
+async def test_tile_get_image_url(image_resource, expiration):
+    resource, request = image_resource
+    request.return_value = _image_response()
+
+    result = await resource.get_image_url("ACQ001", "tile", expiration=expiration)
+
+    request.assert_awaited_once_with(
+        "GET",
+        "acquisitions/ACQ001/tiles/tile/image",
+        params={"expiration": expiration} if expiration is not None else None,
+    )
+    assert result == FileObjectResponse.model_validate(_image_response())
+
+
+@pytest.mark.parametrize("operation", ["put", "get"])
+@pytest.mark.parametrize("tile_ids", [None, ["tile"]])
+async def test_tile_bulk_image_urls_use_json_body_and_return_mapping(image_resource, operation, tile_ids):
+    resource, request = image_resource
+    request.return_value = {"tile": _image_response()}
+    method = getattr(resource, f"{operation}_image_urls")
+
+    result = await method("ACQ001", tile_ids=tile_ids, expiration=300)
+
+    request.assert_awaited_once_with(
+        "POST" if operation == "put" else "GET",
+        "acquisitions/ACQ001/tiles/images",
+        json=tile_ids,
+        params={"expiration": 300},
+    )
+    assert result == {"tile": FileObjectResponse.model_validate(_image_response())}
+
+
+@pytest.mark.parametrize("upload_fails", [False, True])
+async def test_tile_put_image_uploads_and_propagates_errors(image_resource, monkeypatch, upload_fails):
+    resource, _ = image_resource
+    file_object = FileObjectResponse.model_validate(_image_response())
+    resource.put_image_url = AsyncMock(return_value=file_object)
+    uploaded = []
+
+    async def handle(request):
+        assert request.headers["Content-Length"] == "10"
+        uploaded.append(await request.aread())
+        return httpx.Response(500 if upload_fails else 200)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
+    contents = io.BytesIO(b"tile image")
+
+    if upload_fails:
+        with pytest.raises(httpx.HTTPStatusError):
+            await resource.put_image("ACQ001", "tile", contents)
+    else:
+        assert await resource.put_image("ACQ001", "tile", contents) is file_object
+
+    resource.put_image_url.assert_awaited_once_with("ACQ001", "tile", None)
+    assert uploaded == [b"tile image"]
+    assert client.is_closed
+    assert not contents.closed
+
+
+@pytest.mark.parametrize("download_fails", [False, True])
+async def test_tile_get_image_streams_and_propagates_errors(image_resource, download_fails, monkeypatch):
+    resource, _ = image_resource
+    file_object = FileObjectResponse.model_validate(_image_response())
+    resource.get_image_url = AsyncMock(return_value=file_object)
+    response = httpx.Response(500 if download_fails else 200, content=b"tile image")
+    transport = httpx.MockTransport(lambda request: response)
+    client = httpx.AsyncClient(transport=transport)
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
+
+    if download_fails:
+        with pytest.raises(httpx.HTTPStatusError):
+            await resource.get_image("ACQ001", "tile", expiration=300)
+    else:
+        image = await resource.get_image("ACQ001", "tile", expiration=300)
+        assert image == b"tile image"
+
+    resource.get_image_url.assert_awaited_once_with("ACQ001", "tile", 300)
+    assert str(response.request.url) == file_object.url
+    assert response.is_closed
+
+
+async def test_tile_delete_image(image_resource):
+    resource, request = image_resource
+
+    await resource.delete_image("ACQ001", "tile")
+
+    request.assert_awaited_once_with("DELETE", "acquisitions/ACQ001/tiles/tile/image")
+
+
+@pytest.mark.parametrize("tile_ids", [None, ["tile"]])
+async def test_tile_delete_images_awaits_request_and_returns_deleted_ids(image_resource, tile_ids):
+    resource, request = image_resource
+    request.return_value = ["tile"]
+
+    result = await resource.delete_images("ACQ001", tile_ids=tile_ids)
+
+    request.assert_awaited_once_with("DELETE", "acquisitions/ACQ001/tiles/images", json=tile_ids)
+    assert result == ["tile"]

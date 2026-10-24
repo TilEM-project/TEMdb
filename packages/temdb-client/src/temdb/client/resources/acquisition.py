@@ -1,7 +1,9 @@
 import builtins
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime
-from typing import Any
+from typing import Any, BinaryIO, Literal, overload
 
+import httpx
 from pydantic import BaseModel
 
 from temdb.models import (
@@ -10,8 +12,8 @@ from temdb.models import (
     AcquisitionResponse,
     AcquisitionStatusFilter,
     AcquisitionUpdate,
-    StorageLocation,
-    StorageLocationCreate,
+    FileObjectRequest,
+    FileObjectResponse,
     TileBulkDeleteResult,
     TileCreate,
     TileDeleteAllResult,
@@ -20,6 +22,7 @@ from temdb.models import (
 )
 
 from .base import BaseResource, accepts_keywords
+from .image import ImageReader, ImageWriter, open_image, put_image
 
 
 class PaginatedAcquisitionResponse(BaseModel):
@@ -33,6 +36,10 @@ class PaginatedTileResponse(BaseModel):
 
 
 class AcquisitionResource(BaseResource):
+    def __init__(self, *args, file_client: httpx.AsyncClient | None = None, **kwargs):
+        self._file_client = file_client
+        super().__init__(*args, **kwargs)
+
     async def list(
         self,
         cursor: str | None = None,
@@ -184,21 +191,6 @@ class AcquisitionResource(BaseResource):
         endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
         return TileBulkDeleteResult.model_validate(await self._request("DELETE", endpoint, json=tile_ids))
 
-    @accepts_keywords(StorageLocationCreate)
-    async def add_storage_location(
-        self, acquisition_id: str, location_data: StorageLocationCreate
-    ) -> AcquisitionResponse:
-        """Add a storage location to an acquisition. Returns the updated acquisition."""
-        endpoint = f"acquisitions/{acquisition_id}/storage-locations"
-        response_data = await self._post(endpoint, data=location_data.model_dump(exclude_unset=True))
-        return AcquisitionResponse.model_validate(response_data)
-
-    async def get_current_storage_location(self, acquisition_id: str) -> StorageLocation | None:
-        """Get the current storage location for an acquisition."""
-        endpoint = f"acquisitions/{acquisition_id}/current-storage"
-        response_data = await self._get(endpoint)
-        return StorageLocation.model_validate(response_data) if response_data else None
-
     async def get_all_tiles(
         self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
     ) -> builtins.list[TileResponse] | builtins.list[dict[str, Any]]:
@@ -218,10 +210,127 @@ class AcquisitionResource(BaseResource):
                 break
         return all_tiles
 
-    async def get_minimap_uri(self, acquisition_id: str) -> dict[str, str | None]:
-        """Get the calculated URI for the acquisition's minimap."""
-        endpoint = f"acquisitions/{acquisition_id}/minimap-uri"
-        return await self._get(endpoint)
+    async def put_image_url(
+        self, acquisition_id: str, tile_id: str, storage_location: FileObjectRequest | None = None
+    ) -> FileObjectResponse:
+        """Get a presigned URL for uploading an image for a specific tile."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}/image"
+        payload = storage_location.model_dump(exclude_unset=True) if storage_location else None
+        response_data = await self._post(endpoint, data=payload)
+        return FileObjectResponse.model_validate(response_data)
+
+    async def put_image_urls(
+        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None, expiration: int | None = None
+    ) -> builtins.dict[str, FileObjectResponse]:
+        """Get presigned URLs for uploading images for multiple tiles.
+
+        If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/images"
+        response_data = await self._post(
+            endpoint, data=tile_ids, params={"expiration": expiration} if expiration else None
+        )
+        return {tile_id: FileObjectResponse.model_validate(response) for tile_id, response in response_data.items()}
+
+    async def put_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        image_data: BinaryIO,
+        storage_location: FileObjectRequest | None = None,
+    ) -> FileObjectResponse:
+        """Upload an open binary file directly and return its storage metadata."""
+        location = await self.put_image_url(acquisition_id, tile_id, storage_location)
+        return await put_image(location, image_data, self._file_client)
+
+    @overload
+    def open_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        mode: Literal["rb"] = "rb",
+        storage_location: FileObjectRequest | None = None,
+        expiration: int | None = None,
+        *,
+        size: int | None = None,
+    ) -> AbstractAsyncContextManager[ImageReader]: ...
+
+    @overload
+    def open_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        mode: Literal["wb"],
+        storage_location: FileObjectRequest | None = None,
+        expiration: int | None = None,
+        *,
+        size: int,
+    ) -> AbstractAsyncContextManager[ImageWriter]: ...
+
+    def open_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        mode: str = "rb",
+        storage_location: FileObjectRequest | None = None,
+        expiration: int | None = None,
+        *,
+        size: int | None = None,
+    ) -> AbstractAsyncContextManager[ImageReader | ImageWriter]:
+        """Open an async binary stream; 'wb' requires the total byte size."""
+        return open_image(
+            lambda: (
+                self.put_image_url(acquisition_id, tile_id, storage_location)
+                if mode == "wb"
+                else self.get_image_url(acquisition_id, tile_id, expiration)
+            ),
+            mode,
+            size,
+            self._file_client,
+        )
+
+    async def get_image(self, acquisition_id: str, tile_id: str, expiration: int | None = None) -> bytes:
+        """Download the entire tile image into memory."""
+        async with self.open_image(acquisition_id, tile_id, expiration=expiration) as image:
+            return await image.read()
+
+    async def get_image_url(
+        self, acquisition_id: str, tile_id: str, expiration: int | None = None
+    ) -> FileObjectResponse:
+        """Get a presigned URL for downloading an image for a specific tile."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}/image"
+        response_data = await self._get(endpoint, params={"expiration": expiration} if expiration else None)
+        return FileObjectResponse.model_validate(response_data)
+
+    async def get_image_urls(
+        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None, expiration: int | None = None
+    ) -> builtins.list[FileObjectResponse]:
+        """Get presigned URLs for downloading images for multiple tiles.
+
+        If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/images"
+        response_data = await self._get(
+            endpoint, json=tile_ids, params={"expiration": expiration} if expiration else None
+        )
+        return {tile_id: FileObjectResponse.model_validate(response) for tile_id, response in response_data.items()}
+
+    async def delete_image(self, acquisition_id: str, tile_id: str) -> None:
+        """Delete the image for a specific tile."""
+        endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}/image"
+        await self._delete(endpoint)
+
+    async def delete_images(
+        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None
+    ) -> builtins.list[str]:
+        """Delete images for multiple tiles.
+
+        If tile_ids is None, all images will be deleted for the acquisition.
+
+        Returns a list of tile IDs for which images were successfully deleted.
+        """
+        endpoint = f"acquisitions/{acquisition_id}/tiles/images"
+        return await self._delete(endpoint, json=tile_ids)
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""

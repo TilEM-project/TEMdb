@@ -1,12 +1,19 @@
+import io
 import json
+import re
 from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 
+import httpx
 import pytest
+from botocore.exceptions import ClientError
 from httpx import AsyncClient
+from minio.error import S3Error
+from sqlalchemy import and_, null, or_, select, update
 
 from temdb.server.config import config
-from temdb.server.sqlmodels import TileSQLModel
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
+from temdb.server.sqlmodels.tile import TileSQLModel, format_tile_id
 
 TEST_MAX_BATCH_SIZE = 10
 config.max_batch_size = TEST_MAX_BATCH_SIZE
@@ -22,7 +29,6 @@ def _tile_payload(raster_index: int) -> dict:
         "max_value": 240,
         "mean_value": 100,
         "std_value": 20,
-        "image_path": f"/path/to/tile_{raster_index}.tif",
     }
 
 
@@ -392,7 +398,12 @@ async def test_add_tile_to_acquisition(async_client: AsyncClient, test_acquisiti
         "max_value": 250,
         "mean_value": 120,
         "std_value": 30,
-        "image_path": "/path/to/test/tile_10.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": "/path/to/test/tile_10.tif",
+        },
     }
     response = await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data)
     assert response.status_code == 201
@@ -414,7 +425,12 @@ async def test_add_tile_with_supertile_raster_position(async_client: AsyncClient
         "max_value": 255,
         "mean_value": 128,
         "std_value": 10,
-        "image_path": "/path/to/test/tile_42.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": "/path/to/test/tile_42.tif",
+        },
         "supertile_id": "banana",
         "supertile_raster_position": {"row": 7, "col": 8},
     }
@@ -445,7 +461,12 @@ async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acq
                 "max_value": 240,
                 "mean_value": 100,
                 "std_value": 20,
-                "image_path": f"/path/to/bulk/tile_{i}.tif",
+                "image": {
+                    "protocol": "s3",
+                    "server": "http://localhost:9000",
+                    "bucket": "images",
+                    "key": f"/path/to/bulk/tile_{i}.tif",
+                },
             }
         )
 
@@ -508,7 +529,12 @@ async def test_get_tiles_from_acquisition_bbox_filter(async_client: AsyncClient,
                 "max_value": 255,
                 "mean_value": 128,
                 "std_value": 25,
-                "image_path": f"/path/to/tile_{raster_index}.tif",
+                "image": {
+                    "protocol": "s3",
+                    "server": "http://localhost:9000",
+                    "bucket": "images",
+                    "key": f"/path/to/tile_{raster_index}.tif",
+                },
             },
         )
         assert response.status_code == 201
@@ -585,7 +611,6 @@ async def test_delete_tile_from_acquisition(async_client: AsyncClient, test_acqu
         "max_value": 0,
         "mean_value": 0,
         "std_value": 0,
-        "image_path": "del.tif",
     }
     add_resp = await async_client.post(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles", json=tile_data)
     assert add_resp.status_code == 201
@@ -854,7 +879,12 @@ async def test_add_tiles_bulk_with_gzip(async_client: AsyncClient, test_acquisit
                 "max_value": 240,
                 "mean_value": 100,
                 "std_value": 20,
-                "image_path": f"/path/to/gzip/tile_{i}.tif",
+                "image": {
+                    "protocol": "s3",
+                    "server": "http://localhost:9000",
+                    "bucket": "images",
+                    "key": f"/path/to/gzip/tile_{i}.tif",
+                },
             }
         )
 
@@ -928,7 +958,7 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
             "max_value": 255,
             "mean_value": 128,
             "std_value": 25,
-            "image_path": "/p/7.tif",
+            "image": {"protocol": "s3", "server": "http://localhost:9000", "bucket": "images", "key": "/p/7.tif"},
         },
     )
     assert add.status_code == 201  # would 409 if dataset_id were not persisted
@@ -957,8 +987,8 @@ async def second_acquisition(
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
             dataset_id=test_dataset.dataset_id,
-            hardware_settings={},
-            acquisition_settings={},
+            hardware_settings=test_acquisition.hardware_settings,
+            acquisition_settings=test_acquisition.acquisition_settings,
             microscope_id=test_microscope.microscope_id,
             start_time=datetime.now(timezone.utc),
         )
@@ -1269,7 +1299,7 @@ async def test_bulk_update_stamps_updated_at_on_every_tile(async_client: AsyncCl
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["image_path", "stage_position"])
+@pytest.mark.parametrize("field", ["raster_position", "stage_position"])
 async def test_update_tile_rejects_null_for_a_not_null_column(async_client: AsyncClient, test_acquisition, field: str):
     [tile_id] = await _seed_tiles(async_client, test_acquisition, 1)
     url = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}"
@@ -1288,7 +1318,7 @@ async def test_bulk_update_rejects_null_for_a_not_null_column(async_client: Asyn
 
     response = await async_client.patch(
         f"{base}/bulk",
-        json={tile_ids[0]: {"focus_score": 0.5}, tile_ids[1]: {"image_path": None}},
+        json={tile_ids[0]: {"focus_score": 0.5}, tile_ids[1]: {"raster_position": None}},
     )
 
     assert response.status_code == 422, response.text
@@ -1376,7 +1406,7 @@ async def test_bulk_upload_large_tile_batch(async_client: AsyncClient, test_acqu
     last = (await async_client.get(f"{base}/{_tile_id('TEST_MONTAGE_001', 4095)}")).json()
     assert last["stage_position"] == {"x": 4095.0, "y": 4096.0, "z": None}
     assert last["raster_position"] == {"row": 0, "col": 4095}
-    assert last["image_path"] == tiles[4095]["image_path"]
+    assert last["image"] is None
 
 
 @pytest.mark.asyncio
@@ -1483,3 +1513,393 @@ async def test_non_finite_tile_values_are_a_422_and_change_nothing(
     assert await _tile_count(async_client, test_acquisition.acquisition_id) == 1
     stored = (await async_client.get(f"{base}/{tile_id}")).json()
     assert (stored["focus_score"], stored["mean_value"]) == (pytest.approx(0.8), 100)
+
+
+def _image_tile_condition(tile_id):
+    match = re.fullmatch(r"(.*)_r(\d+)_c(\d+)(?:_a(\d+))?", tile_id)
+    assert match is not None, tile_id
+    return and_(
+        TileSQLModel.run_id.in_(select(AcquisitionSQLModel.run_id).where(AcquisitionSQLModel.montage_id == match[1])),
+        TileSQLModel.row == int(match[2]),
+        TileSQLModel.col == int(match[3]),
+        TileSQLModel.retake == int(match[4] or 0),
+    )
+
+
+def _tile_image(key: str) -> dict[str, str]:
+    return {"protocol": "s3", "server": "http://localhost:9000", "bucket": "tiles", "key": key}
+
+
+def _image_tile_payload(tile_id: str, raster_index: int, *, include_image: bool = True) -> dict:
+    return {
+        "raster_index": raster_index,
+        "stage_position": {"x": float(raster_index), "y": float(raster_index + 1)},
+        "raster_position": {"row": 0, "col": raster_index},
+        "focus_score": 0.8,
+        "min_value": 10,
+        "max_value": 240,
+        "mean_value": 100,
+        "std_value": 20,
+        "image": _tile_image(f"path/to/{tile_id}.tif") if include_image else None,
+    }
+
+
+async def _set_tiles_image_to_sql_null(test_db_manager, tile_ids: list[str]) -> None:
+    async with test_db_manager.async_session_factory() as session:
+        await session.execute(
+            update(TileSQLModel)
+            .where(or_(*[_image_tile_condition(tile_id) for tile_id in tile_ids]))
+            .values(image=null())
+        )
+        await session.commit()
+
+
+async def _store_tile_image(test_db_manager, minio_s3, tile_id):
+    contents = b"stored tile image"
+    image = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": f"tiles/{tile_id}.tif",
+    }
+    minio_s3["client"].put_object(image["bucket"], image["key"], io.BytesIO(contents), length=len(contents))
+    async with test_db_manager.async_session_factory() as session:
+        await session.execute(update(TileSQLModel).where(_image_tile_condition(tile_id)).values(image=image))
+        await session.commit()
+    return image
+
+
+@pytest.fixture
+async def stored_tile_image(test_db_manager, minio_s3, test_tile, test_acquisition):
+    return await _store_tile_image(
+        test_db_manager,
+        minio_s3,
+        format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake),
+    )
+
+
+async def test_tile_image_upload_roundtrip(async_client, test_db_manager, test_acquisition, test_tile, minio_s3):
+    tile_id = str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))
+    await _set_tiles_image_to_sql_null(test_db_manager, [tile_id])
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+    location = {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": f"/tiles/{tile_id}.tif",
+        "expiration": 600,
+    }
+
+    response = await async_client.post(path, json=location)
+
+    assert response.status_code == 200, response.text
+    presigned = response.json()
+    assert presigned["key"] == f"tiles/{tile_id}.tif"
+    assert presigned["expiration"] == 600
+    async with httpx.AsyncClient() as storage:
+        uploaded = await storage.put(presigned["url"], content=b"new tile image")
+    assert uploaded.status_code == 200, uploaded.text
+    tile_response = await async_client.get(path.removesuffix("/image"))
+    assert tile_response.status_code == 200, tile_response.text
+    assert tile_response.json()["image"] == {key: presigned[key] for key in ("protocol", "server", "bucket", "key")}
+
+    response = await async_client.get(path, params={"expiration": 300})
+    assert response.status_code == 200, response.text
+    assert response.json()["expiration"] == 300
+    async with httpx.AsyncClient() as storage:
+        downloaded = await storage.get(response.json()["url"])
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.content == b"new tile image"
+
+
+async def test_tile_image_download_uses_stored_location(async_client, test_acquisition, test_tile, stored_tile_image):
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+
+    response = await async_client.get(path, params={"expiration": 300})
+
+    assert response.status_code == 200, response.text
+    presigned = response.json()
+    assert {key: presigned[key] for key in stored_tile_image} == stored_tile_image
+    assert presigned["expiration"] == 300
+    async with httpx.AsyncClient() as storage:
+        downloaded = await storage.get(presigned["url"])
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.content == b"stored tile image"
+
+
+async def test_tile_image_delete_removes_object_and_clears_metadata(
+    async_client, test_db_manager, test_acquisition, test_tile, stored_tile_image, minio_s3
+):
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+
+    response = await async_client.delete(path)
+
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+    with pytest.raises(S3Error) as error:
+        minio_s3["client"].stat_object(stored_tile_image["bucket"], stored_tile_image["key"])
+    assert error.value.code == "NoSuchKey"
+    async with test_db_manager.async_session_factory() as session:
+        tile = await session.scalar(
+            select(TileSQLModel).where(
+                and_(
+                    TileSQLModel.dataset_id == test_tile.dataset_id,
+                    TileSQLModel.run_id == test_tile.run_id,
+                    TileSQLModel.row == test_tile.row,
+                    TileSQLModel.col == test_tile.col,
+                    TileSQLModel.retake == test_tile.retake,
+                )
+            )
+        )
+        assert tile is not None
+        assert tile.image is None
+    assert (await async_client.get(path)).status_code == 404
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+async def test_tile_image_rejects_another_acquisitions_tile(
+    async_client, second_acquisition, test_tile, test_acquisition, method
+):
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+    path = f"/api/v2/acquisitions/{second_acquisition.acquisition_id}/tiles/{tile_id}/image"
+
+    response = await async_client.request(method, path, json={"key": "/tile.tif"} if method == "POST" else None)
+
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+async def test_tile_image_missing_metadata_returns_error(
+    async_client, test_db_manager, test_acquisition, test_tile, method
+):
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+    await _set_tiles_image_to_sql_null(test_db_manager, [tile_id])
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+
+    response = await async_client.request(method, path)
+
+    assert response.status_code == (400 if method == "POST" else 404), response.text
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+@pytest.mark.parametrize("select_subset", [False, True])
+async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
+    async_client,
+    test_db_manager,
+    test_acquisition,
+    second_acquisition,
+    minio_s3,
+    method,
+    select_subset,
+):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
+    other_id = (await _seed_image_tiles(async_client, second_acquisition.acquisition_id, 1))[0]
+    images = {
+        tile_id: await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in [*tile_ids[:2], other_id]
+    }
+    await _set_tiles_image_to_sql_null(test_db_manager, [tile_ids[2]])
+    selected = [tile_ids[0], tile_ids[2], other_id] if select_subset else None
+    expected = tile_ids[:1] if select_subset else tile_ids[:2]
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
+
+    response = await async_client.request(method, path, json=selected, params={"expiration": 300})
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert set(result) == set(expected)
+    if method == "DELETE":
+        async with test_db_manager.async_session_factory() as session:
+            tiles = {
+                format_tile_id(
+                    test_acquisition.montage_id
+                    if tile.run_id == test_acquisition.run_id
+                    else second_acquisition.montage_id,
+                    tile.row,
+                    tile.col,
+                    tile.retake,
+                ): tile
+                for tile in (await session.scalars(select(TileSQLModel))).all()
+            }
+            assert set(tiles) == {*tile_ids, other_id}
+            for tile_id in expected:
+                assert tiles[tile_id].image is None
+        for tile_id in expected:
+            with pytest.raises(S3Error) as error:
+                minio_s3["client"].stat_object(images[tile_id]["bucket"], images[tile_id]["key"])
+            assert error.value.code == "NoSuchKey"
+    else:
+        for tile_id in expected:
+            assert result[tile_id]["expiration"] == 300
+            assert {key: result[tile_id][key] for key in images[tile_id]} == images[tile_id]
+            async with httpx.AsyncClient() as storage:
+                if method == "POST":
+                    transfer = await storage.put(result[tile_id]["url"], content=b"replacement tile image")
+                else:
+                    transfer = await storage.get(result[tile_id]["url"])
+                    assert transfer.content == b"stored tile image"
+            assert transfer.status_code == 200, transfer.text
+    untouched = [other_id] + (tile_ids[1:2] if select_subset else [])
+    for tile_id in untouched:
+        minio_s3["client"].stat_object(images[tile_id]["bucket"], images[tile_id]["key"])
+        response = await async_client.get(
+            f"/api/v2/acquisitions/"
+            f"{second_acquisition.acquisition_id if tile_id == other_id else test_acquisition.acquisition_id}"
+            f"/tiles/{tile_id}"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["image"] == images[tile_id]
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+@pytest.mark.parametrize("select_subset", [False, True])
+@pytest.mark.parametrize("failure", [None, "gcs", "storage"])
+async def test_bulk_tile_images_multiple_servers_and_errors(
+    async_client, test_db_manager, test_acquisition, monkeypatch, caplog, method, select_subset, failure
+):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 4)
+    images = {
+        tile_id: {
+            **_tile_image(f"tiles/{index}.tif"),
+            "server": f"http://storage-{index % 2}.example.com",
+            "protocol": "gcs" if failure == "gcs" and index == 1 else "s3",
+        }
+        for index, tile_id in enumerate(tile_ids)
+    }
+    async with test_db_manager.async_session_factory() as session:
+        for tile_id, image in images.items():
+            await session.execute(update(TileSQLModel).where(_image_tile_condition(tile_id)).values(image=image))
+        await session.commit()
+    clients = {image["server"]: Mock() for image in images.values()}
+    failed_id = tile_ids[1]
+
+    def presign(server, operation, Params, ExpiresIn):
+        if failure == "storage" and Params["Key"] == images[failed_id]["key"]:
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "presign denied"}}, operation)
+        return f"{server}/{Params['Key']}?operation={operation}&expiration={ExpiresIn}"
+
+    def delete_object(Bucket, Key):
+        if failure == "storage" and Key == images[failed_id]["key"]:
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "delete denied"}}, "DeleteObject")
+
+    for server, client in clients.items():
+        client.generate_presigned_url.side_effect = lambda operation, Params, ExpiresIn, server=server: presign(
+            server, operation, Params, ExpiresIn
+        )
+        client.delete_object.side_effect = delete_object
+    factory = Mock(side_effect=lambda service, endpoint_url: clients[endpoint_url])
+    monkeypatch.setattr("boto3.client", factory)
+    selected = tile_ids[:3] if select_subset else None
+    requested = tile_ids[:3] if select_subset else tile_ids
+
+    response = await async_client.request(
+        method,
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
+        json=selected,
+        params={"expiration": 300},
+    )
+
+    assert response.status_code == (501 if failure == "gcs" else 200), response.text
+    async with test_db_manager.async_session_factory() as session:
+        stored = {
+            format_tile_id(
+                test_acquisition.montage_id
+                if tile.run_id == test_acquisition.run_id
+                else second_acquisition.montage_id,
+                tile.row,
+                tile.col,
+                tile.retake,
+            ): tile.image
+            for tile in (await session.scalars(select(TileSQLModel))).all()
+        }
+    if failure == "gcs":
+        assert stored == images
+        assert "not implemented" in response.json()["detail"]
+        return
+    expected = set(requested) - ({failed_id} if failure == "storage" else set())
+    assert set(response.json()) == expected
+    assert {call.kwargs["endpoint_url"] for call in factory.call_args_list} == set(clients)
+    if failure == "storage":
+        assert ("delete denied" if method == "DELETE" else "presign denied") in caplog.text
+    for tile_id, image in images.items():
+        assert stored[tile_id] == (None if method == "DELETE" and tile_id in expected else image)
+    operation = "delete_object" if method == "DELETE" else "generate_presigned_url"
+    for server, client in clients.items():
+        calls = getattr(client, operation).call_args_list
+        expected_keys = {images[tile_id]["key"] for tile_id in requested if images[tile_id]["server"] == server}
+        actual_keys = {call.kwargs["Key"] if method == "DELETE" else call.kwargs["Params"]["Key"] for call in calls}
+        assert actual_keys == expected_keys
+        assert len(calls) == len(expected_keys)
+    if method != "DELETE":
+        for tile_id in expected:
+            result = response.json()[tile_id]
+            assert result["server"] == images[tile_id]["server"]
+            assert result["expiration"] == 300
+            assert result["url"] == (
+                f"{images[tile_id]['server']}/{images[tile_id]['key']}"
+                f"?operation={'put_object' if method == 'POST' else 'get_object'}&expiration=300"
+            )
+
+
+@pytest.mark.parametrize("operation", ["bulk", "all", "single"])
+async def test_tile_deletion_preserves_tiles_with_images(
+    async_client, test_db_manager, test_acquisition, test_tile, operation
+):
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    path = (
+        f"{base}/{format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)}"
+        if operation == "single"
+        else f"{base}/{operation}"
+    )
+
+    response = await async_client.request(
+        "DELETE",
+        path,
+        json=[str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))]
+        if operation == "bulk"
+        else None,
+    )
+
+    if operation == "single":
+        assert response.status_code == 404, response.text
+    else:
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] == 0
+        if operation == "bulk":
+            assert response.json()["not_found"] == [
+                str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))
+            ]
+    async with test_db_manager.async_session_factory() as session:
+        tile = await session.scalar(
+            select(TileSQLModel).where(
+                and_(
+                    TileSQLModel.dataset_id == test_tile.dataset_id,
+                    TileSQLModel.run_id == test_tile.run_id,
+                    TileSQLModel.row == test_tile.row,
+                    TileSQLModel.col == test_tile.col,
+                    TileSQLModel.retake == test_tile.retake,
+                )
+            )
+        )
+        assert tile is not None
+        assert tile.image == test_tile.image
+
+
+async def _seed_image_tiles(
+    async_client: AsyncClient,
+    acquisition_id: str,
+    count: int,
+    *,
+    image_is_sql_null: bool = False,
+    test_db_manager=None,
+) -> list[str]:
+    tiles = [_image_tile_payload(f"tile_{i}", i, include_image=not image_is_sql_null) for i in range(count)]
+    response = await async_client.post(f"/api/v2/acquisitions/{acquisition_id}/tiles/bulk", json=tiles)
+    assert response.status_code in (200, 201), response.text
+    acquisition = (await async_client.get(f"/api/v2/acquisitions/{acquisition_id}")).json()
+    tile_ids = [format_tile_id(acquisition["montage_id"], 0, i, 0) for i in range(count)]
+    if image_is_sql_null:
+        assert test_db_manager is not None
+        await _set_tiles_image_to_sql_null(test_db_manager, tile_ids)
+    return tile_ids

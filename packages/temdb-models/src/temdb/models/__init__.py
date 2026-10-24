@@ -40,9 +40,16 @@ from temdb.models.enums import (
     ApertureStatus,
     SectionQuality,
     ShapeType,
+    StorageProtocol,
     SubstrateType,
 )
 from temdb.models.error import APIErrorResponse
+from temdb.models.file_storage import (
+    FileObject,
+    FileObjectRequest,
+    FileObjectResponse,
+    StorageDefault,
+)
 from temdb.models.layout import (
     Aperture,
     Fiducial,
@@ -116,13 +123,13 @@ from temdb.models.tile import (
     TileResponse,
     TileUpdate,
 )
-from temdb.models.utils.uri import URI
 
 __all__ = [
     "Contract",
     # Enums
     "AcquisitionStatusFilter",
     "SectionQuality",
+    "StorageProtocol",
     "SubstrateType",
     "ShapeType",
     "ApertureStatus",
@@ -224,6 +231,9 @@ __all__ = [
     "AcquisitionFocusScoresResponse",
     "BadFocusTileInfo",
     "BadFocusTilesResponse",
-    # Utils
-    "URI",
+    # File Storage
+    "FileObject",
+    "FileObjectRequest",
+    "FileObjectResponse",
+    "StorageDefault",
 ]

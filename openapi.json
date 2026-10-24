@@ -1627,6 +1627,17 @@
             "description": "Creation timestamp; server-generated if omitted",
             "title": "Created At"
           },
+          "default_storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageDefault"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default storage for sections in this block"
+          },
           "description": {
             "anyOf": [
               {
@@ -1696,6 +1707,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "default_storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageDefault"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default storage for sections in this block"
           },
           "description": {
             "anyOf": [
@@ -1768,6 +1790,17 @@
       "BlockUpdate": {
         "additionalProperties": false,
         "properties": {
+          "default_storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageDefault"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default storage for sections in this block"
+          },
           "description": {
             "anyOf": [
               {
@@ -1808,19 +1841,6 @@
           }
         },
         "title": "BlockUpdate",
-        "type": "object"
-      },
-      "Body_add_specimen_image_api_v2_specimens__specimen_id__images_post": {
-        "properties": {
-          "image_url": {
-            "title": "Image Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "image_url"
-        ],
-        "title": "Body_add_specimen_image_api_v2_specimens__specimen_id__images_post",
         "type": "object"
       },
       "Body_create_tasks_batch_api_v2_acquisition_tasks_batch_post": {
@@ -2327,6 +2347,17 @@
             "description": "Creation timestamp; server-generated if omitted",
             "title": "Created At"
           },
+          "default_storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageDefault"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default storage for tiles in this dataset"
+          },
           "description": {
             "anyOf": [
               {
@@ -2476,6 +2507,17 @@
             "format": "uuid",
             "title": "Dataset Id",
             "type": "string"
+          },
+          "default_storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageDefault"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default storage for tiles in this dataset"
           },
           "description": {
             "anyOf": [
@@ -2756,6 +2798,144 @@
           "through_shape"
         ],
         "title": "Fiducial",
+        "type": "object"
+      },
+      "FileObject": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "description": "Bucket where the file is stored.",
+            "title": "Bucket",
+            "type": "string"
+          },
+          "key": {
+            "description": "Key to the file within the bucket.",
+            "title": "Key",
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/StorageProtocol",
+            "description": "Storage protocol used for the file, or None to use the default."
+          },
+          "server": {
+            "description": "Server address or None for protocol default.",
+            "title": "Server",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "server",
+          "bucket",
+          "key"
+        ],
+        "title": "FileObject",
+        "type": "object"
+      },
+      "FileObjectRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bucket where the file is stored, or None to use the default.",
+            "title": "Bucket"
+          },
+          "expiration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expiration time in seconds for the presigned URL, or None to use the default.",
+            "title": "Expiration"
+          },
+          "key": {
+            "description": "Key to the file within the bucket. Use a leading slash to ignore the default key prefix.",
+            "title": "Key",
+            "type": "string"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageProtocol"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Storage protocol used for the file, or None to use the default."
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Server address or None for protocol default.",
+            "title": "Server"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "FileObjectRequest",
+        "type": "object"
+      },
+      "FileObjectResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "description": "Bucket where the file is stored.",
+            "title": "Bucket",
+            "type": "string"
+          },
+          "expiration": {
+            "description": "Expiration time in seconds for the presigned URL.",
+            "title": "Expiration",
+            "type": "integer"
+          },
+          "key": {
+            "description": "Key to the file within the bucket.",
+            "title": "Key",
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/StorageProtocol",
+            "description": "Storage protocol used for the file, or None to use the default."
+          },
+          "server": {
+            "description": "Server address or None for protocol default.",
+            "title": "Server",
+            "type": "string"
+          },
+          "url": {
+            "description": "Presigned URL to upload or download the file.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol",
+          "server",
+          "bucket",
+          "key",
+          "url",
+          "expiration"
+        ],
+        "title": "FileObjectResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3617,28 +3797,6 @@
         "title": "MicroscopeUpdate",
         "type": "object"
       },
-      "OpticalImage": {
-        "additionalProperties": false,
-        "properties": {
-          "image_path": {
-            "description": "The URI of where the optical image is stored",
-            "title": "Image Path",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "default": {},
-            "description": "Metadata about this optical image",
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "image_path"
-        ],
-        "title": "OpticalImage",
-        "type": "object"
-      },
       "PolygonParams": {
         "additionalProperties": false,
         "properties": {
@@ -3793,18 +3951,6 @@
             "description": "Center of aperture measured in pixel coordinates from aperture_image",
             "title": "Aperture Centroid"
           },
-          "aperture_image": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "URL of aperture image",
-            "title": "Aperture Image"
-          },
           "aperture_width_height": {
             "anyOf": [
               {
@@ -3894,30 +4040,6 @@
             ],
             "description": "Optical resolution in nm per pixel",
             "title": "Optical Pixel Size"
-          },
-          "roi_mask": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "URL of ROI mask",
-            "title": "Roi Mask"
-          },
-          "roi_mask_bucket": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Bucket of ROI mask",
-            "title": "Roi Mask Bucket"
           },
           "roi_parameters": {
             "anyOf": [
@@ -4297,17 +4419,13 @@
           "optical_image": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/OpticalImage"
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/FileObject"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optical image collected before imaging",
-            "title": "Optical Image"
+            "description": "Optical image collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -4646,17 +4764,13 @@
           "optical_image": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/OpticalImage"
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/FileObject"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optical image collected before imaging",
-            "title": "Optical Image"
+            "description": "Optical image collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -4809,17 +4923,13 @@
           "optical_image": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/OpticalImage"
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/FileObject"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optical image collected before imaging",
-            "title": "Optical Image"
+            "description": "Optical image collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -5131,22 +5241,6 @@
             "description": "Unique specimen identifier",
             "title": "Specimen Id",
             "type": "string"
-          },
-          "specimen_images": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array",
-                "uniqueItems": true
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Images of specimen",
-            "title": "Specimen Images"
           }
         },
         "required": [
@@ -5216,22 +5310,6 @@
             "title": "Specimen Id",
             "type": "string"
           },
-          "specimen_images": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array",
-                "uniqueItems": true
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Images of specimen",
-            "title": "Specimen Images"
-          },
           "updated_at": {
             "anyOf": [
               {
@@ -5292,22 +5370,6 @@
             ],
             "description": "Functional imaging metadata of specimen, optional links to other datasets",
             "title": "Functional Imaging Metadata"
-          },
-          "specimen_images": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array",
-                "uniqueItems": true
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Images of specimen",
-            "title": "Specimen Images"
           }
         },
         "title": "SpecimenUpdate",
@@ -5344,6 +5406,72 @@
           "y"
         ],
         "title": "StagePosition",
+        "type": "object"
+      },
+      "StorageDefault": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default bucket",
+            "title": "Bucket"
+          },
+          "expiration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default expiration time in seconds for presigned URLs.",
+            "title": "Expiration"
+          },
+          "key_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default key prefix",
+            "title": "Key Prefix"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageProtocol"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default storage protocol for the system."
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default server address.",
+            "title": "Server"
+          }
+        },
+        "title": "StorageDefault",
         "type": "object"
       },
       "StorageLocation": {
@@ -5387,32 +5515,13 @@
         "title": "StorageLocation",
         "type": "object"
       },
-      "StorageLocationCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "base_path": {
-            "description": "Base path of storage location",
-            "title": "Base Path",
-            "type": "string"
-          },
-          "location_type": {
-            "description": "Type of storage location, e.g. local, s3, etc.",
-            "title": "Location Type",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "description": "Metadata of storage location",
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "location_type",
-          "base_path"
+      "StorageProtocol": {
+        "enum": [
+          "s3",
+          "gcs"
         ],
-        "title": "StorageLocationCreate",
-        "type": "object"
+        "title": "StorageProtocol",
+        "type": "string"
       },
       "SubstrateApertures": {
         "additionalProperties": false,
@@ -5943,10 +6052,16 @@
             "description": "Focus score of the tile",
             "title": "Focus Score"
           },
-          "image_path": {
-            "description": "URL to the image of the tile",
-            "title": "Image Path",
-            "type": "string"
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tile image"
           },
           "matcher": {
             "anyOf": [
@@ -6058,7 +6173,6 @@
         },
         "required": [
           "stage_position",
-          "image_path",
           "raster_index",
           "raster_position"
         ],
@@ -6146,10 +6260,16 @@
             "description": "Focus score of the tile",
             "title": "Focus Score"
           },
-          "image_path": {
-            "description": "URL to the image of the tile",
-            "title": "Image Path",
-            "type": "string"
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tile image"
           },
           "matcher": {
             "anyOf": [
@@ -6287,7 +6407,6 @@
         },
         "required": [
           "stage_position",
-          "image_path",
           "tile_id",
           "acquisition_id",
           "raster_index",
@@ -6345,10 +6464,16 @@
             "description": "Focus score of the tile",
             "title": "Focus Score"
           },
-          "image_path": {
-            "description": "URL to the image of the tile",
-            "title": "Image Path",
-            "type": "string"
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The tile image"
           },
           "matcher": {
             "anyOf": [
@@ -7649,57 +7774,6 @@
         ]
       }
     },
-    "/api/v2/acquisitions/{acquisition_id}/current-storage": {
-      "get": {
-        "description": "Get the current storage location for an acquisition.",
-        "operationId": "get_current_storage_location_api_v2_acquisitions__acquisition_id__current_storage_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "acquisition_id",
-            "required": true,
-            "schema": {
-              "title": "Acquisition Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/StorageLocation"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Response Get Current Storage Location Api V2 Acquisitions  Acquisition Id  Current Storage Get"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Current Storage Location",
-        "tags": [
-          "Acquisitions"
-        ]
-      }
-    },
     "/api/v2/acquisitions/{acquisition_id}/metadata": {
       "get": {
         "description": "Retrieve an acquisition with its complete metadata.",
@@ -7738,113 +7812,6 @@
           }
         },
         "summary": "Get Acquisition With Full Metadata",
-        "tags": [
-          "Acquisitions"
-        ]
-      }
-    },
-    "/api/v2/acquisitions/{acquisition_id}/minimap-uri": {
-      "get": {
-        "description": "Get the calculated URI for the acquisition's minimap image.",
-        "operationId": "get_minimap_uri_api_v2_acquisitions__acquisition_id__minimap_uri_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "acquisition_id",
-            "required": true,
-            "schema": {
-              "title": "Acquisition Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "title": "Response Get Minimap Uri Api V2 Acquisitions  Acquisition Id  Minimap Uri Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Minimap Uri",
-        "tags": [
-          "Acquisitions"
-        ]
-      }
-    },
-    "/api/v2/acquisitions/{acquisition_id}/storage-locations": {
-      "post": {
-        "description": "Add a storage location entry to an acquisition.",
-        "operationId": "add_storage_location_api_v2_acquisitions__acquisition_id__storage_locations_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "acquisition_id",
-            "required": true,
-            "schema": {
-              "title": "Acquisition Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StorageLocationCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcquisitionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Add Storage Location",
         "tags": [
           "Acquisitions"
         ]
@@ -8334,6 +8301,241 @@
         ]
       }
     },
+    "/api/v2/acquisitions/{acquisition_id}/tiles/images": {
+      "delete": {
+        "description": "Delete the images associated with specific tiles in an acquisition.\n\nThe tile_id list is optional; if omitted, all tiles in the acquisition are deleted.",
+        "operationId": "delete_tile_images_api_v2_acquisitions__acquisition_id__tiles_images_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "acquisition_id",
+            "required": true,
+            "schema": {
+              "title": "Acquisition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tile Ids"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Tile Images Api V2 Acquisitions  Acquisition Id  Tiles Images Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Tile Images",
+        "tags": [
+          "Acquisitions"
+        ]
+      },
+      "get": {
+        "description": "Generate presigned PUT URLs for tiles in an acquisition.\n\nThe tile_id list is optional; if omitted, all tiles in the acquisition are returned.",
+        "operationId": "image_get_urls_api_v2_acquisitions__acquisition_id__tiles_images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "acquisition_id",
+            "required": true,
+            "schema": {
+              "title": "Acquisition Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expiration time in seconds for the presigned URL",
+            "in": "query",
+            "name": "expiration",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 3600,
+              "description": "Expiration time in seconds for the presigned URL",
+              "title": "Expiration"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tile Ids"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/FileObjectResponse"
+                  },
+                  "title": "Response Image Get Urls Api V2 Acquisitions  Acquisition Id  Tiles Images Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Get Urls",
+        "tags": [
+          "Acquisitions"
+        ]
+      },
+      "post": {
+        "description": "Generate presigned PUT URLs for tiles in an acquisition.\n\nThe tile_id list is optional; if omitted, all tiles in the acquisition are returned.",
+        "operationId": "image_put_urls_api_v2_acquisitions__acquisition_id__tiles_images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "acquisition_id",
+            "required": true,
+            "schema": {
+              "title": "Acquisition Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expiration time in seconds for the presigned URL",
+            "in": "query",
+            "name": "expiration",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 3600,
+              "description": "Expiration time in seconds for the presigned URL",
+              "title": "Expiration"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tile Ids"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/FileObjectResponse"
+                  },
+                  "title": "Response Image Put Urls Api V2 Acquisitions  Acquisition Id  Tiles Images Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Put Urls",
+        "tags": [
+          "Acquisitions"
+        ]
+      }
+    },
     "/api/v2/acquisitions/{acquisition_id}/tiles/{tile_id}": {
       "delete": {
         "description": "Delete a specific tile of an acquisition. Error if the acquisition is complete.",
@@ -8484,6 +8686,188 @@
           }
         },
         "summary": "Update Tile From Acquisition",
+        "tags": [
+          "Acquisitions"
+        ]
+      }
+    },
+    "/api/v2/acquisitions/{acquisition_id}/tiles/{tile_id}/image": {
+      "delete": {
+        "description": "Delete the image associated with a specific tile in an acquisition.",
+        "operationId": "delete_tile_image_api_v2_acquisitions__acquisition_id__tiles__tile_id__image_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "acquisition_id",
+            "required": true,
+            "schema": {
+              "title": "Acquisition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tile_id",
+            "required": true,
+            "schema": {
+              "title": "Tile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Tile Image",
+        "tags": [
+          "Acquisitions"
+        ]
+      },
+      "get": {
+        "description": "Generate a presigned GET URL for a tile in an acquisition.",
+        "operationId": "image_get_url_api_v2_acquisitions__acquisition_id__tiles__tile_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "acquisition_id",
+            "required": true,
+            "schema": {
+              "title": "Acquisition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tile_id",
+            "required": true,
+            "schema": {
+              "title": "Tile Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expiration time in seconds for the presigned URL",
+            "in": "query",
+            "name": "expiration",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 3600,
+              "description": "Expiration time in seconds for the presigned URL",
+              "title": "Expiration"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Get Url",
+        "tags": [
+          "Acquisitions"
+        ]
+      },
+      "post": {
+        "description": "Generate a presigned PUT URL for a tile in an acquisition.\n\nThe storage_location is optional; if omitted, the existing location is used.",
+        "operationId": "image_put_url_api_v2_acquisitions__acquisition_id__tiles__tile_id__image_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "acquisition_id",
+            "required": true,
+            "schema": {
+              "title": "Acquisition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tile_id",
+            "required": true,
+            "schema": {
+              "title": "Tile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileObjectRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Storage location for the tile image",
+                "title": "Storage Location"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Put Url",
         "tags": [
           "Acquisitions"
         ]
@@ -12353,6 +12737,154 @@
         ]
       }
     },
+    "/api/v2/sections/{section_id}/image": {
+      "delete": {
+        "description": "Delete the image associated with a specific section.",
+        "operationId": "delete_image_api_v2_sections__section_id__image_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Image",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "get": {
+        "description": "Generate a pre-signed URL for downloading an image for a specific section.",
+        "operationId": "image_get_url_api_v2_sections__section_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expiration time in seconds for the presigned URL",
+            "in": "query",
+            "name": "expiration",
+            "required": false,
+            "schema": {
+              "default": 3600,
+              "description": "Expiration time in seconds for the presigned URL",
+              "title": "Expiration",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Get Url",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "post": {
+        "description": "Generate a pre-signed URL for uploading an image for a specific section.",
+        "operationId": "image_put_url_api_v2_sections__section_id__image_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileObjectRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Storage location details for the image",
+                "title": "Storage Location"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Put Url",
+        "tags": [
+          "Sections"
+        ]
+      }
+    },
     "/api/v2/sections/{section_id}/rois": {
       "get": {
         "description": "Retrieve ROIs associated with a specific section using its human-readable ID.",
@@ -12784,111 +13316,6 @@
           }
         },
         "summary": "Get Specimen Blocks",
-        "tags": [
-          "Specimens"
-        ]
-      }
-    },
-    "/api/v2/specimens/{specimen_id}/images": {
-      "delete": {
-        "description": "Remove an image URL from a specimen using a query parameter.",
-        "operationId": "remove_specimen_image_api_v2_specimens__specimen_id__images_delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "specimen_id",
-            "required": true,
-            "schema": {
-              "title": "Specimen Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "The URL of the image to remove",
-            "in": "query",
-            "name": "image_url",
-            "required": true,
-            "schema": {
-              "description": "The URL of the image to remove",
-              "title": "Image Url",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SpecimenResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Specimen Image",
-        "tags": [
-          "Specimens"
-        ]
-      },
-      "post": {
-        "description": "Add an image URL to a specimen.",
-        "operationId": "add_specimen_image_api_v2_specimens__specimen_id__images_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "specimen_id",
-            "required": true,
-            "schema": {
-              "title": "Specimen Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_add_specimen_image_api_v2_specimens__specimen_id__images_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SpecimenResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Add Specimen Image",
         "tags": [
           "Specimens"
         ]

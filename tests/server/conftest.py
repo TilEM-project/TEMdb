@@ -351,7 +351,12 @@ async def test_tile(
             max_value=255,
             mean_value=128,
             std_value=25,
-            image_path="/path/to/test/image.tif",
+            image={
+                "protocol": "s3",
+                "server": "http://localhost:9000",
+                "bucket": "tiles",
+                "key": "test/image.tif",
+            },
             created_at=datetime.now(timezone.utc),
         ),
     )

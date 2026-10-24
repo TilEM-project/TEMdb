@@ -28,6 +28,22 @@ async def test_client_initialization(client):
     assert isinstance(client, TEMdbClient)
 
 
+async def test_image_resources_share_separate_storage_client():
+    client = TEMdbClient("http://api.example", api_key="test-key", timeout=47)
+    storage = client._file_client
+    try:
+        assert client.acquisition._file_client is storage
+        assert client.section._file_client is storage
+        assert storage is not client._http_client
+        assert "Authorization" not in storage.headers
+        assert "X-API-Key" not in storage.headers
+        assert storage.timeout == httpx.Timeout(47)
+    finally:
+        await client.close()
+    assert storage.is_closed
+    assert client._http_client.is_closed
+
+
 @pytest.mark.asyncio
 async def test_resource_creation(client):
     assert hasattr(client, "specimen")

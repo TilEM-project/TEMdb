@@ -44,3 +44,20 @@ async def test_models_match_migrations(fresh_database_url):
     _run_alembic(fresh_database_url, "upgrade", "head")
     result = _run_alembic(fresh_database_url, "check")
     assert result.returncode == 0, f"models drifted from migrations:\n{result.stdout}{result.stderr}"
+
+
+async def test_image_storage_migration_preserves_legacy_paths(test_db_manager, test_tile):
+    url = test_db_manager.sql_engine.url.render_as_string(hide_password=False)
+    legacy_path = "s3://legacy-bucket/tile.tif"
+    async with test_db_manager.sql_engine.begin() as conn:
+        await conn.execute(text("UPDATE tiles SET image_path = :path"), {"path": legacy_path})
+    try:
+        result = _run_alembic(url, "downgrade", "f8a9b0c1d2e3")
+        assert result.returncode == 0, result.stderr
+    finally:
+        result = _run_alembic(url, "upgrade", "head")
+        assert result.returncode == 0, result.stderr
+    async with test_db_manager.sql_engine.connect() as conn:
+        stored = (await conn.execute(text("SELECT image_path, image FROM tiles"))).one()
+    assert stored.image_path == legacy_path
+    assert stored.image is None

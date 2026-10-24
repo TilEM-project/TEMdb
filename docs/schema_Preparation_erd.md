@@ -12,6 +12,7 @@ erDiagram
         string block_id
         string specimen_id
         object microCT_info
+        object default_storage
         string description
         object extra
     }
@@ -48,7 +49,6 @@ erDiagram
     SpecimenSQLModel {
         string specimen_id
         string description
-        object specimen_images
         object functional_imaging_metadata
         object extra
     }

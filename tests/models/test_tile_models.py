@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from temdb.models import (
+    FileObject,
     Matcher,
     TileBase,
     TileCreate,
@@ -9,6 +10,10 @@ from temdb.models import (
     TileResponse,
     TileUpdate,
 )
+
+
+def _tile_image(key: str) -> dict[str, str]:
+    return {"protocol": "s3", "server": "http://localhost:9000", "bucket": "tiles", "key": key}
 
 
 class TestMatcher:
@@ -45,7 +50,7 @@ class TestTileCreate:
             max_value=255.0,
             mean_value=128.0,
             std_value=25.0,
-            image_path="/data/tiles/TILE_001.tif",
+            image=_tile_image("TILE_001.tif"),
         )
         assert tile.retake == 0
         assert tile.raster_index == 0
@@ -68,7 +73,7 @@ class TestTileCreate:
                 max_value=255.0,
                 mean_value=128.0,
                 std_value=25.0,
-                image_path="/data/tiles/TILE_001.tif",
+                image=_tile_image("TILE_001.tif"),
             )
 
     def test_tile_create_extra_fields_forbidden(self):
@@ -82,7 +87,7 @@ class TestTileCreate:
                 max_value=255.0,
                 mean_value=128.0,
                 std_value=25.0,
-                image_path="/data/tiles/TILE_001.tif",
+                image=_tile_image("TILE_001.tif"),
                 custom_field="extra_data",
             )
 
@@ -101,7 +106,7 @@ class TestTileResponse:
             max_value=255.0,
             mean_value=128.0,
             std_value=25.0,
-            image_path="/data/tiles/TILE_001.tif",
+            image=_tile_image("TILE_001.tif"),
         )
         assert tile.tile_id == "TILE_001"
         assert tile.acquisition_id == "ACQ_001"
@@ -116,10 +121,10 @@ class TestTileBase:
     def test_tile_base_with_values(self):
         tile = TileBase(
             focus_score=0.9,
-            image_path="/path/to/image.tif",
+            image=_tile_image("image.tif"),
         )
         assert tile.focus_score == 0.9
-        assert tile.image_path == "/path/to/image.tif"
+        assert tile.image == FileObject(protocol="s3", server="http://localhost:9000", bucket="tiles", key="image.tif")
 
     def test_tile_base_with_stage_position(self):
         tile = TileBase(stage_position={"x": 100, "y": 200})
@@ -138,7 +143,7 @@ class TestTileStatsOptional:
             raster_index=0,
             stage_position={"x": 1.0, "y": 2.0},
             raster_position={"row": 0, "col": 0},
-            image_path="/path/to/tile.tif",
+            image=_tile_image("tile.tif"),
         )
         assert [
             tile.focus_score,
@@ -156,7 +161,7 @@ class TestTileStatsOptional:
             stage_position={"x": 100.0, "y": 200.0},
             raster_position={"row": 0, "col": 0},
             retake=0,
-            image_path="/data/tiles/TILE_001.tif",
+            image=_tile_image("TILE_001.tif"),
         )
         assert [
             tile.focus_score,
@@ -171,7 +176,7 @@ class TestTileStatsOptional:
 
 
 class TestTileUpdate:
-    @pytest.mark.parametrize("field", ["stage_position", "image_path"])
+    @pytest.mark.parametrize("field", ["stage_position", "raster_position"])
     def test_null_rejected_for_a_not_null_column(self, field):
         with pytest.raises(ValidationError):
             TileUpdate(**{field: None})
@@ -208,7 +213,7 @@ class TestTileCreatePositionValidation:
             "max_value": 255,
             "mean_value": 128,
             "std_value": 10,
-            "image_path": "/path/to/tile.tif",
+            "image": _tile_image("tile.tif"),
         }
         payload.update(overrides)
         return TileCreate(**payload)

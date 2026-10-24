@@ -168,40 +168,6 @@ async def test_get_specimen_blocks(async_client: AsyncClient, test_specimen, tes
 
 
 @pytest.mark.asyncio
-async def test_add_specimen_image(async_client: AsyncClient, test_specimen):
-    """Test adding an image URL to a specimen."""
-    image_url = "https://example.com/test-image-for-add.jpg"
-    response = await async_client.post(
-        f"/api/v2/specimens/{test_specimen.specimen_id}/images",
-        json={"image_url": image_url},
-    )
-    assert response.status_code == 200
-    response_data = response.json()
-    assert "specimen_images" in response_data
-    assert image_url in response_data["specimen_images"]
-
-
-@pytest.mark.asyncio
-async def test_remove_specimen_image(async_client: AsyncClient, test_specimen):
-    """Test removing an image URL from a specimen."""
-    image_url_to_add_remove = "https://example.com/test-image-for-remove.jpg"
-
-    add_response = await async_client.post(
-        f"/api/v2/specimens/{test_specimen.specimen_id}/images",
-        json={"image_url": image_url_to_add_remove},
-    )
-    assert add_response.status_code == 200
-    assert image_url_to_add_remove in add_response.json()["specimen_images"]
-    remove_response = await async_client.delete(
-        f"/api/v2/specimens/{test_specimen.specimen_id}/images?image_url={image_url_to_add_remove}"
-    )
-    assert remove_response.status_code == 200
-    response_data = remove_response.json()
-    assert "specimen_images" in response_data
-    assert image_url_to_add_remove not in response_data["specimen_images"]
-
-
-@pytest.mark.asyncio
 async def test_list_specimens_ordered(async_client: AsyncClient):
     ids = ["SPEC_C", "SPEC_A", "SPEC_B"]
     for specimen_id in ids:
@@ -216,32 +182,3 @@ async def test_get_specimen_blocks_past_last_page(async_client: AsyncClient, tes
     response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks", params={"skip": 1})
     assert response.status_code == 200
     assert response.json() == []
-
-
-@pytest.mark.asyncio
-async def test_specimen_image_endpoints_accept_s3_uris(async_client: AsyncClient, test_specimen):
-    url = f"/api/v2/specimens/{test_specimen.specimen_id}/images"
-    image = "s3://bucket/specimens/sp1.png"
-    added = await async_client.post(url, json={"image_url": image})
-    assert added.status_code == 200
-    assert image in added.json()["specimen_images"]
-    removed = await async_client.delete(url, params={"image_url": image})
-    assert removed.status_code == 200
-    assert image not in removed.json()["specimen_images"]
-
-
-async def test_create_specimen_stores_its_images(async_client: AsyncClient):
-    images = ["s3://bucket/b.png", "s3://bucket/a.png"]
-    response = await async_client.post("/api/v2/specimens", json={"specimen_id": "SP-IMG", "specimen_images": images})
-    assert response.status_code == 201, response.text
-    fetched = await async_client.get("/api/v2/specimens/SP-IMG")
-    assert set(fetched.json()["specimen_images"]) == set(images)
-
-
-async def test_update_specimen_replaces_its_images(async_client: AsyncClient, test_specimen):
-    images = ["s3://bucket/new.png"]
-    response = await async_client.patch(
-        f"/api/v2/specimens/{test_specimen.specimen_id}", json={"specimen_images": images}
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["specimen_images"] == images

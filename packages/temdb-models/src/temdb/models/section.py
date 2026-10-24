@@ -5,7 +5,7 @@ from pydantic import ConfigDict, Field, computed_field, field_validator, model_v
 
 from .base import TEMDBModel, TEMDBRecord
 from .enums import SECTION_CONDITIONS, SectionQuality
-from .utils.uri import URI
+from .file_storage import FileObject
 
 
 class SectioningRunParameters(TEMDBModel):
@@ -59,13 +59,6 @@ class SectionMetrics(TEMDBModel):
     shape: SectionMetric | None = Field(None, description="")
 
 
-class OpticalImage(TEMDBModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    image_path: URI.Type = Field(description="The URI of where the optical image is stored")
-    metadata: dict[str, Any] = Field({}, description="Metadata about this optical image")
-
-
 class SectionPosition(TEMDBModel):
     x: float = Field(..., description="X position in mm, in layout coordinates")
     y: float = Field(..., description="Y position in mm, in layout coordinates")
@@ -75,12 +68,12 @@ class SectionBase(TEMDBRecord):
     """Base section fields."""
 
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
-    cut_count: int | None = Field(
-        None, ge=0, description="Cut counter reported by the sectioning device; not unique, it can restart"
-    )
-    optical_image: dict[str, OpticalImage] | None = Field(
+    optical_image: FileObject | None = Field(
         None,
         description="Optical image collected before imaging",
+    )
+    cut_count: int | None = Field(
+        None, ge=0, description="Cut counter reported by the sectioning device; not unique, it can restart"
     )
     aperture_index: int | None = Field(
         None, ge=0, description="Index of the layout aperture holding this section; empty for a section on a blank"

@@ -4,7 +4,7 @@ from pydantic import ConfigDict, Field
 
 from .base import TEMDBModel
 from .enums import MatchPosition
-from .utils.uri import URI
+from .file_storage import FileObject
 
 
 class StagePosition(TEMDBModel):
@@ -36,8 +36,6 @@ class Matcher(TEMDBModel):
 
 
 class TileBase(TEMDBModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     stage_position: StagePosition | None = Field(
         None, description="Stage position of the tile in stage coordinates in nm"
     )
@@ -46,7 +44,7 @@ class TileBase(TEMDBModel):
     max_value: float | None = Field(None, description="Maximum pixel value of the tile")
     mean_value: float | None = Field(None, description="Mean pixel value of the tile")
     std_value: float | None = Field(None, description="Standard deviation of pixel values of the tile")
-    image_path: URI.Type | None = Field(None, description="URL to the image of the tile")
+    image: FileObject | None = Field(None, description="The tile image")
     matcher: list[Matcher] | None = Field(None, description="List of matchers for the tile")
     supertile_id: str | None = Field(None, description="ID of the supertile the tile belongs to")
     supertile_raster_position: RasterPosition | None = Field(
@@ -59,12 +57,10 @@ class TileCreate(TileBase):
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
     retake: int = Field(0, ge=0, le=32767, description="Capture number at this position within the run; 0 is the first")
-    image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
 
 class TileUpdate(TileBase):
     stage_position: StagePosition = Field(None, description="Stage position of the tile in stage coordinates in nm")
-    image_path: URI.Type = Field(None, description="URL to the image of the tile")
 
 
 class TileResponse(TileBase):
@@ -76,7 +72,6 @@ class TileResponse(TileBase):
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
     retake: int = Field(..., description="Capture number at this position within the run; 0 is the first")
-    image_path: URI.Type = Field(..., description="URL to the image of the tile")
 
     created_at: datetime | None = None
     updated_at: datetime | None = None

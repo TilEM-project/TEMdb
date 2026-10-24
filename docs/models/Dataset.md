@@ -7,6 +7,7 @@
 | `dataset_id` | UUID | UUIDv7 primary key |
 | `name` | string | Unique human-readable dataset name |
 | `description` | string | Human description of the dataset |
+| `default_storage` | object | Default storage for tiles in this dataset |
 | `specimen_id` | string | Specimen this dataset belongs to |
 | `parent_dataset_id` | UUID | Parent dataset if this is a child (one level only) |
 | `status` | string | Lifecycle status |

@@ -5,7 +5,6 @@ import pytest
 from temdb.client.exceptions import TEMdbNotFoundError
 from temdb.models import (
     AcquisitionUpdate,
-    StorageLocationCreate,
     TileUpdate,
 )
 from tests.integration.client.records import acquisition_payload, tile_payload
@@ -71,31 +70,6 @@ async def test_acquisition_delete(client, records):
     await client.acquisition.delete("A1")
     with pytest.raises(TEMdbNotFoundError):
         await client.acquisition.get("A1")
-
-
-async def test_acquisition_add_storage_location(client, records):
-    await records.acquisition()
-    updated = await client.acquisition.add_storage_location(
-        "A1", StorageLocationCreate(location_type="local", base_path="/data/A1")
-    )
-    assert [loc.base_path for loc in updated.storage_locations] == ["/data/A1"]
-
-
-async def test_acquisition_get_current_storage_location(client, records):
-    await records.acquisition()
-    for path in ("/data/old", "/data/new"):
-        await client.acquisition.add_storage_location(
-            "A1", StorageLocationCreate(location_type="local", base_path=path)
-        )
-    assert (await client.acquisition.get_current_storage_location("A1")).base_path == "/data/new"
-
-
-async def test_acquisition_get_minimap_uri(client, records):
-    await records.acquisition()
-    await client.acquisition.add_storage_location(
-        "A1", StorageLocationCreate(location_type="local", base_path="/data/A1")
-    )
-    assert await client.acquisition.get_minimap_uri("A1") == {"minimap_uri": "/data/A1/minimap.png"}
 
 
 async def test_acquisition_add_tile(client, records):

@@ -44,7 +44,6 @@ def tile_payload(raster_index: int) -> TileCreate:
     return TileCreate(
         stage_position={"x": float(raster_index), "y": 0.0},
         raster_position={"row": 0, "col": raster_index},
-        image_path=f"file:///tiles/{raster_index}.tif",
         raster_index=raster_index,
     )
 
