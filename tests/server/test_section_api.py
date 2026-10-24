@@ -588,9 +588,7 @@ async def test_put_section_image_url_uploads_to_minio(
     test_section,
     minio_s3,
 ):
-    path = (
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}/image"
-    )
+    path = f"/api/v2/sections/{test_section.section_id}/image"
     location = {
         "protocol": "s3",
         "server": minio_s3["server"],
@@ -654,9 +652,7 @@ async def test_get_section_image_url_downloads_from_minio(
         section.optical_image = image
         await session.commit()
 
-    path = (
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}/image"
-    )
+    path = f"/api/v2/sections/{test_section.section_id}/image"
     response = await async_client.get(path, params={"expiration": 600})
 
     assert response.status_code == 200, response.text
@@ -700,9 +696,7 @@ async def test_delete_section_image_removes_object_and_clears_metadata(
         section = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.id == test_section.id))
         section.optical_image = image
         await session.commit()
-    path = (
-        f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}/sections/{test_section.section_id}/image"
-    )
+    path = f"/api/v2/sections/{test_section.section_id}/image"
 
     response = await async_client.delete(path)
 

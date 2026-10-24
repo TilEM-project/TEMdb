@@ -76,10 +76,10 @@ class SectionResource(BaseResource):
 
     @accepts_keywords(FileObjectRequest)
     async def put_image_url(
-        self, cutting_session_id: str, section_id: str, storage_location: FileObjectRequest | None = None
+        self, section_id: str, storage_location: FileObjectRequest | None = None
     ) -> FileObjectResponse:
         """Get a presigned URL for uploading an image for a specific section."""
-        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}/image"
+        endpoint = f"sections/{section_id}/image"
         payload = storage_location.model_dump(exclude_unset=True) if storage_location else None
         response_data = await self._post(endpoint, data=payload)
         return FileObjectResponse.model_validate(response_data)
@@ -87,31 +87,26 @@ class SectionResource(BaseResource):
     @accepts_keywords(FileObjectRequest)
     async def put_image(
         self,
-        cutting_session_id: str,
         section_id: str,
         image_data: io.IOBase,
         storage_location: FileObjectRequest | None = None,
     ) -> FileObjectResponse:
         """Upload an image for a specific section."""
-        file_object = await self.put_image_url(cutting_session_id, section_id, storage_location)
+        file_object = await self.put_image_url(section_id, storage_location)
         response = self._file_session.put(file_object.url, data=image_data)
         response.raise_for_status()
 
         return file_object
 
-    async def get_image_url(
-        self, cutting_session_id: str, section_id: str, expiration: int | None = None
-    ) -> FileObjectResponse:
+    async def get_image_url(self, section_id: str, expiration: int | None = None) -> FileObjectResponse:
         """Get a presigned URL for downloading an image for a specific section."""
-        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}/image"
+        endpoint = f"sections/{section_id}/image"
         response_data = await self._get(endpoint, params={"expiration": expiration} if expiration else None)
         return FileObjectResponse.model_validate(response_data)
 
-    async def get_image(
-        self, cutting_session_id: str, section_id: str, expiration: int | None = None
-    ) -> io.BufferedReader:
+    async def get_image(self, section_id: str, expiration: int | None = None) -> io.BufferedReader:
         """Upload an image for a specific section."""
-        file_object = await self.get_image_url(cutting_session_id, section_id, expiration)
+        file_object = await self.get_image_url(section_id, expiration)
         response = self._file_session.get(file_object.url, stream=True)
 
         try:
@@ -122,9 +117,9 @@ class SectionResource(BaseResource):
 
         return io.BufferedReader(response.raw)
 
-    async def delete_image(self, cutting_session_id: str, section_id: str) -> None:
+    async def delete_image(self, section_id: str) -> None:
         """Delete the image associated with a specific section."""
-        endpoint = f"sections/sessions/{cutting_session_id}/sections/{section_id}/image"
+        endpoint = f"sections/{section_id}/image"
         await self._delete(endpoint)
 
     @accepts_keywords(SectionUpdate)

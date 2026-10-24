@@ -9,7 +9,7 @@ from temdb.client.resources.section import SectionResource
 from temdb.models import FileObjectRequest, FileObjectResponse, SectionCreate, SectionUpdate
 from temdb.models.enums import StorageProtocol
 
-SECTION_URL = "sections/sessions/CUT001/sections/SEC001/image"
+SECTION_URL = "sections/SEC001/image"
 
 API = "http://test/api/v2"
 NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
@@ -107,7 +107,7 @@ async def test_put_image_url_posts_optional_storage_location_and_returns_model()
         expiration=600,
     )
 
-    result = await resource.put_image_url("CUT001", "SEC001", location)
+    result = await resource.put_image_url("SEC001", location)
 
     request.assert_awaited_once_with(
         "POST",
@@ -129,7 +129,7 @@ async def test_put_image_url_without_location_posts_none():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    await resource.put_image_url("CUT001", "SEC001")
+    await resource.put_image_url("SEC001")
 
     request.assert_awaited_once_with("POST", SECTION_URL, json=None)
 
@@ -144,9 +144,9 @@ async def test_put_image_uploads_bytes_to_presigned_url():
     upload_response = Mock()
     resource._file_session.put.return_value = upload_response
 
-    result = await resource.put_image("CUT001", "SEC001", contents)
+    result = await resource.put_image("SEC001", contents)
 
-    put_image_url.assert_awaited_once_with("CUT001", "SEC001", None)
+    put_image_url.assert_awaited_once_with("SEC001", None)
     resource._file_session.put.assert_called_once_with(result.url, data=contents)
     upload_response.raise_for_status.assert_called_once_with()
     assert result is file_object
@@ -162,9 +162,9 @@ async def test_put_image_propagates_upload_failure():
     resource._file_session.put.return_value = upload_response
 
     with pytest.raises(requests.HTTPError, match="upload failed"):
-        await resource.put_image("CUT001", "SEC001", io.BytesIO(b"image"))
+        await resource.put_image("SEC001", io.BytesIO(b"image"))
 
-    put_image_url.assert_awaited_once_with("CUT001", "SEC001", None)
+    put_image_url.assert_awaited_once_with("SEC001", None)
 
 
 @pytest.mark.asyncio
@@ -172,7 +172,7 @@ async def test_get_image_url_adds_expiration_and_returns_model():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    result = await resource.get_image_url("CUT001", "SEC001", expiration=300)
+    result = await resource.get_image_url("SEC001", expiration=300)
 
     request.assert_awaited_once_with("GET", SECTION_URL, params={"expiration": 300})
     assert result.expiration == 600
@@ -183,7 +183,7 @@ async def test_get_image_url_omits_expiration_when_unspecified():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    await resource.get_image_url("CUT001", "SEC001")
+    await resource.get_image_url("SEC001")
 
     request.assert_awaited_once_with("GET", SECTION_URL, params=None)
 
@@ -197,9 +197,9 @@ async def test_get_image_streams_presigned_response():
     response.raw = io.BytesIO(b"downloaded section image")
     resource._file_session.get.return_value = response
 
-    result = await resource.get_image("CUT001", "SEC001", expiration=300)
+    result = await resource.get_image("SEC001", expiration=300)
 
-    get_image_url.assert_awaited_once_with("CUT001", "SEC001", 300)
+    get_image_url.assert_awaited_once_with("SEC001", 300)
     resource._file_session.get.assert_called_once_with(
         "http://minio.example.com/section-images/sections/SEC001.png?signature=test",
         stream=True,
@@ -220,7 +220,7 @@ async def test_get_image_closes_response_when_download_fails():
     resource._file_session.get.return_value = response
 
     with pytest.raises(requests.HTTPError, match="download failed"):
-        await resource.get_image("CUT001", "SEC001")
+        await resource.get_image("SEC001")
 
     response.close.assert_called_once_with()
 
@@ -229,7 +229,7 @@ async def test_get_image_closes_response_when_download_fails():
 async def test_delete_image_awaits_delete_request():
     resource, request = _resource()
 
-    await resource.delete_image("CUT001", "SEC001")
+    await resource.delete_image("SEC001")
 
     request.assert_awaited_once_with("DELETE", SECTION_URL)
 
@@ -240,4 +240,4 @@ async def test_delete_image_propagates_request_failure():
     request.side_effect = requests.HTTPError("delete failed")
 
     with pytest.raises(requests.HTTPError, match="delete failed"):
-        await resource.delete_image("CUT001", "SEC001")
+        await resource.delete_image("SEC001")

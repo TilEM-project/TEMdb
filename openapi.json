@@ -12539,181 +12539,6 @@
         ]
       }
     },
-    "/api/v2/sections/sessions/{cutting_session_id}/sections/{section_id}/image": {
-      "delete": {
-        "description": "Delete the image associated with a specific section.",
-        "operationId": "delete_image_api_v2_sections_sessions__cutting_session_id__sections__section_id__image_delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Image",
-        "tags": [
-          "Sections"
-        ]
-      },
-      "get": {
-        "description": "Generate a pre-signed URL for downloading an image for a specific section.",
-        "operationId": "image_get_url_api_v2_sections_sessions__cutting_session_id__sections__section_id__image_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Expiration time in seconds for the presigned URL",
-            "in": "query",
-            "name": "expiration",
-            "required": false,
-            "schema": {
-              "default": 3600,
-              "description": "Expiration time in seconds for the presigned URL",
-              "title": "Expiration",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileObjectResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Image Get Url",
-        "tags": [
-          "Sections"
-        ]
-      },
-      "post": {
-        "description": "Generate a pre-signed URL for uploading an image for a specific section.",
-        "operationId": "image_put_url_api_v2_sections_sessions__cutting_session_id__sections__section_id__image_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cutting_session_id",
-            "required": true,
-            "schema": {
-              "title": "Cutting Session Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section_id",
-            "required": true,
-            "schema": {
-              "title": "Section Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/FileObjectRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Storage location details for the image",
-                "title": "Storage Location"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileObjectResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Image Put Url",
-        "tags": [
-          "Sections"
-        ]
-      }
-    },
     "/api/v2/sections/specimens/{specimen_id}": {
       "get": {
         "description": "Retrieve sections associated with a specific specimen using its human-readable ID.",
@@ -12907,6 +12732,154 @@
           }
         },
         "summary": "Update Section",
+        "tags": [
+          "Sections"
+        ]
+      }
+    },
+    "/api/v2/sections/{section_id}/image": {
+      "delete": {
+        "description": "Delete the image associated with a specific section.",
+        "operationId": "delete_image_api_v2_sections__section_id__image_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Image",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "get": {
+        "description": "Generate a pre-signed URL for downloading an image for a specific section.",
+        "operationId": "image_get_url_api_v2_sections__section_id__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expiration time in seconds for the presigned URL",
+            "in": "query",
+            "name": "expiration",
+            "required": false,
+            "schema": {
+              "default": 3600,
+              "description": "Expiration time in seconds for the presigned URL",
+              "title": "Expiration",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Get Url",
+        "tags": [
+          "Sections"
+        ]
+      },
+      "post": {
+        "description": "Generate a pre-signed URL for uploading an image for a specific section.",
+        "operationId": "image_put_url_api_v2_sections__section_id__image_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileObjectRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Storage location details for the image",
+                "title": "Storage Location"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Image Put Url",
         "tags": [
           "Sections"
         ]

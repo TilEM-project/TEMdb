@@ -28,7 +28,7 @@ async def tile_image(client, records, image_location):
 @pytest.fixture
 async def section_image(client, records, image_location):
     section = await records.section()
-    await client.section.put_image("CS1", section.section_id, io.BytesIO(CONTENTS), image_location)
+    await client.section.put_image(section.section_id, io.BytesIO(CONTENTS), image_location)
     return section
 
 
@@ -90,31 +90,31 @@ async def test_acquisition_delete_images(client, tile_image, minio_s3):
 
 async def test_section_put_image_url(client, records, image_location):
     section = await records.section()
-    result = await client.section.put_image_url("CS1", section.section_id, image_location)
+    result = await client.section.put_image_url(section.section_id, image_location)
     assert requests.put(result.url, data=CONTENTS).status_code == 200
     assert (await client.section.get(section.section_id)).optical_image.key == "image.tif"
 
 
 async def test_section_put_image(client, section_image):
-    result = await client.section.put_image("CS1", section_image.section_id, io.BytesIO(b"replacement"))
-    downloaded = await client.section.get_image("CS1", section_image.section_id)
+    result = await client.section.put_image(section_image.section_id, io.BytesIO(b"replacement"))
+    downloaded = await client.section.get_image(section_image.section_id)
     with downloaded:
         assert downloaded.read() == b"replacement"
     assert result.key == "image.tif"
 
 
 async def test_section_get_image_url(client, section_image):
-    result = await client.section.get_image_url("CS1", section_image.section_id, expiration=300)
+    result = await client.section.get_image_url(section_image.section_id, expiration=300)
     assert requests.get(result.url).content == CONTENTS
 
 
 async def test_section_get_image(client, section_image):
-    image = await client.section.get_image("CS1", section_image.section_id, expiration=300)
+    image = await client.section.get_image(section_image.section_id, expiration=300)
     with image:
         assert image.read() == CONTENTS
 
 
 async def test_section_delete_image(client, section_image, minio_s3):
-    await client.section.delete_image("CS1", section_image.section_id)
+    await client.section.delete_image(section_image.section_id)
     assert (await client.section.get(section_image.section_id)).optical_image is None
     assert_object_missing(minio_s3)

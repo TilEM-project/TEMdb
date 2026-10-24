@@ -36,9 +36,7 @@ def image_target(request, test_acquisition, test_tile, test_section, test_block,
         "field": "optical_image",
         "parent_model": BlockSQLModel,
         "parent_condition": BlockSQLModel.id == test_block.id,
-        "path": (
-            f"/api/v2/sections/sessions/{test_section.cutting_session_id}/sections/{test_section.section_id}/image"
-        ),
+        "path": f"/api/v2/sections/{test_section.section_id}/image",
     }
 
 

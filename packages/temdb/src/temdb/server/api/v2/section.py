@@ -448,11 +448,8 @@ async def list_sections_by_media(
     return sections.all()
 
 
-@section_api.post(
-    "/sections/sessions/{cutting_session_id}/sections/{section_id}/image", response_model=FileObjectResponse
-)
+@section_api.post("/sections/{section_id}/image", response_model=FileObjectResponse)
 async def image_put_url(
-    cutting_session_id: str,
     section_id: str,
     storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
     session: AsyncSession = Depends(get_async_session),
@@ -461,14 +458,13 @@ async def image_put_url(
     section = await session.scalars(
         select(SectionSQLModel).where(
             SectionSQLModel.section_id == section_id,
-            SectionSQLModel.cutting_session_id == cutting_session_id,
         )
     )
     section_obj = section.one_or_none()
     if section_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
+            detail=f"Section '{section_id}' not found",
         )
     if storage_location is None and section_obj.optical_image is None:
         raise HTTPException(
@@ -479,13 +475,15 @@ async def image_put_url(
         storage_location = FileObject.model_validate(section_obj.optical_image)
     if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
         cutting_session = await session.scalars(
-            select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
+            select(CuttingSessionSQLModel).where(
+                CuttingSessionSQLModel.cutting_session_id == section_obj.cutting_session_id
+            )
         )
         cutting_session_obj = cutting_session.one_or_none()
         if cutting_session_obj is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Cutting Session '{cutting_session_id}' not found",
+                detail=f"Cutting Session '{section_obj.cutting_session_id}' not found",
             )
         block = await session.scalars(
             select(BlockSQLModel).where(BlockSQLModel.block_id == cutting_session_obj.block_id)
@@ -554,11 +552,8 @@ async def image_put_url(
     return response
 
 
-@section_api.get(
-    "/sections/sessions/{cutting_session_id}/sections/{section_id}/image", response_model=FileObjectResponse
-)
+@section_api.get("/sections/{section_id}/image", response_model=FileObjectResponse)
 async def image_get_url(
-    cutting_session_id: str,
     section_id: str,
     expiration: int = Query(3600, description="Expiration time in seconds for the presigned URL"),
     session: AsyncSession = Depends(get_async_session),
@@ -567,14 +562,13 @@ async def image_get_url(
     section = await session.scalars(
         select(SectionSQLModel).where(
             SectionSQLModel.section_id == section_id,
-            SectionSQLModel.cutting_session_id == cutting_session_id,
         )
     )
     section_obj = section.one_or_none()
     if section_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
+            detail=f"Section '{section_id}' not found",
         )
     if section_obj.optical_image is None:
         raise HTTPException(
@@ -616,11 +610,8 @@ async def image_get_url(
             )
 
 
-@section_api.delete(
-    "/sections/sessions/{cutting_session_id}/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT
-)
+@section_api.delete("/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_image(
-    cutting_session_id: str,
     section_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -628,14 +619,13 @@ async def delete_image(
     section = await session.scalars(
         select(SectionSQLModel).where(
             SectionSQLModel.section_id == section_id,
-            SectionSQLModel.cutting_session_id == cutting_session_id,
         )
     )
     section_obj = section.one_or_none()
     if section_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found in session '{cutting_session_id}'",
+            detail=f"Section '{section_id}' not found",
         )
     if section_obj.optical_image is None:
         raise HTTPException(
