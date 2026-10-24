@@ -24,6 +24,31 @@ class StorageProtocol(str, Enum):
     GCS = "gcs"
 
 
+class SubstrateType(str, Enum):
+    GRID_DISC = "grid_disc"
+    WAFER = "wafer"
+    TAPE = "tape"
+    STICK = "stick"
+    GRID = "grid"
+    WASHER = "washer"
+    UNKNOWN = "unknown"
+
+
+class ApertureStatus(str, Enum):
+    AVAILABLE = "available"
+    USED = "used"
+    DAMAGED = "damaged"
+
+
+class ShapeType(str, Enum):
+    CIRCLE = "circle"
+    SLOT = "slot"
+    RECTANGLE = "rectangle"
+    TRIANGLE = "triangle"
+    CIRCLE_ARRAY = "circle_array"
+    POLYGON = "polygon"
+
+
 RUN_STATUSES = ("complete", "aborted", "failed")
 AcquisitionStatusFilter = Literal["complete", "aborted", "failed", "in_flight"]
 QC_STATES = ("pending", "qc_pass", "qc_fail", "needs_review")

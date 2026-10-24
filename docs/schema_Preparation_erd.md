@@ -12,6 +12,9 @@ erDiagram
         string block_id
         string specimen_id
         object microCT_info
+        object default_storage
+        string description
+        object extra
     }
     CuttingSessionSQLModel {
         string cutting_session_id
@@ -23,38 +26,36 @@ erDiagram
         string sectioning_device
         string media_type
         string knife_id
+        object extra
     }
     SectionSQLModel {
         string section_id
         int section_number
+        int cut_count
         datetime timestamp
         string cutting_session_id
         string block_id
         string specimen_id
         string media_id
         object optical_image
-        string aperture_uid
         int aperture_index
-        string barcode
+        object position
         string condition
         string condition_reason
         object section_metrics
+        object run_parameters
+        object extra
     }
     SpecimenSQLModel {
         string specimen_id
         string description
-        object specimen_images
         object functional_imaging_metadata
+        object extra
     }
     SubstrateSQLModel {
         string media_id
-        string media_type
-        string uid
-        string status
-        object refpoint
-        object refpoint_world
-        string source_path
-        object metadata
-        object apertures
+        string substrate_layout_id
+        list aperture_status
+        object extra
     }
 ```

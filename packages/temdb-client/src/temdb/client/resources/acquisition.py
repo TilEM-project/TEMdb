@@ -14,8 +14,6 @@ from temdb.models import (
     AcquisitionUpdate,
     FileObjectRequest,
     FileObjectResponse,
-    StorageLocation,
-    StorageLocationCreate,
     TileBulkDeleteResult,
     TileCreate,
     TileDeleteAllResult,
@@ -23,7 +21,7 @@ from temdb.models import (
     TileUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, accepts_keywords
 
 
 class PaginatedAcquisitionResponse(BaseModel):
@@ -58,8 +56,11 @@ class AcquisitionResource(BaseResource):
         end_date: datetime | None = None,
         fields: list[str] | None = None,
         **kwargs: Any,
-    ) -> PaginatedAcquisitionResponse:
-        """List acquisitions with filtering, sorting, and pagination."""
+    ) -> PaginatedAcquisitionResponse | dict[str, Any]:
+        """List acquisitions with filtering, sorting, and pagination.
+
+        With fields, the page is returned as the server sends it: each acquisition holds only those fields.
+        """
         params = {
             "cursor": cursor,
             "limit": limit,
@@ -79,8 +80,9 @@ class AcquisitionResource(BaseResource):
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
         response_data = await self._get("acquisitions", params=params)
-        return PaginatedAcquisitionResponse.model_validate(response_data)
+        return response_data if fields else PaginatedAcquisitionResponse.model_validate(response_data)
 
+    @accepts_keywords(AcquisitionCreate)
     async def create(self, acquisition_data: AcquisitionCreate) -> AcquisitionResponse:
         response_data = await self._post("acquisitions", data=acquisition_data.model_dump(exclude_unset=True))
         return AcquisitionResponse.model_validate(response_data)
@@ -89,6 +91,7 @@ class AcquisitionResource(BaseResource):
         response_data = await self._get(f"acquisitions/{acquisition_id}")
         return AcquisitionResponse.model_validate(response_data)
 
+    @accepts_keywords(AcquisitionUpdate)
     async def update(self, acquisition_id: str, acquisition_data: AcquisitionUpdate) -> AcquisitionResponse:
         update_payload = acquisition_data.model_dump(exclude_unset=True)
         response_data = await self._patch(f"acquisitions/{acquisition_id}", data=update_payload)
@@ -97,6 +100,7 @@ class AcquisitionResource(BaseResource):
     async def delete(self, acquisition_id: str) -> None:
         await self._delete(f"acquisitions/{acquisition_id}")
 
+    @accepts_keywords(TileCreate)
     async def add_tile(self, acquisition_id: str, tile_data: TileCreate) -> TileResponse:
         response_data = await self._post(
             f"acquisitions/{acquisition_id}/tiles",
@@ -110,13 +114,25 @@ class AcquisitionResource(BaseResource):
         cursor: str | None = None,
         limit: int = 100,
         fields: builtins.list[str] | None = None,
-    ) -> PaginatedTileResponse:
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_min: float | None = None,
+        y_max: float | None = None,
+    ) -> PaginatedTileResponse | dict[str, Any]:
         """Retrieve tiles for an acquisition with pagination."""
         endpoint = f"acquisitions/{acquisition_id}/tiles"
-        params = {"limit": limit, "cursor": cursor, "fields": fields}
+        params = {
+            "limit": limit,
+            "cursor": cursor,
+            "fields": fields,
+            "x_min": x_min,
+            "x_max": x_max,
+            "y_min": y_min,
+            "y_max": y_max,
+        }
         params = {k: v for k, v in params.items() if v is not None}
         response_data = await self._get(endpoint, params=params)
-        return PaginatedTileResponse.model_validate(response_data)
+        return response_data if fields else PaginatedTileResponse.model_validate(response_data)
 
     async def get_tile(self, acquisition_id: str, tile_id: str) -> TileResponse:
         """Get a specific tile by ID within an acquisition."""
@@ -133,6 +149,7 @@ class AcquisitionResource(BaseResource):
         payload = [tile.model_dump(exclude_unset=True) for tile in tiles_data]
         return await self._post(endpoint, data=payload)
 
+    @accepts_keywords(TileUpdate)
     async def update_tile(self, acquisition_id: str, tile_id: str, tile_data: TileUpdate) -> TileResponse:
         """Updates a tile from an acquisition."""
         endpoint = f"acquisitions/{acquisition_id}/tiles/{tile_id}"
@@ -166,37 +183,28 @@ class AcquisitionResource(BaseResource):
         return TileDeleteAllResult.model_validate(await self._request("DELETE", endpoint))
 
     async def delete_tiles_bulk(self, acquisition_id: str, tile_ids: builtins.list[str]) -> TileBulkDeleteResult:
-        """Deletes specified tiles from an acquisition; IDs with no tile are listed in not_found.
+        """Deletes the acquisition's tiles with these tile_ids; tile_ids not found in it are listed in not_found.
 
         Raises TEMdbConflictError if the acquisition is marked 'complete'.
         """
         endpoint = f"acquisitions/{acquisition_id}/tiles/bulk"
         return TileBulkDeleteResult.model_validate(await self._request("DELETE", endpoint, json=tile_ids))
 
-    async def add_storage_location(
-        self, acquisition_id: str, location_data: StorageLocationCreate
-    ) -> AcquisitionResponse:
-        """Add a storage location to an acquisition. Returns the updated acquisition."""
-        endpoint = f"acquisitions/{acquisition_id}/storage-locations"
-        response_data = await self._post(endpoint, data=location_data.model_dump(exclude_unset=True))
-        return AcquisitionResponse.model_validate(response_data)
-
-    async def get_current_storage_location(self, acquisition_id: str) -> StorageLocation | None:
-        """Get the current storage location for an acquisition."""
-        endpoint = f"acquisitions/{acquisition_id}/current-storage"
-        response_data = await self._get(endpoint)
-        return StorageLocation.model_validate(response_data) if response_data else None
-
-    async def get_all_tiles(self, acquisition_id: str, *, page_limit: int = 1000) -> builtins.list[TileResponse]:
+    async def get_all_tiles(
+        self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
+    ) -> builtins.list[TileResponse] | builtins.list[dict[str, Any]]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
-        all_tiles: builtins.list[TileResponse] = []
-        cursor: int | None = None
+        all_tiles: builtins.list = []
+        cursor: str | None = None
         while True:
-            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit)
-            all_tiles.extend(page.tiles)
-            if not page.metadata.get("has_more"):
+            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
+            tiles, metadata = (
+                (page["tiles"], page["metadata"]) if isinstance(page, dict) else (page.tiles, page.metadata)
+            )
+            all_tiles.extend(tiles)
+            if not metadata.get("has_more"):
                 break
-            cursor = page.metadata.get("next_cursor")
+            cursor = metadata.get("next_cursor")
             if cursor is None:
                 break
         return all_tiles
@@ -276,7 +284,7 @@ class AcquisitionResource(BaseResource):
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""
-        endpoint = f"acquisitions/{acquisition_id}/complete-metadata"
+        endpoint = f"acquisitions/{acquisition_id}/metadata"
         response_data = await self._get(endpoint)
         return response_data if isinstance(response_data, dict) else {}
 
@@ -295,12 +303,8 @@ class AcquisitionResource(BaseResource):
         specimen_id: str | None = None,
         roi_id: str | None = None,
         acquisition_task_id: str | None = None,
-        montage_set_name: str | None = None,
-        magnification: int | None = None,
+        substrate_media_id: str | None = None,
         status: AcquisitionStatusFilter | None = None,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        **kwargs: Any,
     ) -> dict[str, Any]:
         """List acquisitions with complete hierarchy metadata."""
         params = {
@@ -311,12 +315,8 @@ class AcquisitionResource(BaseResource):
             "specimen_id": specimen_id,
             "roi_id": roi_id,
             "acquisition_task_id": acquisition_task_id,
-            "montage_set_name": montage_set_name,
-            "magnification": magnification,
+            "substrate_media_id": substrate_media_id,
             "status": status,
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
         }
         params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
-        return await self._get("acquisitions/aggregated", params=params)
+        return await self._get("aggregated/acquisitions", params=params)

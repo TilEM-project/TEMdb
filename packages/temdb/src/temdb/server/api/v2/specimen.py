@@ -9,6 +9,8 @@ from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, Specim
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 specimen_api = APIRouter(
     tags=["Specimens"],
 )
@@ -38,7 +40,7 @@ async def list_specimens(
                 SpecimenSQLModel.description.ilike(like_pattern),
             )
         )
-    return (await session.scalars(statement.offset(skip).limit(limit))).all()
+    return (await session.scalars(statement.order_by(SpecimenSQLModel.specimen_id).offset(skip).limit(limit))).all()
 
 
 @specimen_api.get("/specimens/count", response_model=int)
@@ -65,22 +67,19 @@ async def get_specimen_blocks(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
-    rows = (
-        await session.execute(
-            select(SpecimenSQLModel.id, BlockSQLModel)
-            .select_from(SpecimenSQLModel)
-            .outerjoin(BlockSQLModel, BlockSQLModel.specimen_id == SpecimenSQLModel.specimen_id)
-            .where(SpecimenSQLModel.specimen_id == specimen_id)
-            .offset(skip)
-            .limit(limit)
-        )
-    ).all()
-    if not rows:
+    if await session.scalar(select(SpecimenSQLModel.id).where(SpecimenSQLModel.specimen_id == specimen_id)) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
-    return [block for _, block in rows if block is not None]
+    blocks = await session.scalars(
+        select(BlockSQLModel)
+        .where(BlockSQLModel.specimen_id == specimen_id)
+        .order_by(BlockSQLModel.block_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return blocks.all()
 
 
 @specimen_api.post("/specimens", status_code=status.HTTP_201_CREATED, response_model=SpecimenResponse)
@@ -93,7 +92,7 @@ async def create_specimen(
     )
     if existing_specimen.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Specimen with ID '{specimen_data.specimen_id}' already exists",
         )
 
@@ -102,6 +101,7 @@ async def create_specimen(
         description=specimen_data.description,
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=specimen_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(specimen_data.extra),
     )
     session.add(specimen)
     await session.commit()
@@ -140,6 +140,7 @@ async def update_specimen(
     update_data = updated_fields.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
 
     needs_save = False
     if "description" in update_data and specimen.description != update_data["description"]:
@@ -150,6 +151,10 @@ async def update_specimen(
         and specimen.functional_imaging_metadata != update_data["functional_imaging_metadata"]
     ):
         specimen.functional_imaging_metadata = update_data["functional_imaging_metadata"]
+        needs_save = True
+
+    if extra_changes is not None:
+        specimen.extra = merge_extra(SpecimenSQLModel.extra, extra_changes)
         needs_save = True
 
     if needs_save:
@@ -169,15 +174,6 @@ async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
-        )
-    block_count_query = await session.scalars(
-        select(func.count()).select_from(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id)
-    )
-    block_count = block_count_query.one()
-    if block_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete specimen '{specimen_id}' as it has {block_count} associated blocks.",
         )
     await session.delete(specimen)
     await session.commit()

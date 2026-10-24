@@ -2,11 +2,12 @@ from unittest.mock import Mock
 
 import pytest
 from botocore.exceptions import ClientError
-from sqlalchemy import null, select
+from sqlalchemy import and_, null, select
 
 from temdb.models import StorageDefault
 from temdb.server.config import config
 from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel, SectionSQLModel, TileSQLModel
+from temdb.server.sqlmodels.tile import format_tile_id
 
 
 @pytest.fixture(params=["acquisition", "section"])
@@ -14,11 +15,20 @@ def image_target(request, test_acquisition, test_tile, test_section, test_block,
     if request.param == "acquisition":
         return {
             "model": TileSQLModel,
-            "condition": TileSQLModel.tile_id == test_tile.tile_id,
+            "condition": and_(
+                TileSQLModel.dataset_id == test_tile.dataset_id,
+                TileSQLModel.run_id == test_tile.run_id,
+                TileSQLModel.row == test_tile.row,
+                TileSQLModel.col == test_tile.col,
+                TileSQLModel.retake == test_tile.retake,
+            ),
             "field": "image",
             "parent_model": DatasetSQLModel,
             "parent_condition": DatasetSQLModel.dataset_id == test_dataset.dataset_id,
-            "path": f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{test_tile.tile_id}/image",
+            "path": (
+                f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/"
+                f"{format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)}/image"
+            ),
         }
     return {
         "model": SectionSQLModel,

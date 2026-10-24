@@ -1,3 +1,4 @@
+import importlib.metadata
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,6 +16,11 @@ from temdb.client.exceptions import (
     TEMdbUnprocessableError,
 )
 from temdb.models import SpecimenCreate
+from temdb.server.main import create_app
+
+
+def models_version() -> str:
+    return importlib.metadata.version("temdb-models")
 
 
 @pytest.mark.asyncio
@@ -28,6 +34,7 @@ async def test_resource_creation(client):
     assert hasattr(client, "block")
     assert hasattr(client, "cutting_session")
     assert hasattr(client, "substrate")
+    assert hasattr(client, "substrate_layout")
     assert hasattr(client, "acquisition_task")
     assert hasattr(client, "roi")
     assert hasattr(client, "acquisition")
@@ -39,7 +46,10 @@ async def test_extra_datetime(client):
     mock_response.status_code = 201
     mock_response.json.return_value = {"id": 1, "specimen_id": "test"}
 
-    client._http_client.request = AsyncMock(return_value=mock_response)
+    contract_response = MagicMock()
+    contract_response.status_code = 200
+    contract_response.json.return_value = {"api": "v2", "server_version": "x", "models_version": models_version()}
+    client._http_client.request = AsyncMock(side_effect=[contract_response, mock_response])
     await client.specimen.create(
         SpecimenCreate(
             specimen_id="test",
@@ -160,3 +170,28 @@ def test_validation_errors_reach_the_caller():
     assert "body.tile_count: Input should be a valid integer" in str(mapped)
     assert mapped.error_code == "VALIDATION_ERROR"
     assert len(mapped.context["errors"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_health_check_and_api_info_reach_the_server_root():
+    client = TEMdbClient("http://test")
+    await client._http_client.aclose()
+    client._http_client = httpx.AsyncClient(base_url=client.api_url, transport=httpx.ASGITransport(app=create_app()))
+    try:
+        assert await client.health_check() == {"status": "ok"}
+        assert (await client.get_api_info())["message"].startswith("TEMdb API version")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_uses_provided_transport():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        if request.url.path == "/api/v2/contract":
+            return httpx.Response(200, json={"api": "v2", "server_version": "x", "models_version": models_version()})
+        assert request.url.path == "/api/v2/specimens"
+        return httpx.Response(200, json=[])
+
+    async with TEMdbClient("http://test", transport=httpx.MockTransport(handler)) as client:
+        assert await client.specimen.list() == []

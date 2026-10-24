@@ -3,7 +3,7 @@ import uuid as _uuid
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
@@ -253,3 +253,23 @@ async def test_archival_drops_partition_and_sets_status(async_client, test_db_ma
 
     await drop_tile_partition(test_db_manager.sql_engine, ds_id)
     assert await _partition_oid(test_db_manager.sql_engine, partition_name(ds_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_partition_creation_and_acquisition_insert_do_not_deadlock(init_db, test_db_manager):
+    async with test_db_manager.async_session_factory() as session:
+        ds_id = await _make_dataset(session, size_class="small")
+    async with (
+        test_db_manager.async_session_factory() as inserting,
+        test_db_manager.async_session_factory() as creating,
+    ):
+        try:
+            await inserting.execute(
+                select(DatasetSQLModel.dataset_id)
+                .where(DatasetSQLModel.dataset_id == ds_id)
+                .with_for_update(read=True, key_share=True)
+            )
+            await asyncio.wait_for(ensure_tile_partition(creating, ds_id), timeout=5)
+        finally:
+            await inserting.rollback()
+            await creating.rollback()

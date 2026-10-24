@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
+from temdb.server.sqlmodels import SectionSQLModel
+
 
 @pytest.mark.asyncio
 async def test_list_cutting_sessions(async_client: AsyncClient):
@@ -100,6 +102,50 @@ async def test_update_cutting_session(async_client: AsyncClient, test_cutting_se
 
 
 @pytest.mark.asyncio
+async def test_cutting_session_extra_fields_round_trip(async_client: AsyncClient, test_block):
+    cutting_session_id = f"TEST_CUT_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/cutting-sessions",
+        json={
+            "cutting_session_id": cutting_session_id,
+            "start_time": datetime.now(timezone.utc).isoformat(),
+            "operator": "Extra Create Operator",
+            "sectioning_device": "Extra Device",
+            "media_type": "tape",
+            "block_id": test_block.block_id,
+            "extra": {"unknown_create_key": {"roundtrip": "create"}},
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["extra"]["unknown_create_key"] == {"roundtrip": "create"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/cutting-sessions/{cutting_session_id}",
+        json={
+            "operator": "Extra Patch Operator",
+            "extra": {"unknown_patch_key": "patch-roundtrip"},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patch-roundtrip"
+
+    get_response = await async_client.get(
+        f"/api/v2/cutting-sessions/specimens/{created['specimen_id']}"
+        f"/blocks/{created['block_id']}/sessions/{cutting_session_id}"
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"roundtrip": "create"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patch-roundtrip"
+
+    list_response = await async_client.get(f"/api/v2/cutting-sessions?block_id={test_block.block_id}")
+    assert list_response.status_code == 200
+    listed = next(session for session in list_response.json() if session["cutting_session_id"] == cutting_session_id)
+    assert listed["extra"]["unknown_create_key"] == {"roundtrip": "create"}
+    assert listed["extra"]["unknown_patch_key"] == "patch-roundtrip"
+
+
+@pytest.mark.asyncio
 async def test_delete_cutting_session(async_client: AsyncClient, test_block):
     """Test deleting a cutting session successfully (when it has no dependencies)."""
     session_id_hr = f"TEST_CUT_DELETE_{int(datetime.now(timezone.utc).timestamp())}"
@@ -129,10 +175,10 @@ async def test_delete_cutting_session(async_client: AsyncClient, test_block):
 async def test_delete_cutting_session_with_sections(async_client: AsyncClient, test_cutting_session, test_section):
     """Test that deleting a cutting session fails if it has associated sections."""
     response = await async_client.delete(f"/api/v2/cutting-sessions/{test_cutting_session.cutting_session_id}")
-    assert response.status_code == 400
+    assert response.status_code == 409
     response_data = response.json()
-    assert "detail" in response_data
-    assert "associated sections" in response_data["detail"].lower()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == SectionSQLModel.__tablename__
 
 
 @pytest.mark.asyncio

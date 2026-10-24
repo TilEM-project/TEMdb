@@ -40,7 +40,7 @@ Acquisitions carry three orthogonal status axes instead of a single lifecycle en
 - `qc_state` - QC review axis: `pending` / `qc_pass` / `qc_fail` / `needs_review`.
 - `transfer_state` - data transfer axis: `not_started` / `in_progress` / `complete` / `error`.
 
-`qc_state` and `transfer_state` changes are stamped with `*_updated_at` / `*_updated_by`. For migrating consumers (PyTEM, roi-sandbox-v2) from the old `AcquisitionStatus` enum, see the mapping table in `docs/superpowers/plans/2026-06-10-pg18-unified-adoption/00-overview.md`.
+`qc_state` and `transfer_state` changes are stamped with `*_updated_at` / `*_updated_by`.
 
 ### Lens Corrections
 
@@ -73,6 +73,17 @@ async with AsyncTEMdbClient("https://temdb.example.com") as client:
     await client.acquisition.add_tiles_bulk("ACQ001", [TileCreate(...)])
 ```
 
+Create and update methods take either the model or its fields as keywords:
+
+```python
+await client.specimen.create(SpecimenCreate(specimen_id="S1", description="cortex"))
+await client.specimen.create(specimen_id="S1", description="cortex")  # same request
+await client.specimen.update("S1", description="new")  # sends only description
+```
+
+Passing both a model and keywords raises `TypeError`; a misspelled field raises a pydantic `ValidationError`
+before any request is sent.
+
 ### temdb (`packages/temdb/`)
 
 FastAPI server backed by PostgreSQL and SQLAlchemy. Provides:
@@ -101,11 +112,17 @@ uv run ruff format .
 
 ### Pre-commit Hooks
 
+Install the hooks once per clone with `uv run pre-commit install`; it covers every worktree of the clone. Until
+then nothing runs on commit.
+
 Pre-commit hooks run automatically on `git commit`:
 - Trailing whitespace and EOF fixes
 - YAML/TOML validation
 - Ruff linting and formatting
 - Debug statement detection
+- Regenerating `docs/` (`generate_schema_diagram.py`) and `openapi.json` (`temdb-openapi`) when server or model
+  source changes. CI fails if either is stale. If a hook rewrites them, the commit stops: `git add` the regenerated
+  files and commit again.
 
 Run manually: `uv run pre-commit run --all-files`
 
@@ -174,7 +191,23 @@ The server does not depend on the client. Both import from `temdb-models`.
 
 ### Natural keys are immutable
 
-Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable once children reference them. Renames are rejected by the `ON UPDATE NO ACTION` foreign keys — this is by design, not a bug. If an id is wrong, create a new entity via the CRUD endpoints rather than renaming an existing one.
+Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable once children reference them. Renames are rejected by the `ON UPDATE NO ACTION` foreign key. If an id is wrong, create a new entity via the CRUD endpoints rather than renaming an existing one.
+
+### Extra fields
+
+Every stored record (specimen, block, cutting session, section, substrate, substrate layout, ROI, task, acquisition, tile, dataset, microscope, lens correction) has an `extra` object for fields outside the schema. Unknown top-level fields are still rejected, so a typo fails instead of landing in `extra`.
+
+```python
+await client.block.create(block_id="B1", specimen_id="S1", extra={"foo": "bar", "batch": 7})
+await client.block.update("S1", "B1", extra={"batch": 8, "foo": None})  # extra == {"batch": 8}
+```
+
+- **Create** stores the object as sent, dropping keys whose value is `null`.
+- **Update** merges at the top level: sent keys are set, `null` removes a key, keys not sent are kept, and a nested value is replaced whole. Sending `"extra": null` or `{}` changes nothing; clear keys one by one with `null`.
+- **Read** returns `extra` as its own field. There is no filtering by `extra` keys yet.
+- A key that names one of the record's fields (e.g. `extra={"description": ...}`) is rejected; set the field directly.
+
+`extra` is a staging area, and ideally not a permanent storage for shared data. When a key becomes something services depend on, it should be promoted to a column. Then a migration copies the key into the new column and removes it from `extra`, and clients switch to the field.
 
 ### All writers go through the API
 

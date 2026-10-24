@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 from .enums import SECTION_CONDITIONS, SectionQuality
 from .file_storage import FileObject
 
@@ -59,28 +59,39 @@ class SectionMetrics(TEMDBModel):
     shape: SectionMetric | None = Field(None, description="")
 
 
-class SectionBase(TEMDBModel):
+class SectionPosition(TEMDBModel):
+    x: float = Field(..., description="X position in mm, in layout coordinates")
+    y: float = Field(..., description="Y position in mm, in layout coordinates")
+
+
+class SectionBase(TEMDBRecord):
     """Base section fields."""
 
-    section_number: int | None = Field(None, gt=0, description="Sequential section number within the cutting session")
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
     optical_image: FileObject | None = Field(
         None,
         description="Optical image collected before imaging",
     )
-    aperture_uid: str | None = Field(
-        None,
-        description="UID of the specific aperture holding this section",
+    cut_count: int | None = Field(
+        None, ge=0, description="Cut counter reported by the sectioning device; not unique, it can restart"
     )
     aperture_index: int | None = Field(
-        None,
-        description="Index of the specific aperture holding this section",
+        None, ge=0, description="Index of the layout aperture holding this section; empty for a section on a blank"
     )
-    barcode: str | None = Field(None, description="Barcode scanned for this section, if any")
+    position: SectionPosition | None = Field(None, description="Where the section sits on the substrate, if known")
     section_metrics: SectionMetrics | None = Field(None, description="Metrics and parameters of the section")
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
     )
+    condition: str = Field(None, description="Physical condition of the section")
+    condition_reason: str | None = Field(None, description="Reason for the current condition")
+
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, value: str) -> str:
+        if value not in SECTION_CONDITIONS:
+            raise ValueError(f"condition must be one of {SECTION_CONDITIONS}")
+        return value
 
 
 class SectionCreate(SectionBase):
@@ -91,15 +102,15 @@ class SectionCreate(SectionBase):
         ...,
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
-    section_number: int = Field(..., gt=0, description="Sequential section number")
+    timestamp: datetime = Field(..., description="Timestamp of section creation/cutting")
+    condition: str = Field("ok", description="Physical condition of the section")
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
 class SectionUpdate(SectionBase):
     """Schema for updating a section."""
 
-    condition: str | None = Field(None, description="Physical condition of the section")
-    condition_reason: str | None = Field(None, description="Reason for the current condition")
+    timestamp: datetime = Field(None, description="Timestamp of section creation/cutting")
 
     @model_validator(mode="before")
     @classmethod
@@ -107,13 +118,6 @@ class SectionUpdate(SectionBase):
         if isinstance(data, dict) and "destroyed" in data:
             raise ValueError("`destroyed` is read-only; set condition='destroyed' instead")
         return data
-
-    @field_validator("condition")
-    @classmethod
-    def validate_condition(cls, value: str | None) -> str | None:
-        if value is not None and value not in SECTION_CONDITIONS:
-            raise ValueError(f"condition must be one of {SECTION_CONDITIONS}")
-        return value
 
 
 class SectionResponse(SectionBase):
@@ -123,7 +127,7 @@ class SectionResponse(SectionBase):
 
     id: int
     section_id: str = Field(..., description="Unique, system-generated ID for the section")
-    section_number: int = Field(..., gt=0, description="Sequential section number within the cutting session")
+    section_number: int = Field(..., gt=0, description="Number TEMdb assigned on the substrate, in create order")
     cutting_session_id: str = Field(..., description="ID of the cutting session")
     block_id: str = Field(..., description="ID of the block")
     specimen_id: str = Field(..., description="ID of the specimen")

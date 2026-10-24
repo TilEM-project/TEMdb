@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from temdb.server.sqlmodels import AcquisitionTaskSQLModel
+
 
 @pytest.mark.asyncio
 async def test_list_rois_unfiltered(async_client: AsyncClient):
@@ -241,44 +243,14 @@ async def test_delete_roi(async_client: AsyncClient, test_section, test_substrat
     assert get_response.status_code == 404
 
 
-# @pytest.mark.asyncio
-# async def test_delete_roi_with_children(async_client: AsyncClient, test_roi):
-#     """Test deleting an ROI fails if it has child ROIs."""
-#     # 1. Create a child ROI linked to test_roi
-#     child_roi_id_hr = test_roi.roi_id + 1
-#     child_roi_data = {
-#         "roi_id": child_roi_id_hr, "section_id": test_roi.section_id,
-#         "parent_roi_id": test_roi.roi_id, "specimen_id": test_roi.specimen_id,
-#         "block_id": test_roi.block_id, "section_number": test_roi.section_number
-#     }
-#     cr_resp = await async_client.post("/api/v2/rois", json=child_roi_data)
-#     assert cr_resp.status_code == 201
-
-#     # 2. Attempt to delete the parent ROI (test_roi)
-#     response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
-#     assert response.status_code == 400
-#     assert "child ROIs" in response.json()["detail"].lower()
-
-#     # Cleanup child
-#     await async_client.delete(f"/api/v2/rois/{child_roi_id_hr}")
-
-
-# @pytest.mark.asyncio
-# async def test_delete_roi_with_tasks(async_client: AsyncClient, test_roi, test_acquisition_task):
-#     """Test deleting an ROI fails if it has associated AcquisitionTasks."""
-#     # test_acquisition_task fixture links to test_roi
-#     response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
-#     assert response.status_code == 400
-#     assert "associated Acquisition Tasks" in response.json()["detail"].lower()
-
-
-# @pytest.mark.asyncio
-# async def test_delete_roi_with_acquisitions(async_client: AsyncClient, test_roi, test_acquisition):
-#     """Test deleting an ROI fails if it has associated Acquisitions."""
-#     # test_acquisition fixture links to test_roi
-#     response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
-#     assert response.status_code == 400
-#     assert "associated Acquisitions" in response.json()["detail"].lower()
+@pytest.mark.asyncio
+async def test_delete_roi_with_tasks(async_client: AsyncClient, test_roi, test_acquisition_task):
+    """Test that deleting an ROI fails if it has associated acquisition tasks."""
+    response = await async_client.delete(f"/api/v2/rois/{test_roi.roi_id}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == AcquisitionTaskSQLModel.__tablename__
 
 
 @pytest.mark.asyncio
@@ -332,3 +304,20 @@ async def test_get_child_rois_no_children(async_client: AsyncClient, test_roi):
     assert isinstance(response_data["children"], list)
     assert len(response_data["children"]) == 0
     assert response_data["metadata"]["total_children"] == 0
+
+
+@pytest.mark.asyncio
+async def test_roi_payload_drops_barcode(async_client: AsyncClient, test_section, test_substrate):
+    roi_data = {
+        "roi_number": 9002,
+        "section_id": test_section.section_id,
+        "specimen_id": test_section.specimen_id,
+        "block_id": test_section.block_id,
+        "substrate_media_id": test_substrate.media_id,
+        "payload": {"barcode": "00113206", "aperture_width_height": [100, 100]},
+    }
+
+    response = await async_client.post("/api/v2/rois", json=roi_data)
+
+    assert response.status_code == 201, response.text
+    assert "barcode" not in response.json()["roi_payload"]

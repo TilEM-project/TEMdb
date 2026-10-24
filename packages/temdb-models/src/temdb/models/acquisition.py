@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import ConfigDict, Field, field_validator
 from pydantic_core import PydanticCustomError
 
-from temdb.models.base import TEMDBModel
+from temdb.models.base import TEMDBModel, TEMDBRecord
 from temdb.models.enums import QC_STATES, RUN_STATUSES, TASK_KINDS, TRANSFER_STATES
 
 
@@ -33,7 +33,6 @@ class Calibration(TEMDBModel):
 
 
 class HardwareParams(TEMDBModel):
-    scope_id: str = Field(..., description="ID of microscope")
     camera_model: str = Field(..., description="Model of camera")
     camera_serial: str = Field(..., description="Serial number of camera")
     camera_bit_depth: int = Field(..., description="Native bit depth of camera")
@@ -63,9 +62,9 @@ class StorageLocationCreate(TEMDBModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata of storage location")
 
 
-class AcquisitionBase(TEMDBModel):
-    hardware_settings: HardwareParams | None = None
-    acquisition_settings: AcquisitionParams | None = None
+class AcquisitionBase(TEMDBRecord):
+    hardware_settings: HardwareParams = Field(None, description="Hardware settings of acquisition")
+    acquisition_settings: AcquisitionParams = Field(None, description="Acquisition settings of acquisition")
     calibration_info: Calibration | None = None
     tilt_angle_deg: float | None = Field(None, description="Tilt angle of acquisition in degrees")
     storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
@@ -79,7 +78,7 @@ class AcquisitionCreate(AcquisitionBase):
     montage_id: str = Field(..., description="Montage identifier")
     roi_id: str | None = Field(None, description="ROI identifier (required for montage runs)")
     acquisition_task_id: str = Field(..., description="Parent task identifier")
-    microscope_id: uuid.UUID = Field(..., description="Microscope that executes this run")
+    microscope_id: str = Field(..., description="Microscope that executes this run")
     dataset_id: str | None = Field(None, description="Dataset this acquisition belongs to (UUIDv7)")
     kind: str = Field("montage", description="Run kind: montage or lens_correction")
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")
@@ -141,7 +140,7 @@ class AcquisitionResponse(AcquisitionBase):
     specimen_id: str | None = Field(None, description="Specimen identifier")
     roi_id: str | None = Field(None, description="ROI identifier")
     acquisition_task_id: str = Field(..., description="Parent task identifier")
-    microscope_id: uuid.UUID = Field(..., description="Microscope that executed this run")
+    microscope_id: str = Field(..., description="Microscope that executed this run")
     dataset_id: uuid.UUID | None = Field(None, description="Dataset this acquisition belongs to (UUIDv7)")
     kind: str = Field(..., description="Run kind: montage or lens_correction")
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")

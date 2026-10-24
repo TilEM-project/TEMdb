@@ -19,13 +19,11 @@ from temdb.models import (
 class TestHardwareParams:
     def test_valid_hardware_params(self):
         params = HardwareParams(
-            scope_id="SCOPE001",
             camera_model="Test Camera",
             camera_serial="12345",
             camera_bit_depth=16,
             media_type="tape",
         )
-        assert params.scope_id == "SCOPE001"
         assert params.camera_model == "Test Camera"
         assert params.camera_bit_depth == 16
 
@@ -36,7 +34,6 @@ class TestHardwareParams:
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
             HardwareParams(
-                scope_id="SCOPE001",
                 camera_model="Test Camera",
                 camera_serial="12345",
                 camera_bit_depth=16,
@@ -104,7 +101,6 @@ class TestStorageLocationCreate:
 
 def _hardware_params() -> HardwareParams:
     return HardwareParams(
-        scope_id="SCOPE001",
         camera_model="Test Camera",
         camera_serial="12345",
         camera_bit_depth=16,
@@ -130,7 +126,7 @@ class TestAcquisitionCreate:
             montage_id="MONTAGE001",
             roi_id="ROI001",
             acquisition_task_id="TASK001",
-            microscope_id=uuid.uuid4(),
+            microscope_id="TEM-01",
             hardware_settings=_hardware_params(),
             acquisition_settings=_acquisition_params(),
             tilt_angle_deg=0.0,
@@ -162,7 +158,7 @@ class TestAcquisitionCreate:
                 montage_id="MONTAGE001",
                 roi_id="ROI001",
                 acquisition_task_id="TASK001",
-                microscope_id=uuid.uuid4(),
+                microscope_id="TEM-01",
                 kind="tilt_series",
                 hardware_settings=_hardware_params(),
                 acquisition_settings=_acquisition_params(),
@@ -173,7 +169,7 @@ class TestAcquisitionCreate:
             acquisition_id="ACQ001",
             montage_id="MONTAGE001",
             acquisition_task_id="TASK001",
-            microscope_id=uuid.uuid4(),
+            microscope_id="TEM-01",
             kind="lens_correction",
             hardware_settings=_hardware_params(),
             acquisition_settings=_acquisition_params(),
@@ -231,7 +227,7 @@ class TestAcquisitionResponse:
             specimen_id="SPEC001",
             roi_id="ROI001",
             acquisition_task_id="TASK001",
-            microscope_id=uuid.uuid4(),
+            microscope_id="TEM-01",
             kind="montage",
             hardware_settings=_hardware_params(),
             acquisition_settings=_acquisition_params(),

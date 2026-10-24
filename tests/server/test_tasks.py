@@ -7,7 +7,6 @@ from temdb.server.api.v2.tasks import derive_task_state
 from temdb.server.sqlmodels import AcquisitionSQLModel
 
 _HARDWARE_SETTINGS = {
-    "scope_id": "TEST_SCOPE_001",
     "camera_model": "Test Camera",
     "camera_serial": "12345",
     "camera_bit_depth": 16,
@@ -159,7 +158,7 @@ async def test_imageable_work_fetch(
         "montage_id": "TEST_MONTAGE_IMAGEABLE_001",
         "roi_id": test_acquisition_task.roi_id,
         "acquisition_task_id": task_id,
-        "microscope_id": str(test_microscope.microscope_id),
+        "microscope_id": test_microscope.microscope_id,
         "hardware_settings": _HARDWARE_SETTINGS,
         "acquisition_settings": _ACQUISITION_SETTINGS,
     }
@@ -189,7 +188,7 @@ async def test_imageable_blocked_by_complete_run_pending_qc(
         "montage_id": "TEST_MONTAGE_QC_BLOCK_001",
         "roi_id": test_acquisition_task.roi_id,
         "acquisition_task_id": task_id,
-        "microscope_id": str(test_microscope.microscope_id),
+        "microscope_id": test_microscope.microscope_id,
         "hardware_settings": _HARDWARE_SETTINGS,
         "acquisition_settings": _ACQUISITION_SETTINGS,
     }

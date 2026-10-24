@@ -3,12 +3,13 @@ from typing import Any
 
 from temdb.models import (
     SectionResponse,
+    SubstrateApertures,
     SubstrateCreate,
     SubstrateResponse,
     SubstrateUpdate,
 )
 
-from .base import BaseResource
+from .base import BaseResource, accepts_keywords
 
 
 class SubstrateResource(BaseResource):
@@ -17,7 +18,8 @@ class SubstrateResource(BaseResource):
     async def list(
         self,
         media_type: str | None = None,
-        status: str | None = None,
+        layout_id: str | None = None,
+        available: bool | None = None,
         skip: int = 0,
         limit: int = 100,
         **kwargs: Any,
@@ -25,7 +27,8 @@ class SubstrateResource(BaseResource):
         """List substrates with optional filtering and pagination."""
         params = {
             "media_type": media_type,
-            "status": status,
+            "layout_id": layout_id,
+            "available": available,
             "skip": skip,
             "limit": limit,
         }
@@ -38,6 +41,7 @@ class SubstrateResource(BaseResource):
             else []
         )
 
+    @accepts_keywords(SubstrateCreate)
     async def create(self, substrate_data: SubstrateCreate) -> SubstrateResponse:
         """Create a new substrate."""
         response_data = await self._post("substrates", data=substrate_data.model_dump(exclude_unset=True))
@@ -48,11 +52,17 @@ class SubstrateResource(BaseResource):
         response_data = await self._get(f"substrates/{media_id}")
         return SubstrateResponse.model_validate(response_data)
 
+    @accepts_keywords(SubstrateUpdate)
     async def update(self, media_id: str, substrate_data: SubstrateUpdate) -> SubstrateResponse:
         """Update an existing substrate."""
         update_payload = substrate_data.model_dump(exclude_unset=True)
         response_data = await self._patch(f"substrates/{media_id}", data=update_payload)
         return SubstrateResponse.model_validate(response_data)
+
+    async def get_apertures(self, media_id: str) -> SubstrateApertures:
+        """Get a substrate's layout with each aperture's shape, status and sections."""
+        response_data = await self._get(f"substrates/{media_id}/apertures")
+        return SubstrateApertures.model_validate(response_data)
 
     async def delete(self, media_id: str) -> None:
         """Delete a substrate."""

@@ -63,7 +63,7 @@ class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     specimen_id: Mapped[str | None] = mapped_column(ForeignKey("specimens.specimen_id"), index=True, nullable=True)
     roi_id: Mapped[str | None] = mapped_column(ForeignKey("rois.roi_id"), index=True, nullable=True)
     acquisition_task_id: Mapped[str] = mapped_column(ForeignKey("acquisition_tasks.task_id"), index=True)
-    microscope_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("microscopes.microscope_id"))
+    microscope_id: Mapped[str] = mapped_column(String, ForeignKey("microscopes.microscope_id"))
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("datasets.dataset_id"), nullable=True
     )

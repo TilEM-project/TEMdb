@@ -4,11 +4,11 @@ from typing import Any
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 
 
-class LensCorrectionBase(TEMDBModel):
-    microscope_id: uuid.UUID
+class LensCorrectionBase(TEMDBRecord):
+    microscope_id: str
     magnification: int
     started_at: datetime
     source_run_id: uuid.UUID | None = None
@@ -24,7 +24,7 @@ class LensCorrectionCreate(LensCorrectionBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class LensCorrectionUpdate(TEMDBModel):
+class LensCorrectionUpdate(TEMDBRecord):
     shared_transform: dict[str, Any] | None = None
     correction_x_uri: str | None = None
     correction_y_uri: str | None = None

@@ -65,11 +65,8 @@ def generate_cutting_session(specimen: SpecimenSQLModel, block: BlockSQLModel, *
 def generate_substrate(cutting_session: CuttingSessionSQLModel, **kwargs) -> SubstrateSQLModel:
     defaults = {
         "media_id": f"MEDIA_{cutting_session.cutting_session_id}_{fake.unique.random_number(digits=4)}",
-        "media_type": cutting_session.media_type,
-        "metadata_json": {
-            "cutting_session_id": cutting_session.cutting_session_id,
-            "block_id": cutting_session.block_id,
-        },
+        "substrate_layout_id": kwargs.pop("substrate_layout_id", "TEST_LAYOUT"),
+        "aperture_status": ["available"],
         "created_at": datetime.now(timezone.utc),
     }
     defaults.update(kwargs)
@@ -108,7 +105,7 @@ def generate_section(
             else None
         ),
         "media_id": substrate.media_id,
-        "barcode": fake.ean13() if fake.boolean() else None,
+        "aperture_index": 0,
         "created_at": datetime.now(timezone.utc),
     }
     defaults.update(kwargs)
@@ -186,7 +183,6 @@ def generate_acquisition(
         "roi_id": roi.roi_id,
         "acquisition_task_id": task.task_id,
         "hardware_settings": {
-            "scope_id": f"SEM_{fake.random_int(min=1, max=3)}",
             "camera_model": fake.random_element(elements=["CamA", "CamB", "CamX"]),
             "camera_serial": fake.uuid4(),
             "camera_bit_depth": 16,

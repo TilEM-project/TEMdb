@@ -2,7 +2,7 @@ import logging
 import math
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import boto3
 from botocore.exceptions import ClientError
@@ -15,7 +15,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import and_, any_, bindparam, delete, func, select, update
+from sqlalchemy import SmallInteger, and_, bindparam, delete, func, or_, select, true, tuple_, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,6 @@ from temdb.models import (
 )
 from temdb.server.config import config
 from temdb.server.dependencies import get_async_session
-from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -53,7 +52,10 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
     TileSQLModel,
 )
+from temdb.server.sqlmodels.tile import format_tile_id, parse_tile_id
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
+
+from ..utils import drop_null_keys, merge_extra
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
@@ -71,16 +73,15 @@ def _status_condition(acq_status: str):
     raise HTTPException(422, f"status filter must be 'in_flight' or one of {RUN_STATUSES}")
 
 
-def _tile_payload(
-    tile: TileSQLModel, acquisition_id: str, acquisition_internal_id: int | None = None
-) -> dict[str, Any]:
-    payload = {
-        "tile_id": str(tile.tile_id),
+def _tile_payload(tile: TileSQLModel, acq_obj: AcquisitionSQLModel) -> dict[str, Any]:
+    return {
+        "tile_id": format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake),
         "dataset_id": str(tile.dataset_id),
-        "acquisition_id": acquisition_id,
+        "acquisition_id": acq_obj.acquisition_id,
         "raster_index": tile.raster_index,
-        "stage_position": {"x": tile.stage_x_nm, "y": tile.stage_y_nm},
-        "raster_position": {"row": tile.montage_row, "col": tile.montage_col},
+        "stage_position": {"x": tile.stage_x_nm, "y": tile.stage_y_nm, "z": tile.stage_z_nm},
+        "raster_position": {"row": tile.row, "col": tile.col},
+        "retake": tile.retake,
         "focus_score": tile.focus_score,
         "min_value": tile.min_value,
         "max_value": tile.max_value,
@@ -92,10 +93,8 @@ def _tile_payload(
         "supertile_raster_position": tile.supertile_raster_position,
         "created_at": tile.created_at,
         "updated_at": tile.updated_at,
+        "acquisition_ref": {"id": str(acq_obj.id)},
     }
-    if acquisition_internal_id is not None:
-        payload["acquisition_ref"] = {"id": str(acquisition_internal_id)}
-    return payload
 
 
 def _column_value(value: Any) -> Any:
@@ -121,12 +120,13 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
     return {
         "dataset_id": dataset_id,
         "run_id": run_id,
+        "row": tile_data.raster_position.row,
+        "col": tile_data.raster_position.col,
+        "retake": tile_data.retake,
         "raster_index": tile_data.raster_index,
-        "tile_id": tile_data.tile_id if tile_data.tile_id is not None else uuid7(),
         "stage_x_nm": tile_data.stage_position.x,
         "stage_y_nm": tile_data.stage_position.y,
-        "montage_row": tile_data.raster_position.row,
-        "montage_col": tile_data.raster_position.col,
+        "stage_z_nm": tile_data.stage_position.z,
         "focus_score": tile_data.focus_score,
         "min_value": tile_data.min_value,
         "max_value": tile_data.max_value,
@@ -141,15 +141,34 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
     }
 
 
+async def acquisition_page(
+    session: AsyncSession, statement, conditions: list, sort_by: str, sort_order: int, cursor: int | None, limit: int
+) -> tuple[list, int, str | None]:
+    """Return one page of the statement's rows, the number of acquisitions matching the conditions, and the next cursor.
+
+    Rows are ordered by the sort column and then by id. The cursor is the id of the last acquisition on the previous
+    page, and the next cursor is None on the last page.
+    """
+    total_count = await session.scalar(select(func.count()).select_from(AcquisitionSQLModel).where(*conditions))
+    keys = (getattr(AcquisitionSQLModel, sort_by), AcquisitionSQLModel.id)
+    ascending = sort_order == 1
+    if cursor is not None:
+        last = (await session.execute(select(*keys).where(AcquisitionSQLModel.id == cursor))).first()
+        if last is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"cursor {cursor} is not an acquisition")
+        statement = statement.where(tuple_(*keys) > tuple(last) if ascending else tuple_(*keys) < tuple(last))
+    order = [key.asc() if ascending else key.desc() for key in keys]
+    rows = (await session.execute(statement.where(*conditions).order_by(*order).limit(limit + 1))).all()
+    next_cursor = str(rows[limit - 1][0].id) if len(rows) > limit else None
+    return rows[:limit], total_count, next_cursor
+
+
 @acquisition_api.get("/acquisitions", response_model=dict[str, Any])
 async def list_acquisitions(
     response: Response,
-    cursor: str | None = Query(
-        None,
-        description="Cursor for pagination (e.g., last seen acquisition_id or _id)",
-    ),
+    cursor: int | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(50, ge=1, le=1000),
-    sort_by: str = Query("start_time", description="Field to sort by (e.g., start_time, acquisition_id)"),
+    sort_by: Literal["start_time", "acquisition_id"] = Query("start_time", description="Field to sort by"),
     sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     roi_id: str | None = Query(None, description="Filter by human-readable ROI ID"),
@@ -205,6 +224,8 @@ async def list_acquisitions(
         conditions.append(AcquisitionSQLModel.start_time >= start_date)
     if end_date:
         conditions.append(AcquisitionSQLModel.start_time <= end_date)
+    if magnification is not None:
+        conditions.append(AcquisitionSQLModel.acquisition_settings.contains({"magnification": magnification}))
     if param_tile_focus_lt is not None:
         conditions.append(AcquisitionSQLModel.avg_focus_score < param_tile_focus_lt)
 
@@ -224,53 +245,17 @@ async def list_acquisitions(
             param_tile_dy_gt,
         )
 
-    sort_column = getattr(AcquisitionSQLModel, sort_by, AcquisitionSQLModel.start_time)
-    order_column = sort_column.asc() if sort_order == 1 else sort_column.desc()
-    rows = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(*conditions)
-            .order_by(order_column)
-        )
-    ).all()
-    acquisitions = [row[0] for row in rows]
-    if magnification is not None:
-        rows = [
-            row
-            for row in rows
-            if isinstance(row[0].acquisition_settings, dict)
-            and row[0].acquisition_settings.get("magnification") == magnification
-        ]
-        acquisitions = [row[0] for row in rows]
-    total_count = len(acquisitions)
-    rows = rows[:limit]
+    rows, total_count, next_cursor = await acquisition_page(
+        session, select(AcquisitionSQLModel), conditions, sort_by, sort_order, cursor, limit
+    )
     payloads = []
-    for acq, _specimen_ref, _roi_ref, _task_ref in rows:
+    for (acq,) in rows:
         payload = AcquisitionResponse.model_validate(acq).model_dump(mode="json")
         if fields:
             kept = {field: payload.get(field) for field in fields}
             kept["id"] = payload["id"]
             payload = kept
         payloads.append(payload)
-    next_cursor = str(rows[-1][0].id) if rows else None
     metadata = {
         "total_count": total_count,
         "returned_count": len(payloads),
@@ -304,7 +289,7 @@ async def create_acquisition(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
     )
     if existing.first() is not None:
-        raise HTTPException(400, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
+        raise HTTPException(409, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
     microscope = await session.scalars(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )
@@ -388,6 +373,7 @@ async def create_acquisition(
         montage_set_name=acq_data.montage_set_name,
         sub_region=acq_data.sub_region.model_dump(mode="json") if acq_data.sub_region else None,
         replaces_acquisition_id=replacement_id,
+        extra=drop_null_keys(acq_data.extra),
     )
     session.add(acquisition)
     await session.commit()
@@ -465,9 +451,12 @@ async def update_acquisition(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
     acq_obj, _specimen_ref, _roi_ref, _task_ref = row
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(400, "No update data provided")
+    extra_changes = update_data.pop("extra", None)
     updated_by = update_data.pop("updated_by", None)
     now = datetime.now(timezone.utc)
     if "end_time" in update_data and "status" not in update_data:
@@ -486,6 +475,8 @@ async def update_acquisition(
         values = {
             field: _column_value(value) for field, value in update_data.items() if hasattr(AcquisitionSQLModel, field)
         }
+        if extra_changes is not None:
+            values["extra"] = merge_extra(AcquisitionSQLModel.extra, extra_changes)
         result = await session.execute(
             update(AcquisitionSQLModel)
             .where(
@@ -513,6 +504,8 @@ async def update_acquisition(
     for field, value in update_data.items():
         if hasattr(acq_obj, field):
             setattr(acq_obj, field, _column_value(value))
+    if extra_changes is not None:
+        acq_obj.extra = merge_extra(AcquisitionSQLModel.extra, extra_changes)
     session.add(acq_obj)
     await session.commit()
     await session.refresh(acq_obj)
@@ -531,23 +524,6 @@ async def delete_acquisition(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    tile_count = 0
-    if acq_obj.dataset_id is not None:
-        tile_count = (
-            await session.scalars(
-                select(func.count())
-                .select_from(TileSQLModel)
-                .where(
-                    TileSQLModel.dataset_id == acq_obj.dataset_id,
-                    TileSQLModel.run_id == acq_obj.run_id,
-                )
-            )
-        ).one()
-    if tile_count > 0:
-        raise HTTPException(
-            400,
-            f"Cannot delete acquisition '{acquisition_id}': {tile_count} tiles exist.",
-        )
     await session.delete(acq_obj)
     await session.commit()
     return None
@@ -594,16 +570,16 @@ async def add_tile_to_acquisition(
     stmt = (
         pg_insert(TileSQLModel)
         .values(_tile_sql_kwargs(tile_data, acq_obj.dataset_id, acq_obj.run_id))
-        .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
+        .on_conflict_do_nothing(index_elements=list(TileSQLModel.__table__.primary_key))
         .returning(TileSQLModel)
     )
     tile = (await session.execute(stmt)).scalars().first()
     if tile is None:
-        raise HTTPException(
-            409,
-            f"Tile with raster_index {tile_data.raster_index} already exists for acquisition '{acquisition_id}'",
+        tile_id = format_tile_id(
+            acq_obj.montage_id, tile_data.raster_position.row, tile_data.raster_position.col, tile_data.retake
         )
-    payload = _tile_payload(tile, acq_obj.acquisition_id, acq_obj.id)
+        raise HTTPException(409, f"Tile '{tile_id}' already exists in acquisition '{acquisition_id}'")
+    payload = _tile_payload(tile, acq_obj)
     await session.commit()
     return payload
 
@@ -644,9 +620,10 @@ async def add_tiles_to_acquisition(
     acq_obj, specimen_ref, roi_ref, task_ref = row
     if acq_obj.dataset_id is None:
         raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
-    supplied_ids = [tile.tile_id for tile in tiles if tile.tile_id is not None]
-    if len(supplied_ids) != len(set(supplied_ids)):
-        raise HTTPException(422, "Duplicate tile IDs in request")
+    keys = [(tile.raster_position.row, tile.raster_position.col, tile.retake) for tile in tiles]
+    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    if repeated:
+        raise HTTPException(422, f"Tiles (row, col, retake) {repeated} appear more than once in the request")
     await _ensure_dataset_accepts_tiles(session, acq_obj.dataset_id)
     await ensure_tile_partition(session, acq_obj.dataset_id)
     # Creating a partition locks acquisitions against writes (through the tiles foreign key) until commit.
@@ -660,19 +637,49 @@ async def add_tiles_to_acquisition(
         columns = TileSQLModel.__table__.c
         # One bound array per column: one value per cell exceeds asyncpg's 32,767-argument limit at 1,928 tiles.
         # dimensions=1 keeps each matcher list as one jsonb element.
-        unnested = select(
+        incoming = select(
             *(
-                func.unnest(bindparam(key, [row[key] for row in rows], type_=ARRAY(columns[key].type, dimensions=1)))
+                func.unnest(
+                    bindparam(key, [row[key] for row in rows], type_=ARRAY(columns[key].type, dimensions=1))
+                ).label(key)
                 for key in rows[0]
             )
-        )
+        ).subquery("incoming")
         result = await session.execute(
             pg_insert(TileSQLModel)
-            .from_select(list(rows[0]), unnested)
-            .on_conflict_do_nothing(index_elements=["dataset_id", "run_id", "raster_index"])
+            .from_select(list(rows[0]), select(incoming))
+            .on_conflict_do_nothing(index_elements=list(TileSQLModel.__table__.primary_key))
         )
-        await session.commit()
         inserted = result.rowcount
+        if inserted < total_tiles:
+            # Each incoming tile looks up its stored tile by key. OFFSET 0 stops Postgres flattening the LATERAL
+            # subquery into a join, whose plan can scan the whole run once per incoming tile.
+            stored = (
+                select(TileSQLModel)
+                .where(
+                    TileSQLModel.dataset_id == acq_obj.dataset_id,
+                    TileSQLModel.run_id == acq_obj.run_id,
+                    TileSQLModel.row == incoming.c.row,
+                    TileSQLModel.col == incoming.c.col,
+                    TileSQLModel.retake == incoming.c.retake,
+                )
+                .offset(0)
+                .lateral("stored")
+            )
+            differing = (
+                await session.execute(
+                    select(stored.c.row, stored.c.col, stored.c.retake)
+                    .select_from(incoming)
+                    .join(stored, true())
+                    .where(or_(*(stored.c[key].is_distinct_from(incoming.c[key]) for key in rows[0])))
+                    .order_by(stored.c.row, stored.c.col, stored.c.retake)
+                )
+            ).all()
+            if differing:
+                tile_ids = [format_tile_id(acq_obj.montage_id, *key) for key in differing]
+                await session.rollback()
+                raise HTTPException(409, f"Tiles {tile_ids} are already stored with different values")
+        await session.commit()
     return {
         "acquisition_id": acquisition_id,
         "total_received": total_tiles,
@@ -684,40 +691,75 @@ async def add_tiles_to_acquisition(
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=dict[str, Any])
 async def get_tiles_from_acquisition(
     acquisition_id: str,
-    cursor: int | None = Query(None, description="Last raster_index seen"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
     limit: int = Query(100, ge=1, le=1000),
     fields: list[str] | None = Query(None),
+    x_min: float | None = Query(
+        None, allow_inf_nan=False, description="The min X axis stage coordinate value in nanometers"
+    ),
+    x_max: float | None = Query(
+        None, allow_inf_nan=False, description="The max X axis stage coordinate value in nanometers"
+    ),
+    y_min: float | None = Query(
+        None, allow_inf_nan=False, description="The min Y axis stage coordinate value in nanometers"
+    ),
+    y_max: float | None = Query(
+        None, allow_inf_nan=False, description="The max Y axis stage coordinate value in nanometers"
+    ),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve tiles associated with a specific acquisition."""
+    """Retrieve an acquisition's tiles, every retake included, in (row, col, retake) order."""
     acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    if x_min is not None and x_max is not None and x_min > x_max:
+        raise HTTPException(422, "Invalid bounding box: x_min must be <= x_max")
+    if y_min is not None and y_max is not None and y_min > y_max:
+        raise HTTPException(422, "Invalid bounding box: y_min must be <= y_max")
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     if acq_obj.dataset_id is None:
         rows = []
     else:
+        bbox = []
+        if x_min is not None:
+            bbox.append(TileSQLModel.stage_x_nm >= x_min)
+        if x_max is not None:
+            bbox.append(TileSQLModel.stage_x_nm <= x_max)
+        if y_min is not None:
+            bbox.append(TileSQLModel.stage_y_nm >= y_min)
+        if y_max is not None:
+            bbox.append(TileSQLModel.stage_y_nm <= y_max)
         query = select(TileSQLModel).where(
             TileSQLModel.dataset_id == acq_obj.dataset_id,
             TileSQLModel.run_id == acq_obj.run_id,
+            *bbox,
         )
-        if cursor is not None:
-            query = query.where(TileSQLModel.raster_index > cursor)
-        query = query.order_by(TileSQLModel.raster_index).limit(limit + 1)
+        key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+        if after is not None:
+            query = query.where(tuple_(*key) > tuple_(*after))
+        query = query.order_by(*key).limit(limit + 1)
         rows = (await session.scalars(query)).all()
     has_more = len(rows) > limit
     tiles = rows[:limit]
-    payloads = [_tile_payload(tile, acq_obj.acquisition_id, acq_obj.id) for tile in tiles]
+    payloads = [_tile_payload(tile, acq_obj) for tile in tiles]
     if fields:
         trimmed = []
         for payload in payloads:
             entry = {field: payload.get(field) for field in fields}
-            entry["raster_index"] = payload.get("raster_index")
+            entry["tile_id"] = payload["tile_id"]
             trimmed.append(entry)
         payloads = trimmed
-    next_cursor = tiles[-1].raster_index if tiles else None
+    next_cursor = f"{tiles[-1].row},{tiles[-1].col},{tiles[-1].retake}" if tiles else None
     return {
         "tiles": payloads,
         "metadata": {
@@ -730,15 +772,45 @@ async def get_tiles_from_acquisition(
     }
 
 
-def _tile_uuid_or_404(tile_id: str) -> uuid.UUID:
-    """Parse a tile_id path parameter to a UUID; a malformed id cannot exist."""
-    try:
-        return uuid.UUID(tile_id)
-    except ValueError:
-        raise HTTPException(404, f"Tile ID '{tile_id}' not found")
+def _where_tile(acq_obj: AcquisitionSQLModel, tile_id: str) -> list:
+    """SQL conditions for one tile of the acquisition; 404 if it has no such tile.
+
+    tile_id is `{montage_id}_r{row:03d}_c{col:03d}`, with `_a{retake}` for a retake, e.g. `{montage_id}_r003_c012_a1`.
+    """
+    key = parse_tile_id(acq_obj.montage_id, tile_id)
+    if key is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acq_obj.acquisition_id}'")
+    row, col, retake = key
+    return [
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.row == row,
+        TileSQLModel.col == col,
+        TileSQLModel.retake == retake,
+    ]
 
 
-@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[uuid.UUID, FileObjectResponse])
+def _where_tiles(acq_obj: AcquisitionSQLModel, tile_ids: list[str]) -> list:
+    """SQL conditions for the listed tiles of the acquisition; a tile_id that is not one of its tiles matches nothing.
+
+    The keys are bound as three arrays: an IN (...) list binds one argument per tile, and asyncpg allows 32,767.
+    """
+    keys = [key for key in (parse_tile_id(acq_obj.montage_id, tile_id) for tile_id in tile_ids) if key is not None]
+    rows, cols, retakes = (list(part) for part in zip(*keys)) if keys else ([], [], [])
+    key_rows = select(
+        *(
+            func.unnest(bindparam(label, values, type_=ARRAY(SmallInteger)))
+            for label, values in (("rows", rows), ("cols", cols), ("retakes", retakes))
+        )
+    )
+    return [
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        tuple_(TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake).in_(key_rows),
+    ]
+
+
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, FileObjectResponse])
 async def image_put_urls(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
@@ -761,7 +833,7 @@ async def image_put_urls(
         TileSQLModel.image.isnot(None),
     )
     if tile_ids is not None:
-        tile_query = tile_query.where(TileSQLModel.tile_id.in_(tile_ids))
+        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
     tiles = await session.scalars(tile_query)
     tiles_obj = tiles.all()
     if not tiles_obj:
@@ -771,6 +843,7 @@ async def image_put_urls(
     client = None
     urls = {}
     for tile in tiles_obj:
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         if tile.image is None:
             continue
         storage_location = FileObject.model_validate(tile.image)
@@ -783,16 +856,14 @@ async def image_put_urls(
                 case StorageProtocol.GCS:
                     raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
                 case _:
-                    raise HTTPException(
-                        400, f"Tile {tile.tile_id} has unsupported protocol {storage_location.protocol}"
-                    )
+                    raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
         try:
             presigned_url = client.generate_presigned_url(
                 "put_object",
                 Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
                 ExpiresIn=expiration,
             )
-            urls[tile.tile_id] = FileObjectResponse(
+            urls[tile_id] = FileObjectResponse(
                 protocol=storage_location.protocol,
                 server=storage_location.server,
                 bucket=storage_location.bucket,
@@ -801,11 +872,11 @@ async def image_put_urls(
                 url=presigned_url,
             )
         except ClientError as e:
-            logger.error(f"Error generating presigned URL for tile {tile.tile_id}: {e}")
+            logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
     return urls
 
 
-@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[uuid.UUID, FileObjectResponse])
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, FileObjectResponse])
 async def image_get_urls(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
@@ -828,7 +899,7 @@ async def image_get_urls(
         TileSQLModel.image.isnot(None),
     )
     if tile_ids is not None:
-        tile_query = tile_query.where(TileSQLModel.tile_id.in_(tile_ids))
+        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
     tiles = await session.scalars(tile_query)
     tiles_obj = tiles.all()
     if not tiles_obj:
@@ -838,6 +909,7 @@ async def image_get_urls(
     client = None
     urls = {}
     for tile in tiles_obj:
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         if tile.image is None:
             continue
         storage_location = FileObject.model_validate(tile.image)
@@ -850,16 +922,14 @@ async def image_get_urls(
                 case StorageProtocol.GCS:
                     raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
                 case _:
-                    raise HTTPException(
-                        400, f"Tile {tile.tile_id} has unsupported protocol {storage_location.protocol}"
-                    )
+                    raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
         try:
             presigned_url = client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
                 ExpiresIn=expiration,
             )
-            urls[tile.tile_id] = FileObjectResponse(
+            urls[tile_id] = FileObjectResponse(
                 protocol=storage_location.protocol,
                 server=storage_location.server,
                 bucket=storage_location.bucket,
@@ -868,11 +938,11 @@ async def image_get_urls(
                 url=presigned_url,
             )
         except ClientError as e:
-            logger.error(f"Error generating presigned URL for tile {tile.tile_id}: {e}")
+            logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
     return urls
 
 
-@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/images", response_model=list[uuid.UUID])
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/images", response_model=list[str])
 async def delete_tile_images(
     acquisition_id: str,
     tile_ids: list[str] | None = Body(None),
@@ -894,7 +964,7 @@ async def delete_tile_images(
         TileSQLModel.image.isnot(None),
     )
     if tile_ids is not None:
-        tile_query = tile_query.where(TileSQLModel.tile_id.in_(tile_ids))
+        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
     tiles = await session.scalars(tile_query)
     tiles_obj = tiles.all()
     if not tiles_obj:
@@ -904,6 +974,7 @@ async def delete_tile_images(
     client = None
     deleted_tiles = []
     for tile in tiles_obj:
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         if tile.image is None:
             continue
         storage_location = FileObject.model_validate(tile.image)
@@ -916,17 +987,15 @@ async def delete_tile_images(
                 case StorageProtocol.GCS:
                     raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
                 case _:
-                    raise HTTPException(
-                        400, f"Tile {tile.tile_id} has unsupported protocol {storage_location.protocol}"
-                    )
+                    raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
         try:
             client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
             tile.image = None
             tile.updated_at = datetime.now(timezone.utc)
             session.add(tile)
-            deleted_tiles.append(tile.tile_id)
+            deleted_tiles.append(tile_id)
         except ClientError as e:
-            logger.error(f"Error deleting image for tile {tile.tile_id}: {e}")
+            logger.error(f"Error deleting image for tile {tile_id}: {e}")
 
     await session.commit()
 
@@ -939,25 +1008,18 @@ async def get_tile_from_acquisition(
     tile_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve a specific tile by its tile_id (UUID), verifying acquisition parent."""
+    """Retrieve one tile of an acquisition by its tile_id."""
     acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    tile_key = _tile_uuid_or_404(tile_id)
-    tile = await session.scalars(
-        select(TileSQLModel).where(
-            TileSQLModel.tile_id == tile_key,
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-        )
-    )
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
     tile_obj = tile.first()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
-    return _tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id)
+    return _tile_payload(tile_obj, acq_obj)
 
 
 @acquisition_api.post("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", response_model=FileObjectResponse)
@@ -977,13 +1039,7 @@ async def image_put_url(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    tile = await session.scalars(
-        select(TileSQLModel).where(
-            TileSQLModel.tile_id == tile_id,
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-        )
-    )
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
     tile_obj = tile.one_or_none()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
@@ -1087,13 +1143,7 @@ async def delete_tile_image(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    tile = await session.scalars(
-        select(TileSQLModel).where(
-            TileSQLModel.tile_id == tile_id,
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-        )
-    )
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
     tile_obj = tile.one_or_none()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
@@ -1126,7 +1176,7 @@ async def get_tile_count(
     acquisition_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Get the total count of tiles associated with an acquisition."""
+    """Get the number of positions imaged in an acquisition; retakes of a position count once."""
     acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
@@ -1135,16 +1185,13 @@ async def get_tile_count(
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
     if acq_obj.dataset_id is None:
         return {"tile_count": 0}
-    tile_count = (
-        await session.scalars(
-            select(func.count())
-            .select_from(TileSQLModel)
-            .where(
-                TileSQLModel.dataset_id == acq_obj.dataset_id,
-                TileSQLModel.run_id == acq_obj.run_id,
-            )
-        )
-    ).one()
+    positions = (
+        select(TileSQLModel.row, TileSQLModel.col)
+        .where(TileSQLModel.dataset_id == acq_obj.dataset_id, TileSQLModel.run_id == acq_obj.run_id)
+        .distinct()
+        .subquery()
+    )
+    tile_count = (await session.scalars(select(func.count()).select_from(positions))).one()
     return {"tile_count": tile_count}
 
 
@@ -1158,10 +1205,7 @@ def _tile_sql_patch_kwargs(updated_fields: TileUpdate):
     if stage_position is not None:
         update_data["stage_x_nm"] = stage_position["x"]
         update_data["stage_y_nm"] = stage_position["y"]
-    raster_position = update_data.pop("raster_position", None)
-    if raster_position is not None:
-        update_data["montage_row"] = raster_position["row"]
-        update_data["montage_col"] = raster_position["col"]
+        update_data["stage_z_nm"] = stage_position.get("z")
     return update_data
 
 
@@ -1181,33 +1225,15 @@ async def update_tile_from_acquisition_bulk(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    keyed_updates = {}
-    for tile_id, tile_update in updates.items():
-        try:
-            keyed_updates[uuid.UUID(tile_id)] = tile_update
-        except ValueError:
-            raise HTTPException(422, f"Tile ID '{tile_id}' is not a UUID")
-    if len(keyed_updates) != len(updates):
-        raise HTTPException(422, "Duplicate tile IDs in request")
-    # One bound array: an IN (...) list binds one argument per ID, and asyncpg allows 32,767.
-    tile_keys = bindparam("tile_keys", list(keyed_updates), type_=ARRAY(TileSQLModel.tile_id.type))
-    tiles = (
-        await session.scalars(
-            select(TileSQLModel)
-            .where(
-                TileSQLModel.tile_id == any_(tile_keys),
-                TileSQLModel.dataset_id == acq_obj.dataset_id,
-                TileSQLModel.run_id == acq_obj.run_id,
-            )
-            .with_for_update()
-        )
-    ).all()
-    missing_ids = set(keyed_updates.keys()) - {tile.tile_id for tile in tiles}
+    where = _where_tiles(acq_obj, list(updates))
+    tiles = (await session.scalars(select(TileSQLModel).where(*where).with_for_update())).all()
+    by_tile_id = {format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake): tile for tile in tiles}
+    missing_ids = set(updates) - set(by_tile_id)
     if missing_ids:
-        listed = ", ".join(sorted(str(tile_id) for tile_id in missing_ids))
+        listed = ", ".join(sorted(missing_ids))
         raise HTTPException(404, f"Unable to find tiles [{listed}] in acquisition '{acquisition_id}'")
-    for tile_obj in tiles:
-        update_data = _tile_sql_patch_kwargs(keyed_updates[tile_obj.tile_id])
+    for tile_id, tile_obj in by_tile_id.items():
+        update_data = _tile_sql_patch_kwargs(updates[tile_id])
         for field, value in update_data.items():
             setattr(tile_obj, field, value)
         session.add(tile_obj)
@@ -1215,15 +1241,12 @@ async def update_tile_from_acquisition_bulk(
     tiles = (
         await session.scalars(
             select(TileSQLModel)
-            .where(
-                TileSQLModel.tile_id == any_(tile_keys),
-                TileSQLModel.dataset_id == acq_obj.dataset_id,
-                TileSQLModel.run_id == acq_obj.run_id,
-            )
+            .where(*where)
+            .order_by(TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
             .execution_options(populate_existing=True)
         )
     ).all()
-    return [_tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id) for tile_obj in tiles]
+    return [_tile_payload(tile_obj, acq_obj) for tile_obj in tiles]
 
 
 @acquisition_api.patch(
@@ -1243,16 +1266,7 @@ async def update_tile_from_acquisition(
     acq_obj = acquisition.first()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    tile_key = _tile_uuid_or_404(tile_id)
-    tile = await session.scalars(
-        select(TileSQLModel)
-        .where(
-            TileSQLModel.tile_id == tile_key,
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-        )
-        .with_for_update()
-    )
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)).with_for_update())
     tile_obj = tile.first()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
@@ -1262,7 +1276,7 @@ async def update_tile_from_acquisition(
     session.add(tile_obj)
     await session.commit()
     await session.refresh(tile_obj)
-    return _tile_payload(tile_obj, acq_obj.acquisition_id, acq_obj.id)
+    return _tile_payload(tile_obj, acq_obj)
 
 
 async def _lock_acquisition_for_tile_delete(session: AsyncSession, acquisition_id: str) -> AcquisitionSQLModel:
@@ -1287,10 +1301,10 @@ async def _lock_acquisition_for_tile_delete(session: AsyncSession, acquisition_i
 @acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/bulk", response_model=TileBulkDeleteResult)
 async def delete_tiles_from_acquisition_bulk(
     acquisition_id: str,
-    tile_ids: list[uuid.UUID] = Body(..., min_length=1),
+    tile_ids: list[str] = Body(..., min_length=1),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Delete the listed tiles of an acquisition; IDs with no tile in it are returned in not_found.
+    """Delete the acquisition's tiles with these tile_ids; tile_ids not found in it are returned in not_found.
 
     Error if the acquisition is marked 'complete'.
     """
@@ -1298,20 +1312,16 @@ async def delete_tiles_from_acquisition_bulk(
     requested = list(dict.fromkeys(tile_ids))
     result = await session.execute(
         delete(TileSQLModel)
-        .where(
-            TileSQLModel.tile_id == any_(bindparam("tile_keys", requested, type_=ARRAY(TileSQLModel.tile_id.type))),
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-            TileSQLModel.image.is_(None),
-        )
-        .returning(TileSQLModel.tile_id)
+        .where(*_where_tiles(acq_obj, requested))
+        .where(TileSQLModel.image.is_(None))
+        .returning(TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
     )
-    deleted = result.scalars().all()
+    deleted = {format_tile_id(acq_obj.montage_id, *key) for key in result.all()}
     await session.commit()
     return TileBulkDeleteResult(
         requested=len(requested),
         deleted=len(deleted),
-        not_found=[str(tile_id) for tile_id in requested if tile_id not in set(deleted)],
+        not_found=[tile_id for tile_id in requested if tile_id not in deleted],
     )
 
 
@@ -1344,14 +1354,8 @@ async def delete_tile_from_acquisition(
 ):
     """Delete a specific tile of an acquisition. Error if the acquisition is complete."""
     acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
-    tile_key = _tile_uuid_or_404(tile_id)
     tile = await session.scalars(
-        select(TileSQLModel).where(
-            TileSQLModel.tile_id == tile_key,
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-            TileSQLModel.image.is_(None),
-        )
+        select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)).where(TileSQLModel.image.is_(None))
     )
     tile_obj = tile.first()
     if tile_obj is None:
@@ -1447,12 +1451,9 @@ async def get_acquisition_with_full_metadata(
 @acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])
 async def list_acquisitions_with_hierarchy(
     response: Response,
-    cursor: str | None = Query(
-        None,
-        description="Cursor for pagination (e.g., last seen acquisition_id or _id)",
-    ),
+    cursor: int | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(50, ge=1, le=100),
-    sort_by: str = Query("start_time", description="Field to sort by (e.g., start_time, acquisition_id)"),
+    sort_by: Literal["start_time", "acquisition_id"] = Query("start_time", description="Field to sort by"),
     sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     roi_id: str | None = Query(None, description="Filter by hierarchical ROI ID"),
@@ -1476,61 +1477,59 @@ async def list_acquisitions_with_hierarchy(
     if acq_status:
         conditions.append(_status_condition(acq_status))
     if substrate_media_id:
-        conditions.append(SubstrateSQLModel.media_id == substrate_media_id)
-
-    sort_column = getattr(AcquisitionSQLModel, sort_by, AcquisitionSQLModel.start_time)
-    order_column = sort_column.asc() if sort_order == 1 else sort_column.desc()
-    rows = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                AcquisitionTaskSQLModel,
-                ROISQLModel,
-                SectionSQLModel,
-                SubstrateSQLModel,
-                CuttingSessionSQLModel,
-                BlockSQLModel,
-                SpecimenSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
+        conditions.append(
+            AcquisitionSQLModel.roi_id.in_(
+                select(ROISQLModel.roi_id).where(ROISQLModel.substrate_media_id == substrate_media_id)
             )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                SectionSQLModel,
-                SectionSQLModel.section_id == ROISQLModel.section_id,
-            )
-            .outerjoin(
-                SubstrateSQLModel,
-                SubstrateSQLModel.media_id == ROISQLModel.substrate_media_id,
-            )
-            .outerjoin(
-                CuttingSessionSQLModel,
-                CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.block_id == CuttingSessionSQLModel.block_id,
-                    BlockSQLModel.specimen_id == CuttingSessionSQLModel.specimen_id,
-                ),
-            )
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .where(*conditions)
-            .order_by(order_column)
         )
-    ).all()
+
+    statement = (
+        select(
+            AcquisitionSQLModel,
+            AcquisitionTaskSQLModel,
+            ROISQLModel,
+            SectionSQLModel,
+            SubstrateSQLModel,
+            CuttingSessionSQLModel,
+            BlockSQLModel,
+            SpecimenSQLModel,
+        )
+        .select_from(AcquisitionSQLModel)
+        .outerjoin(
+            AcquisitionTaskSQLModel,
+            AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
+        )
+        .outerjoin(
+            ROISQLModel,
+            ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
+        )
+        .outerjoin(
+            SectionSQLModel,
+            SectionSQLModel.section_id == ROISQLModel.section_id,
+        )
+        .outerjoin(
+            SubstrateSQLModel,
+            SubstrateSQLModel.media_id == ROISQLModel.substrate_media_id,
+        )
+        .outerjoin(
+            CuttingSessionSQLModel,
+            CuttingSessionSQLModel.cutting_session_id == SectionSQLModel.cutting_session_id,
+        )
+        .outerjoin(
+            BlockSQLModel,
+            and_(
+                BlockSQLModel.block_id == CuttingSessionSQLModel.block_id,
+                BlockSQLModel.specimen_id == CuttingSessionSQLModel.specimen_id,
+            ),
+        )
+        .outerjoin(
+            SpecimenSQLModel,
+            SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
+        )
+    )
+    rows, total_count, next_cursor = await acquisition_page(
+        session, statement, conditions, sort_by, sort_order, cursor, limit
+    )
 
     formatted_results = []
     for (
@@ -1542,9 +1541,6 @@ async def list_acquisitions_with_hierarchy(
         cutting_obj,
         block_obj,
         specimen_obj,
-        _specimen_ref,
-        _roi_ref_value,
-        _task_ref,
     ) in rows:
         formatted_results.append(
             AcquisitionFullMetadata(
@@ -1558,9 +1554,6 @@ async def list_acquisitions_with_hierarchy(
                 specimen=specimen_obj.model_dump() if specimen_obj else None,
             ).model_dump(mode="json", by_alias=True)
         )
-    total_count = len(formatted_results)
-    formatted_results = formatted_results[:limit]
-    next_cursor = str(formatted_results[-1]["acquisition"]["id"]) if formatted_results else None
     metadata = {
         "total_count": total_count,
         "returned_count": len(formatted_results),

@@ -1,5 +1,3 @@
-import uuid
-
 import pytest
 from pydantic import ValidationError
 
@@ -12,8 +10,6 @@ from temdb.models import (
     TileResponse,
     TileUpdate,
 )
-
-TILE_UUID = uuid.UUID("0190a6b2-7c3e-7000-8000-000000000001")
 
 
 def _tile_image(key: str) -> dict[str, str]:
@@ -46,7 +42,6 @@ class TestMatcher:
 class TestTileCreate:
     def test_valid_tile_create(self):
         tile = TileCreate(
-            tile_id=str(TILE_UUID),
             raster_index=0,
             stage_position={"x": 100.0, "y": 200.0},
             raster_position={"row": 0, "col": 0},
@@ -57,17 +52,16 @@ class TestTileCreate:
             std_value=25.0,
             image=_tile_image("TILE_001.tif"),
         )
-        assert tile.tile_id == TILE_UUID
+        assert tile.retake == 0
         assert tile.raster_index == 0
         assert tile.focus_score == 0.95
 
     def test_tile_create_missing_required_field(self):
         with pytest.raises(ValidationError):
-            TileCreate(
-                tile_id=str(TILE_UUID),
-            )
+            TileCreate(raster_index=0)
 
-    def test_tile_create_non_uuid_tile_id_rejected(self):
+    def test_tile_create_rejects_a_tile_id(self):
+        """A tile's name is derived from its position by the server, so create takes no tile_id."""
         with pytest.raises(ValidationError):
             TileCreate(
                 tile_id="TILE_OLD_STYLE_123",
@@ -82,24 +76,9 @@ class TestTileCreate:
                 image=_tile_image("TILE_001.tif"),
             )
 
-    def test_tile_create_tile_id_optional(self):
-        tile = TileCreate(
-            raster_index=0,
-            stage_position={"x": 100.0, "y": 200.0},
-            raster_position={"row": 0, "col": 0},
-            focus_score=0.95,
-            min_value=0.0,
-            max_value=255.0,
-            mean_value=128.0,
-            std_value=25.0,
-            image=_tile_image("TILE_001.tif"),
-        )
-        assert tile.tile_id is None
-
     def test_tile_create_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
             TileCreate(
-                tile_id=str(TILE_UUID),
                 raster_index=0,
                 stage_position={"x": 100.0, "y": 200.0},
                 raster_position={"row": 0, "col": 0},
@@ -121,6 +100,7 @@ class TestTileResponse:
             raster_index=0,
             stage_position={"x": 100.0, "y": 200.0},
             raster_position={"row": 0, "col": 0},
+            retake=0,
             focus_score=0.95,
             min_value=0.0,
             max_value=255.0,
@@ -146,21 +126,15 @@ class TestTileBase:
         assert tile.focus_score == 0.9
         assert tile.image == FileObject(protocol="s3", server="http://localhost:9000", bucket="tiles", key="image.tif")
 
-    def test_tile_base_with_stage_and_raster_positions(self):
-        tile = TileBase(
-            stage_position={"x": 100, "y": 200},
-            raster_position={"row": 1, "col": 2},
-        )
+    def test_tile_base_with_stage_position(self):
+        tile = TileBase(stage_position={"x": 100, "y": 200})
         assert tile.stage_position is not None
-        assert tile.raster_position is not None
         assert tile.stage_position.x == 100
         assert tile.stage_position.y == 200
-        assert tile.raster_position.row == 1
-        assert tile.raster_position.col == 2
 
     def test_tile_base_stage_position_rejects_extra_fields(self):
         with pytest.raises(ValidationError):
-            TileBase(stage_position={"x": 100, "y": 200, "z": 300})
+            TileBase(stage_position={"x": 100, "y": 200, "w": 300})
 
 
 class TestTileStatsOptional:
@@ -186,6 +160,7 @@ class TestTileStatsOptional:
             raster_index=0,
             stage_position={"x": 100.0, "y": 200.0},
             raster_position={"row": 0, "col": 0},
+            retake=0,
             image=_tile_image("TILE_001.tif"),
         )
         assert [
@@ -249,7 +224,7 @@ class TestTileCreatePositionValidation:
             pytest.param({}, id="empty"),
             pytest.param({"X": 1.0, "Y": 2.0}, id="wrong_case"),
             pytest.param({"x": 1.0}, id="missing_y"),
-            pytest.param({"x": 1.0, "y": 2.0, "z": 3.0}, id="extra_key"),
+            pytest.param({"x": 1.0, "y": 2.0, "w": 3.0}, id="extra_key"),
         ],
     )
     def test_bad_stage_position_fails_before_the_http_call(self, stage_position):

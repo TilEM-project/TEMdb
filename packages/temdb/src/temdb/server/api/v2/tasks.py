@@ -23,6 +23,8 @@ from temdb.server.sqlmodels import (
     SpecimenSQLModel,
 )
 
+from ..utils import drop_null_keys, merge_extra
+
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
 )
@@ -131,6 +133,7 @@ def _task_from_create(
         tags=task_data.tags,
         metadata_json=task_data.metadata,
         created_at=task_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(task_data.extra),
     )
 
 
@@ -193,6 +196,7 @@ async def list_tasks(
     if task_group_id is not None:
         filters.append(AcquisitionTaskSQLModel.task_group_id == task_group_id)
         statement = statement.order_by(AcquisitionTaskSQLModel.tilt_angle_deg)
+    statement = statement.order_by(AcquisitionTaskSQLModel.task_id)
     if current_only or imageable:
         filters.append(AcquisitionTaskSQLModel.superseded_by.is_(None))
     if skip_destroyed or imageable:
@@ -256,7 +260,7 @@ async def create_task(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
     )
     if existing.one_or_none() is not None:
-        raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
+        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     new_task = _task_from_create(task_data)
     session.add(new_task)
     await session.commit()
@@ -336,13 +340,19 @@ async def update_task(
     if row is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     task_obj, _specimen_ref, _block_ref, _roi_ref = row
-    update_data = updated_fields.model_dump(mode="json", exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        mode="json",
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(400, "No update fields provided")
+    extra_changes = update_data.pop("extra", None)
     if "metadata" in update_data:
         task_obj.metadata_json = update_data.pop("metadata")
     for field, value in update_data.items():
         setattr(task_obj, field, value)
+    if extra_changes is not None:
+        task_obj.extra = merge_extra(AcquisitionTaskSQLModel.extra, extra_changes)
     task_obj.updated_at = datetime.now(timezone.utc)
     session.add(task_obj)
     await session.commit()
@@ -357,22 +367,11 @@ async def update_task(
 
 @acquisition_task_api.delete("/acquisition-tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_session)):
-    dependency_row = (
-        await session.execute(
-            select(AcquisitionTaskSQLModel, AcquisitionSQLModel.id)
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                AcquisitionSQLModel,
-                AcquisitionSQLModel.acquisition_task_id == AcquisitionTaskSQLModel.task_id,
-            )
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
-        )
-    ).first()
-    if dependency_row is None:
+    task_obj = (
+        await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    ).one_or_none()
+    if task_obj is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    task_obj, acquisition_id = dependency_row
-    if acquisition_id is not None:
-        raise HTTPException(400, f"Cannot delete task '{task_id}': acquisitions exist.")
     await session.delete(task_obj)
     await session.commit()
     return None
@@ -428,7 +427,7 @@ async def supersede_task(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
     )
     if existing.one_or_none() is not None:
-        raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists")
+        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     await _validate_lineage(session, task_data)
     new_task = _task_from_create(task_data)
     session.add(new_task)
@@ -463,7 +462,7 @@ async def create_tasks_batch(
             select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
         )
         if existing.one_or_none() is not None:
-            raise HTTPException(400, f"Task ID '{task_data.task_id}' already exists.")
+            raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists.")
 
     group_id = uuid7() if group else None
     new_tasks = []

@@ -1,10 +1,10 @@
 # Using the URI Class
 
-To aid in uploading an downloading referenced files, a `URI` class can be imported using `from temdb.models import URI`. This class can be used in the following ways.
+To help upload and download referenced files, import the `URI` class with `from temdb.models import URI`.
 
 ## Uploading Files
 
-When uploading a new file, the following pattern can be used.
+When uploading a new file, use this pattern:
 
 ```python
 from temdb.models import URI
@@ -12,43 +12,50 @@ from temdb.models import URI
 image_uri = URI("s3://random-bucket/my_image.png")
 
 with open("./my_image.png", "rb") as infile:
-   with image_uri.open("wb") as outfile:
-      outfile.write(infile.read())
+    with image_uri.open("wb") as outfile:
+        outfile.write(infile.read())
 ```
 
-Of course, the data can come from any source, not just from existing files. Once a `URI` class instance has been created, it can be passed be uploaded to the database. For example:
+The data can come from any source, not only from existing files. Once the file is uploaded, store its `URI` in the
+database. `TEMdbClient` is asynchronous, so call it from a coroutine:
 
 ```python
-from temdb.client import create_client
-from temdb.models import SpecimenCreate
+import asyncio
 
-client = create_client("http://temdb.example.com", async_mode=False)
+from temdb.client import TEMdbClient
 
-client.specimen.create(SpecimenCreate(
-   specimen_id="my_dummy_specimen",
-   specimen_images=[image_uri],
-))
+
+async def main():
+    async with TEMdbClient("http://temdb.example.com") as client:
+        await client.specimen.create(specimen_id="my_dummy_specimen", specimen_images=[image_uri])
+
+
+asyncio.run(main())
 ```
 
-## downloading Files
+To add an image to an existing specimen, use `await client.specimen.add_image("my_dummy_specimen", str(image_uri))`.
 
-When querying data from the database, `URI` objects are automatically returned. For example,
+## Downloading Files
+
+Fields that hold URIs come back from the client as `URI` objects:
 
 ```python
-specimen = client.specimen.get("my_dummy_specimen")
+async with TEMdbClient("http://temdb.example.com") as client:
+    specimen = await client.specimen.get("my_dummy_specimen")
 
 for image_uri in specimen.specimen_images:
-   with image_uri.open() as remote_file:
-      with open("downloaded_image.png", "wb") as local_file:
-         local_file.write(remote_file.read())
-   break
+    with image_uri.open("rb") as remote_file:
+        with open("downloaded_image.png", "wb") as local_file:
+            local_file.write(remote_file.read())
+    break
 ```
 
-Of course, the remote file data could be read directly, rather than saved to a local file.
+The remote data can also be read directly instead of saved to a local file.
 
 ## Example URIs
 
-The underlying library the `URI` class uses can write to multiple data stores. So far, S3 and S3 compatible storage has been tested. Below are a few example URIs.
+The library underneath the `URI` class can write to several data stores. S3 and S3-compatible storage have been
+tested. Some example URIs:
 
 ### AWS S3
 
@@ -60,4 +67,6 @@ The underlying library the `URI` class uses can write to multiple data stores. S
 
 ## Credentials
 
-By default, the URI class will use whatever credentials the system has installed for a given client. In order to support different credentials for different storage systems or buckets, a configuration file can be used. More information about this configuration file is available [here](data_config.md).
+By default, the `URI` class uses whatever credentials the system has installed for a given client. To use different
+credentials for different storage systems or buckets, use a configuration file; see
+[Data Configuration](data_config.md).

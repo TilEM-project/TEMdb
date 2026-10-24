@@ -3,10 +3,12 @@ from typing import Any
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 
 
-class SpecimenBase(TEMDBModel):
+class SpecimenBase(TEMDBRecord):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     description: str | None = Field(None, description="Description of specimen, used for additional notes.")
     functional_imaging_metadata: dict[str, Any] | None = Field(
         None,

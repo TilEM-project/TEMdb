@@ -35,3 +35,8 @@ replace = "temdb-models=={new_version}"
 filename = "packages/temdb/pyproject.toml"
 search = "temdb-models=={current_version}"
 replace = "temdb-models=={new_version}"
+
+[[tool.bumpversion.files]]
+filename = "openapi.json"
+search = "\"version\": \"{current_version}\""
+replace = "\"version\": \"{new_version}\""

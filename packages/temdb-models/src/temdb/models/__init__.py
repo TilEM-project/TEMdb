@@ -17,6 +17,7 @@ from temdb.models.block import (
     BlockResponse,
     BlockUpdate,
 )
+from temdb.models.contract import Contract
 from temdb.models.cutting_session import (
     CuttingSessionBase,
     CuttingSessionCreate,
@@ -36,8 +37,11 @@ from temdb.models.enums import (
     TASK_KINDS,
     TRANSFER_STATES,
     AcquisitionStatusFilter,
+    ApertureStatus,
     SectionQuality,
+    ShapeType,
     StorageProtocol,
+    SubstrateType,
 )
 from temdb.models.error import APIErrorResponse
 from temdb.models.file_storage import (
@@ -45,6 +49,15 @@ from temdb.models.file_storage import (
     FileObjectRequest,
     FileObjectResponse,
     StorageDefault,
+)
+from temdb.models.layout import (
+    Aperture,
+    Fiducial,
+    PolygonParams,
+    SubstrateLayoutBase,
+    SubstrateLayoutCreate,
+    SubstrateLayoutResponse,
+    SubstrateLayoutUpdate,
 )
 from temdb.models.lens_correction import (
     LensCorrectionBase,
@@ -77,6 +90,7 @@ from temdb.models.section import (
     SectioningRunParameters,
     SectionMetric,
     SectionMetrics,
+    SectionPosition,
     SectionResponse,
     SectionUpdate,
 )
@@ -87,11 +101,10 @@ from temdb.models.specimen import (
     SpecimenUpdate,
 )
 from temdb.models.substrate import (
-    Aperture,
-    ReferencePoints,
+    ApertureState,
+    SubstrateApertures,
     SubstrateBase,
     SubstrateCreate,
-    SubstrateMetadata,
     SubstrateResponse,
     SubstrateUpdate,
 )
@@ -112,10 +125,14 @@ from temdb.models.tile import (
 )
 
 __all__ = [
+    "Contract",
     # Enums
     "AcquisitionStatusFilter",
     "SectionQuality",
     "StorageProtocol",
+    "SubstrateType",
+    "ShapeType",
+    "ApertureStatus",
     # Vocab constants
     "RUN_STATUSES",
     "QC_STATES",
@@ -166,14 +183,22 @@ __all__ = [
     "SectionMetric",
     "SectionMetrics",
     "SectioningRunParameters",
+    "SectionPosition",
     # Substrate
     "SubstrateBase",
     "SubstrateCreate",
     "SubstrateUpdate",
     "SubstrateResponse",
-    "ReferencePoints",
+    "SubstrateApertures",
+    "ApertureState",
+    # SubstrateLayout
     "Aperture",
-    "SubstrateMetadata",
+    "Fiducial",
+    "PolygonParams",
+    "SubstrateLayoutBase",
+    "SubstrateLayoutCreate",
+    "SubstrateLayoutResponse",
+    "SubstrateLayoutUpdate",
     # Task
     "AcquisitionTaskBase",
     "AcquisitionTaskCreate",

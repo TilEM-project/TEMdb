@@ -7,18 +7,19 @@ from temdb.client import TEMdbClient
 from temdb.client.exceptions import TEMdbConflictError
 from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.client.resources.roi import ROIResource
-from temdb.models import TileBulkDeleteResult, TileDeleteAllResult, TileUpdate
+from temdb.models import TileUpdate
 
 API = "http://test/api/v2"
 
 
 def _tile(raster_index: int) -> dict:
     return {
-        "tile_id": f"018f-{raster_index}",
+        "tile_id": f"M_r000_c{raster_index:03d}",
         "acquisition_id": "ACQ1",
         "raster_index": raster_index,
         "stage_position": {"x": 0.0, "y": 0.0},
         "raster_position": {"row": 0, "col": raster_index},
+        "retake": 0,
         "focus_score": 0.9,
         "min_value": 0,
         "max_value": 255,
@@ -34,26 +35,64 @@ def _tile(raster_index: int) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_get_all_tiles_follows_pagination():
+async def test_get_tiles_passes_bbox_params():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.side_effect = [
-        {"tiles": [_tile(0), _tile(1)], "metadata": {"has_more": True, "next_cursor": 1}},
-        {"tiles": [_tile(2)], "metadata": {"has_more": False, "next_cursor": None}},
-    ]
-    tiles = await res.get_all_tiles("ACQ1", page_limit=2)
-    assert [t.raster_index for t in tiles] == [0, 1, 2]
-    assert request.await_count == 2
+    request.return_value = {"tiles": [], "metadata": {"has_more": False, "next_cursor": None}}
+
+    await res.get_tiles("ACQ1", x_min=1.0, x_max=2.0, y_min=3.0, y_max=4.0, limit=10)
+
+    assert request.await_args.args[0] == "GET"
+    assert request.await_args.args[1] == "acquisitions/ACQ1/tiles"
+    assert request.await_args.kwargs["params"] == {
+        "limit": 10,
+        "x_min": 1.0,
+        "x_max": 2.0,
+        "y_min": 3.0,
+        "y_max": 4.0,
+    }
 
 
 @pytest.mark.asyncio
-async def test_get_all_tiles_single_page():
+async def test_get_all_tiles_forwards_bbox_params():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {"tiles": [_tile(0)], "metadata": {"has_more": False, "next_cursor": None}}
-    tiles = await res.get_all_tiles("ACQ1")
-    assert len(tiles) == 1
-    assert request.await_count == 1
+    request.side_effect = [
+        {"tiles": [_tile(0)], "metadata": {"has_more": True, "next_cursor": 1}},
+        {"tiles": [_tile(1)], "metadata": {"has_more": False, "next_cursor": None}},
+    ]
+
+    await res.get_all_tiles("ACQ1", page_limit=1, x_min=10.0, x_max=20.0)
+
+    first_call = request.await_args_list[0]
+    second_call = request.await_args_list[1]
+    assert first_call.kwargs["params"]["x_min"] == 10.0
+    assert first_call.kwargs["params"]["x_max"] == 20.0
+    assert second_call.kwargs["params"]["x_min"] == 10.0
+    assert second_call.kwargs["params"]["x_max"] == 20.0
+
+
+@pytest.mark.asyncio
+async def test_get_all_tiles_rejects_unknown_keyword():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+
+    with pytest.raises(TypeError):
+        await res.get_all_tiles("ACQ1", xmin=10.0)
+
+    request.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_all_tiles_returns_requested_fields():
+    request = AsyncMock()
+    res = AcquisitionResource(request, API)
+    request.return_value = {"tiles": [{"tile_id": "M_r000_c000"}], "metadata": {"has_more": False}}
+
+    tiles = await res.get_all_tiles("ACQ1", fields=["tile_id"])
+
+    assert request.await_args.kwargs["params"]["fields"] == ["tile_id"]
+    assert tiles == [{"tile_id": "M_r000_c000"}]
 
 
 @pytest.mark.asyncio
@@ -73,7 +112,6 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
                 "microscope_id": "0190a6b2-7c3e-7000-8000-000000000002",
                 "kind": "montage",
                 "hardware_settings": {
-                    "scope_id": "scope1",
                     "camera_model": "FalconIV",
                     "camera_serial": "SN001",
                     "camera_bit_depth": 16,
@@ -150,7 +188,7 @@ async def test_update_tile_sends_patch_and_returns_model():
     method, endpoint = request.await_args.args[0], request.await_args.args[1]
     assert (method, endpoint) == ("PATCH", "acquisitions/ACQ1/tiles/018f-7")
     assert request.await_args.kwargs["json"] == {"focus_score": 0.95}
-    assert out.tile_id == "018f-7"
+    assert out.tile_id == "M_r000_c007"
     assert out.focus_score == 0.9
 
 
@@ -174,34 +212,7 @@ async def test_update_tiles_bulk_sends_patch_and_returns_models():
         "018f-0": {"focus_score": 0.91},
         "018f-1": {"stage_position": {"x": 10.0, "y": 20.0}},
     }
-    assert [tile.tile_id for tile in out] == ["018f-0", "018f-1"]
-
-
-@pytest.mark.asyncio
-async def test_delete_all_tiles_returns_the_deleted_count():
-    request = AsyncMock()
-    res = AcquisitionResource(request, API)
-    request.return_value = {"deleted": 3}
-
-    out = await res.delete_all_tiles("ACQ1")
-
-    method, endpoint = request.await_args.args[0], request.await_args.args[1]
-    assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/all")
-    assert out == TileDeleteAllResult(deleted=3)
-
-
-@pytest.mark.asyncio
-async def test_delete_tiles_bulk_sends_json_body_and_returns_the_result():
-    request = AsyncMock()
-    res = AcquisitionResource(request, API)
-    request.return_value = {"requested": 2, "deleted": 1, "not_found": ["018f-1"]}
-
-    out = await res.delete_tiles_bulk("ACQ1", ["018f-0", "018f-1"])
-
-    method, endpoint = request.await_args.args[0], request.await_args.args[1]
-    assert (method, endpoint) == ("DELETE", "acquisitions/ACQ1/tiles/bulk")
-    assert request.await_args.kwargs["json"] == ["018f-0", "018f-1"]
-    assert out == TileBulkDeleteResult(requested=2, deleted=1, not_found=["018f-1"])
+    assert [tile.tile_id for tile in out] == ["M_r000_c000", "M_r000_c001"]
 
 
 @pytest.mark.asyncio

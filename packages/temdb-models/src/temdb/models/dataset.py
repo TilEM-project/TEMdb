@@ -4,19 +4,21 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field
 
-from .base import TEMDBModel
+from .base import TEMDBRecord
 from .file_storage import StorageDefault
 
 SizeClass = Literal["small", "medium", "large", "xlarge"]
 DatasetStatus = Literal["collecting", "collected", "archived"]
 
 
-class DatasetBase(TEMDBModel):
+class DatasetBase(TEMDBRecord):
     description: str | None = Field(None, description="Human description of the dataset")
     specimen_id: str | None = Field(None, description="Specimen this dataset belongs to")
     size_class: SizeClass | None = Field(None, description="Planner size class; drives tile partitioning")
-    estimated_tile_count: int | None = Field(None, description="Estimated total tiles; resolves size_class when set")
     default_storage: StorageDefault | None = Field(None, description="Default storage for tiles in this dataset")
+    estimated_tile_count: int | None = Field(
+        None, ge=0, description="Estimated total tiles; resolves size_class when set"
+    )
     metadata_json: dict[str, Any] | None = Field(None, description="Free-form metadata")
 
 
@@ -26,11 +28,11 @@ class DatasetCreate(DatasetBase):
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
-class DatasetUpdate(TEMDBModel):
-    description: str | None = None
-    status: DatasetStatus | None = None
-    size_class: SizeClass | None = None
-    metadata_json: dict[str, Any] | None = None
+class DatasetUpdate(TEMDBRecord):
+    description: str | None = Field(None, description="Human description of the dataset")
+    status: DatasetStatus = Field(None, description="Lifecycle status")
+    size_class: SizeClass = Field(None, description="Planner size class; drives tile partitioning")
+    metadata_json: dict[str, Any] | None = Field(None, description="Free-form metadata")
 
 
 class DatasetResponse(DatasetBase):

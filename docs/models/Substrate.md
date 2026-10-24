@@ -4,14 +4,9 @@
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `media_id` | string |  |
-| `media_type` | string |  |
-| `uid` | string |  |
-| `status` | string |  |
-| `refpoint` | object |  |
-| `refpoint_world` | object |  |
-| `source_path` | string |  |
-| `metadata` | object |  |
-| `apertures` | object |  |
-| `created_at` | datetime |  |
+| `media_id` | string | Primary unique identifier |
+| `substrate_layout_id` | string | The ID of the substrate layout |
+| `aperture_status` | list | Status of each aperture in layout order |
+| `created_at` | datetime | Creation timestamp; server-generated if omitted |
 | `updated_at` | datetime |  |
+| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |

@@ -1,10 +1,20 @@
 import logging
+from http import HTTPStatus
 
+from asyncpg.exceptions import (
+    CharacterNotInRepertoireError,
+    ForeignKeyViolationError,
+    InvalidTextRepresentationError,
+    UniqueViolationError,
+    UntranslatableCharacterError,
+)
 from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy.exc import DBAPIError, IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from temdb.models import APIErrorResponse
 from temdb.server.config import is_debug_traceback_enabled
@@ -85,6 +95,61 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Wraps every HTTPException in APIErrorResponse; error_code is the status name, e.g. NOT_FOUND."""
+    http_status = HTTPStatus(exc.status_code)
+    if isinstance(exc.detail, str):
+        error_content = APIErrorResponse(detail=exc.detail, error_code=http_status.name)
+    else:
+        error_content = APIErrorResponse(
+            detail=http_status.phrase, error_code=http_status.name, context={"detail": jsonable_encoder(exc.detail)}
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_content.model_dump(exclude_none=True),
+        headers=exc.headers,
+    )
+
+
+async def integrity_exception_handler(request: Request, exc: IntegrityError):
+    """Foreign-key and unique violations are a 409 naming the table; other violations stay 500."""
+    postgres_error = exc.driver_exception
+    if isinstance(postgres_error, ForeignKeyViolationError):
+        error_code = "FOREIGN_KEY_VIOLATION"
+    elif isinstance(postgres_error, UniqueViolationError):
+        error_code = "UNIQUE_VIOLATION"
+    else:
+        return await generic_exception_handler(request, exc)
+    error_content = APIErrorResponse(
+        detail=postgres_error.detail,
+        error_code=error_code,
+        context={"table": postgres_error.table_name, "constraint": postgres_error.constraint_name},
+    )
+    logger.warning(f"{error_code} on {request.url}: {error_content.detail}")
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=error_content.model_dump(exclude_none=True))
+
+
+async def database_error_handler(request: Request, exc: DBAPIError):
+    """Return 422 for values Postgres cannot store: a string with a NUL character or a lone UTF-16 surrogate, or an
+    integer too large for its column.
+
+    Every other database error is passed to the generic 500 handler.
+    """
+    postgres_error = exc.driver_exception
+    unstorable = CharacterNotInRepertoireError | UntranslatableCharacterError | InvalidTextRepresentationError
+    if isinstance(postgres_error, unstorable) or isinstance(postgres_error.__cause__, UnicodeEncodeError):
+        detail = f"Text cannot be stored: {postgres_error}"
+    elif isinstance(postgres_error.__cause__, OverflowError):
+        detail = f"Number out of range: {postgres_error}"
+    else:
+        return await generic_exception_handler(request, exc)
+    error_content = APIErrorResponse(detail=detail, error_code="VALIDATION_ERROR")
+    logger.warning(f"Unstorable value on {request.url}: {postgres_error}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content=error_content.model_dump(exclude_none=True)
+    )
+
+
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handles FastAPI RequestValidationError (returns 422 Unprocessable Entity)."""
     error_content = APIErrorResponse(
@@ -103,7 +168,10 @@ def register_exception_handlers(app):
     """Registers all defined exception handlers with the FastAPI app."""
     app.add_exception_handler(ValidationError, validation_exception_handler)
     app.add_exception_handler(BaseError, business_logic_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+    app.add_exception_handler(IntegrityError, integrity_exception_handler)
+    app.add_exception_handler(DBAPIError, database_error_handler)
     app.add_exception_handler(Exception, generic_exception_handler)
     logger.info("Registered custom exception handlers.")

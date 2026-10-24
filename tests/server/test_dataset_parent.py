@@ -3,8 +3,6 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from temdb.server.ids import uuid7
-
 DS_PAYLOAD = {"size_class": "small"}
 
 
@@ -15,9 +13,7 @@ async def _create_dataset(async_client: AsyncClient, name: str, **extra) -> dict
 
 
 def _tile_payload() -> dict:
-    tile_id = str(uuid7())
     return {
-        "tile_id": tile_id,
         "raster_index": 0,
         "stage_position": {"x": 1.0, "y": 2.0},
         "raster_position": {"row": 0, "col": 0},
@@ -30,7 +26,7 @@ def _tile_payload() -> dict:
             "protocol": "s3",
             "server": "http://localhost:9000",
             "bucket": "tiles",
-            "key": f"path/to/{tile_id}.tif",
+            "key": "path/to/tile_0.tif",
         },
     }
 

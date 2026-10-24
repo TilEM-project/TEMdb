@@ -4,9 +4,9 @@
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `specimen_id` | string |  |
-| `description` | string |  |
-| `specimen_images` | object |  |
-| `functional_imaging_metadata` | object |  |
-| `created_at` | datetime |  |
+| `specimen_id` | string | Unique specimen identifier |
+| `description` | string | Description of specimen, used for additional notes. |
+| `functional_imaging_metadata` | object | Functional imaging metadata of specimen, optional links to other datasets |
+| `created_at` | datetime | Creation timestamp; server-generated if omitted |
 | `updated_at` | datetime |  |
+| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |

@@ -18,3 +18,18 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: schema-docs
+        name: regenerate schema diagrams and model pages
+        entry: uv run python generate_schema_diagram.py
+        language: system
+        pass_filenames: false
+        files: ^(packages/temdb(-models)?/src/|generate_schema_diagram\.py$)
+      - id: openapi
+        name: regenerate openapi.json
+        entry: bash -c 'uv run temdb-openapi > openapi.json'
+        language: system
+        pass_filenames: false
+        files: ^packages/temdb(-models)?/src/

@@ -5,7 +5,6 @@ from httpx import AsyncClient
 
 MINIMAL_ACQ_PAYLOAD = {
     "hardware_settings": {
-        "scope_id": "TEST_SCOPE_001",
         "camera_model": "Test Camera",
         "camera_serial": "12345",
         "camera_bit_depth": 16,
@@ -22,8 +21,8 @@ MINIMAL_ACQ_PAYLOAD = {
 }
 
 
-async def _create_microscope(async_client: AsyncClient, label: str) -> dict:
-    resp = await async_client.post("/api/v2/microscopes", json={"label": label})
+async def _create_microscope(async_client: AsyncClient, microscope_id: str) -> dict:
+    resp = await async_client.post("/api/v2/microscopes", json={"microscope_id": microscope_id})
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -82,23 +81,19 @@ async def test_lc_current_404_when_none(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_microscope_duplicate_label_409(async_client: AsyncClient):
+async def test_microscope_duplicate_id_409(async_client: AsyncClient):
     await _create_microscope(async_client, "TEM-04")
-    r = await async_client.post("/api/v2/microscopes", json={"label": "TEM-04"})
+    r = await async_client.post("/api/v2/microscopes", json={"microscope_id": "TEM-04"})
     assert r.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_microscope_get_by_id_or_label(async_client: AsyncClient):
+async def test_microscope_get_found(async_client: AsyncClient):
     scope = await _create_microscope(async_client, "TEM-05")
 
-    by_id = await async_client.get(f"/api/v2/microscopes/{scope['microscope_id']}")
-    assert by_id.status_code == 200
-    assert by_id.json()["label"] == "TEM-05"
-
-    by_label = await async_client.get("/api/v2/microscopes/TEM-05")
-    assert by_label.status_code == 200
-    assert by_label.json()["microscope_id"] == scope["microscope_id"]
+    found = await async_client.get("/api/v2/microscopes/TEM-05")
+    assert found.status_code == 200
+    assert found.json()["id"] == scope["id"]
 
     missing = await async_client.get("/api/v2/microscopes/NO-SUCH-SCOPE")
     assert missing.status_code == 404
@@ -118,6 +113,16 @@ async def test_microscope_list_and_patch(async_client: AsyncClient):
     )
     assert patched.status_code == 200
     assert patched.json()["location"] == "Allen Institute, Bay 3"
+
+
+@pytest.mark.asyncio
+async def test_microscope_patch_rejects_null_for_a_required_field(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-10")
+
+    patched = await async_client.patch(f"/api/v2/microscopes/{scope['microscope_id']}", json={"microscope_type": None})
+
+    assert patched.status_code == 422
+    assert [error["loc"] for error in patched.json()["context"]["errors"]] == [["body", "microscope_type"]]
 
 
 @pytest.mark.asyncio
@@ -190,6 +195,65 @@ async def test_lc_create_honors_client_lc_id(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_lc_create_duplicate_lc_id_409(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-09")
+    payload = {
+        "lc_id": str(uuid.uuid4()),
+        "microscope_id": scope["microscope_id"],
+        "magnification": 4000,
+        "started_at": "2026-06-10T00:00:00Z",
+    }
+    assert (await async_client.post("/api/v2/lens-corrections", json=payload)).status_code == 201
+
+    duplicate = await async_client.post("/api/v2/lens-corrections", json=payload)
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error_code"] == "CONFLICT"
+    assert payload["lc_id"] in duplicate.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient):
+    scope = await _create_microscope(async_client, "TEM-09")
+    create_response = await async_client.post(
+        "/api/v2/lens-corrections",
+        json={
+            "microscope_id": scope["microscope_id"],
+            "magnification": 12000,
+            "started_at": "2026-06-11T00:00:00Z",
+            "extra": {"unknown_create_key": {"create": "ok"}},
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["extra"]["unknown_create_key"] == {"create": "ok"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/lens-corrections/{created['lc_id']}",
+        json={
+            "correction_x_uri": "s3://bucket/lc/extra-x.tiff",
+            "extra": {"unknown_patch_key": "patch-ok"},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patch-ok"
+
+    get_response = await async_client.get(f"/api/v2/lens-corrections/{created['lc_id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"create": "ok"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patch-ok"
+
+    list_response = await async_client.get(
+        "/api/v2/lens-corrections",
+        params={"microscope_id": scope["microscope_id"], "magnification": 12000},
+    )
+    assert list_response.status_code == 200
+    listed = next(lc for lc in list_response.json() if lc["lc_id"] == created["lc_id"])
+    assert listed["extra"]["unknown_create_key"] == {"create": "ok"}
+    assert listed["extra"]["unknown_patch_key"] == "patch-ok"
+
+
+@pytest.mark.asyncio
 async def test_acquisition_create_carries_lc_id(
     async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope
 ):
@@ -197,7 +261,7 @@ async def test_acquisition_create_carries_lc_id(
         await async_client.post(
             "/api/v2/lens-corrections",
             json={
-                "microscope_id": str(test_microscope.microscope_id),
+                "microscope_id": test_microscope.microscope_id,
                 "magnification": 20000,
                 "started_at": "2026-06-10T00:00:00Z",
             },
@@ -211,7 +275,7 @@ async def test_acquisition_create_carries_lc_id(
             "montage_id": "MONTAGE_LC_001",
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "kind": "montage",
             "lc_id": lc["lc_id"],
         },
@@ -232,7 +296,7 @@ async def test_acquisition_create_unknown_lc_id_404(
             "montage_id": "MONTAGE_LC_002",
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "kind": "montage",
             "lc_id": str(uuid.uuid4()),
         },

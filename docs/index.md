@@ -18,8 +18,8 @@ TEMdb models the typical flow of a sample through the Sectioning and Imaging pip
 1.  **[Specimen](models/Specimen.md):** The initial biological sample that is prepared.
 2.  **[Block](models/Block.md):** The specimen may be processed into one or more blocks suitable for sectioning. MicroCT scans might occur at this stage.
 3.  **[Cutting Session](models/CuttingSession.md):** A block undergoes sectioning during a specific session, using a particular device.
-4.  **[Section](models/Section.md):** Thin sections are cut from the block and placed onto a medium (like tape or a grid). Each section has a number and associated quality metrics.
-5.  **[Substrate](models/Substrate.md):** The physical medium (wafer, tape, grid, etc.) that holds sections. Contains information about apertures, reference points, and substrate status.
+4.  **[Section](models/Section.md):** Thin sections are cut from the block and placed onto a substrate, in one of its apertures (`aperture_index`). Each section has a number and associated quality metrics.
+5.  **[Substrate](models/Substrate.md):** One physical piece of media (a grid disc, wafer, tape, etc.) that holds sections. Its geometry comes from a [Substrate Layout](models/SubstrateLayout.md), shared by every substrate of the same design, which lists the apertures and fiducials. The substrate itself records which layout it uses and the status of each aperture.
 6.  **[ROI (Region of Interest)](models/ROI.md):** Specific areas on one or more sections are identified for high-resolution imaging. Parent/child relationships can define sub-regions.
 7.  **[Dataset](models/Dataset.md):** A named collection that groups the imaging work (ROIs, tasks, acquisitions, and tiles) for a specimen. Datasets can nest via `parent_dataset_id`, and their `tile_hash_modulus` drives how tiles are physically partitioned in the database.
 8.  **[Acquisition Task](models/AcquisitionTask.md):** A pure imaging plan for a specific ROI within a dataset. Tasks carry no status — execution state is derived from their acquisition runs, and re-planning supersedes a task via `superseded_by`.
@@ -40,9 +40,9 @@ TEMdb models the typical flow of a sample through the Sectioning and Imaging pip
     * [Preparation Workflow Diagram](./schema_Preparation_erd.md)
     * [Imaging Workflow Diagram](./schema_Imaging_erd.md)
 * **Models:** Detailed descriptions of each data model (schema) can be found in the "Models" section of the navigation.
-* **API Reference:** Explore the available API endpoints:
-    * [Interactive API (Swagger)](api_swagger.md)
-    * [Alternative API (ReDoc)](api_redoc.md)
+* **Guides:** [Data Configuration](data_config.md) for storage credentials, and [Using URIs](using_uri_class.md) to upload and download referenced files.
+* **API Reference:** [Every endpoint and schema](api.md), rendered from the committed `openapi.json`.
+
 ## Getting Started (Local Development)
 
 Refer to the `docker-compose.yml` file and the project's main `README.md` for instructions on setting up and running the TEMdb application and database locally using Docker.

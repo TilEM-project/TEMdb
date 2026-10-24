@@ -8,6 +8,8 @@ from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSe
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SectionSQLModel
 
+from ..utils import drop_null_keys, merge_extra
+
 cutting_session_api = APIRouter(
     tags=["Cutting Sessions"],
 )
@@ -30,6 +32,7 @@ async def list_cutting_sessions(
         statement = statement.where(CuttingSessionSQLModel.block_id == block_id)
     if operator:
         statement = statement.where(CuttingSessionSQLModel.operator == operator)
+    statement = statement.order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
     sessions = (await session.scalars(statement.offset(skip).limit(limit))).all()
     return sessions
 
@@ -63,6 +66,7 @@ async def get_cutting_session_sections(
     sections = await session.scalars(
         select(SectionSQLModel)
         .where(SectionSQLModel.cutting_session_id == cutting_session_id)
+        .order_by(SectionSQLModel.section_number)
         .offset(skip)
         .limit(limit)
     )
@@ -86,7 +90,7 @@ async def create_cutting_session(
     )
     if existing.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Cutting Session with ID '{session_data.cutting_session_id}' already exists",
         )
     block_obj = (
@@ -108,6 +112,7 @@ async def create_cutting_session(
         media_type=session_data.media_type,
         knife_id=session_data.knife_id,
         created_at=session_data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(session_data.extra),
     )
     session.add(new_session)
     await session.commit()
@@ -159,11 +164,16 @@ async def update_cutting_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{cutting_session_id}' not found",
         )
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(cutting_session_obj, field, value)
+    if extra_changes is not None:
+        cutting_session_obj.extra = merge_extra(CuttingSessionSQLModel.extra, extra_changes)
     cutting_session_obj.updated_at = datetime.now(timezone.utc)
     session.add(cutting_session_obj)
     await session.commit()
@@ -185,14 +195,6 @@ async def delete_cutting_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session with ID '{cutting_session_id}' not found",
-        )
-    sections = await session.scalars(
-        select(SectionSQLModel).where(SectionSQLModel.cutting_session_id == cutting_session_id)
-    )
-    if sections.first() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete session '{cutting_session_id}' as it has associated sections.",
         )
     await session.delete(cutting_session_obj)
     await session.commit()
@@ -219,6 +221,7 @@ async def list_block_cutting_sessions(
                     CuttingSessionSQLModel.block_id == block_id,
                     CuttingSessionSQLModel.specimen_id == specimen_id,
                 )
+                .order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
                 .offset(skip)
                 .limit(limit)
             )

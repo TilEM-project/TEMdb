@@ -1,19 +1,16 @@
 import itertools
 import logging
 from datetime import datetime, timezone
-from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-from testcontainers.minio import MinioContainer
 
 from temdb.server.database import DatabaseManager
 from temdb.server.dependencies import get_db_manager
 from temdb.server.ids import uuid7
-from temdb.server.main import create_app
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -24,6 +21,7 @@ from temdb.server.sqlmodels import (
     ROISQLModel,
     SectionSQLModel,
     SpecimenSQLModel,
+    SubstrateLayoutSQLModel,
     SubstrateSQLModel,
     TileSQLModel,
 )
@@ -47,11 +45,6 @@ async def fresh_database_url(postgres_container):
     yield admin_url.rsplit("/", 1)[0] + f"/{db_name}"
 
 
-@pytest.fixture(scope="session")
-def app() -> FastAPI:
-    return create_app()
-
-
 @pytest.fixture(scope="function")
 async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db) -> AsyncClient:
     app.dependency_overrides[get_db_manager] = lambda: test_db_manager
@@ -60,34 +53,6 @@ async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db) 
             yield client
     finally:
         app.dependency_overrides = {}
-
-
-@pytest.fixture(scope="session")
-def minio_container():
-    with MinioContainer(
-        image="ghcr.io/coollabsio/minio",
-        access_key="temdb-test-access",
-        secret_key="temdb-test-secret",
-    ) as container:
-        yield container
-
-
-@pytest.fixture
-def minio_s3(minio_container: MinioContainer, monkeypatch: pytest.MonkeyPatch):
-    config = minio_container.get_config()
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", config["access_key"])
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", config["secret_key"])
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
-
-    bucket = f"temdb-test-{uuid4().hex[:12]}"
-    client = minio_container.get_client()
-    client.make_bucket(bucket)
-    return {
-        "server": f"http://{config['endpoint']}",
-        "bucket": bucket,
-        "client": client,
-    }
 
 
 async def _seed(db_manager: DatabaseManager, row):
@@ -160,13 +125,39 @@ async def test_cutting_session(
 
 
 @pytest.fixture(scope="function")
-async def test_substrate(init_db, test_db_manager: DatabaseManager):
+async def test_layout(init_db, test_db_manager: DatabaseManager):
+    return await _seed(
+        test_db_manager,
+        SubstrateLayoutSQLModel(
+            layout_id="TEST_LAYOUT_001",
+            name="Test layout",
+            media_type="tape",
+            apertures=[
+                {"shape_type": "circle", "shape_params": {"diameter": 3.0}, "centroid": [x, 0.0]}
+                for x in (0.0, 4.0, 8.0)
+            ],
+            fiducials=[
+                {
+                    "name": "origin",
+                    "shape_type": "rectangle",
+                    "shape_params": {"width": 0.5, "height": 0.5},
+                    "centroid": [-3.0, 0.0],
+                    "through_shape": True,
+                }
+            ],
+            created_at=datetime.now(timezone.utc),
+        ),
+    )
+
+
+@pytest.fixture(scope="function")
+async def test_substrate(init_db, test_db_manager: DatabaseManager, test_layout: SubstrateLayoutSQLModel):
     return await _seed(
         test_db_manager,
         SubstrateSQLModel(
             media_id="SUB001",
-            media_type="tape",
-            metadata_json={},
+            substrate_layout_id=test_layout.layout_id,
+            aperture_status=["available", "available", "available"],
             created_at=datetime.now(timezone.utc),
         ),
     )
@@ -189,6 +180,7 @@ async def test_section(
             block_id=test_cutting_session.block_id,
             specimen_id=test_cutting_session.specimen_id,
             media_id=test_substrate.media_id,
+            aperture_index=0,
             created_at=datetime.now(timezone.utc),
         ),
     )
@@ -292,7 +284,7 @@ async def test_acquisition_task(
 
 @pytest.fixture(scope="function")
 async def test_microscope(init_db, test_db_manager: DatabaseManager):
-    return await _seed(test_db_manager, MicroscopeSQLModel(label="TEST_SCOPE_001"))
+    return await _seed(test_db_manager, MicroscopeSQLModel(microscope_id="TEST_SCOPE_001"))
 
 
 @pytest.fixture(scope="function")
@@ -315,7 +307,6 @@ async def test_acquisition(
             acquisition_task_id=test_acquisition_task.task_id,
             dataset_id=test_dataset.dataset_id,
             hardware_settings={
-                "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
                 "camera_serial": "12345",
                 "camera_bit_depth": 16,
@@ -348,14 +339,13 @@ async def test_tile(
     return await _seed(
         test_db_manager,
         TileSQLModel(
-            tile_id=uuid7(),
             dataset_id=test_dataset.dataset_id,
             run_id=test_acquisition.run_id,
             raster_index=1,
             stage_x_nm=100.0,
             stage_y_nm=200.0,
-            montage_row=0,
-            montage_col=0,
+            row=0,
+            col=0,
             focus_score=0.95,
             min_value=0,
             max_value=255,

@@ -4,6 +4,7 @@
 erDiagram
     direction LR
     AcquisitionSQLModel ||--o{ AcquisitionSQLModel : "replaces_acquisition_id"
+    AcquisitionSQLModel ||--o{ TileSQLModel : "dataset_id, run_id"
     AcquisitionTaskSQLModel ||--o{ AcquisitionSQLModel : "acquisition_task_id"
     AcquisitionTaskSQLModel ||--o{ AcquisitionTaskSQLModel : "superseded_by"
     DatasetSQLModel ||--o{ AcquisitionSQLModel : "dataset_id"
@@ -27,7 +28,7 @@ erDiagram
         string specimen_id
         string roi_id
         string acquisition_task_id
-        UUID microscope_id
+        string microscope_id
         UUID dataset_id
         string kind
         UUID lc_id
@@ -53,6 +54,7 @@ erDiagram
         string montage_set_name
         object sub_region
         string replaces_acquisition_id
+        object extra
     }
     AcquisitionTaskSQLModel {
         string task_id
@@ -67,11 +69,13 @@ erDiagram
         object sub_region
         object tags
         object metadata
+        object extra
     }
     DatasetSQLModel {
         UUID dataset_id
         string name
         string description
+        object default_storage
         string specimen_id
         UUID parent_dataset_id
         string status
@@ -81,10 +85,11 @@ erDiagram
         int tile_hash_modulus
         int estimated_tile_count
         object metadata_json
+        object extra
     }
     LensCorrectionSQLModel {
         UUID lc_id
-        UUID microscope_id
+        string microscope_id
         int magnification
         datetime started_at
         UUID source_run_id
@@ -93,14 +98,15 @@ erDiagram
         string correction_x_uri
         string correction_y_uri
         object solver_params
+        object extra
     }
     MicroscopeSQLModel {
-        UUID microscope_id
-        string label
+        string microscope_id
         string microscope_type
         string model
         string location
         string notes
+        object extra
     }
     ROISQLModel {
         string roi_id
@@ -114,49 +120,48 @@ erDiagram
         UUID dataset_id
         int section_number
         object roi_payload
+        object extra
     }
     SectionSQLModel {
         string section_id
         int section_number
+        int cut_count
         datetime timestamp
         string cutting_session_id
         string block_id
         string specimen_id
         string media_id
         object optical_image
-        string aperture_uid
         int aperture_index
-        string barcode
+        object position
         string condition
         string condition_reason
         object section_metrics
+        object run_parameters
+        object extra
     }
     SubstrateSQLModel {
         string media_id
-        string media_type
-        string uid
-        string status
-        object refpoint
-        object refpoint_world
-        string source_path
-        object metadata
-        object apertures
+        string substrate_layout_id
+        list aperture_status
+        object extra
     }
     TileSQLModel {
         UUID dataset_id
         UUID run_id
+        int row
+        int col
+        int retake
         int raster_index
-        UUID tile_id
         float stage_x_nm
         float stage_y_nm
-        int montage_row
-        int montage_col
+        float stage_z_nm
         float focus_score
         float min_value
         float max_value
         float mean_value
         float std_value
-        string image_path
+        object image
         object matcher
         string supertile_id
         object supertile_raster_position

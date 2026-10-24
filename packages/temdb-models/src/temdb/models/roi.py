@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
 
-from .base import TEMDBModel
+from .base import TEMDBModel, TEMDBRecord
 
 
 class ROIPayload(TEMDBModel):
@@ -24,7 +24,6 @@ class ROIPayload(TEMDBModel):
     )
     optical_pixel_size: float | None = Field(None, description="Optical resolution in nm per pixel")
     scale_y: float | None = Field(None, description="Scaling factor for y-axis")
-    barcode: int | str | None = Field(None, description="Barcode of ROI if present")
     rois: list[Any] | None = Field(None, description="List of ROIs")
     bucket: str | None = Field(None, description="Bucket of ROI")
     corners: dict[str, Any] | None = Field(None, description="Corners of ROI")
@@ -36,7 +35,7 @@ class ROIPayload(TEMDBModel):
     vertices: list[Any] | None = Field(None, description="Vertices of the ROI polygon")
 
 
-class ROICreate(TEMDBModel):
+class ROICreate(TEMDBRecord):
     roi_number: int = Field(..., description="Sequential number for this ROI within its parent context")
     section_id: str = Field(..., description="ID of section")
     specimen_id: str = Field(..., description="ID of specimen")
@@ -66,11 +65,11 @@ class ROICreate(TEMDBModel):
         return v
 
 
-class ROIUpdate(TEMDBModel):
+class ROIUpdate(TEMDBRecord):
     payload: ROIPayload = Field(default_factory=ROIPayload, description="Domain attributes to merge into the ROI")
 
 
-class ROIResponse(TEMDBModel):
+class ROIResponse(TEMDBRecord):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     id: int

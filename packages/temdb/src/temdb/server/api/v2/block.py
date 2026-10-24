@@ -2,12 +2,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSessionResponse
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
+
+from ..utils import drop_null_keys, merge_extra
 
 block_api = APIRouter(
     tags=["Blocks"],
@@ -33,6 +35,7 @@ async def list_blocks(
     statement = select(BlockSQLModel)
     if specimen_id:
         statement = statement.where(BlockSQLModel.specimen_id == specimen_id)
+    statement = statement.order_by(BlockSQLModel.specimen_id, BlockSQLModel.block_id)
     return (await session.execute(statement.offset(skip).limit(limit))).scalars().all()
 
 
@@ -47,42 +50,23 @@ async def get_block_cut_sessions(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve cutting sessions associated with a specific block."""
-    rows = (
-        (
-            await session.execute(
-                select(CuttingSessionSQLModel)
-                .select_from(BlockSQLModel)
-                .outerjoin(
-                    CuttingSessionSQLModel,
-                    and_(
-                        CuttingSessionSQLModel.block_id == BlockSQLModel.block_id,
-                        CuttingSessionSQLModel.specimen_id == BlockSQLModel.specimen_id,
-                    ),
-                )
-                .where(
-                    BlockSQLModel.block_id == block_id,
-                    BlockSQLModel.specimen_id == specimen_id,
-                )
-                .offset(skip)
-                .limit(limit)
-            )
-        )
-        .scalars()
-        .all()
+    """Retrieve cutting sessions associated with a specific block, newest first."""
+    block = await session.scalar(
+        select(BlockSQLModel.id).where(BlockSQLModel.block_id == block_id, BlockSQLModel.specimen_id == specimen_id)
     )
-    if not rows:
+    if block is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
-    cutting_sessions = [c for c in rows if c is not None]
-    if not cutting_sessions:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No cutting sessions found for block '{block_id}' and specimen '{specimen_id}'",
-        )
-    return cutting_sessions
+    sessions = await session.scalars(
+        select(CuttingSessionSQLModel)
+        .where(CuttingSessionSQLModel.block_id == block_id, CuttingSessionSQLModel.specimen_id == specimen_id)
+        .order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return sessions.all()
 
 
 @block_api.post("/blocks", status_code=status.HTTP_201_CREATED, response_model=BlockResponse)
@@ -108,7 +92,7 @@ async def create_block(
     )
     if existing_block.one_or_none() is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=(f"Block with ID '{block_data.block_id}' already exists for specimen '{block_data.specimen_id}'"),
         )
     new_block = BlockSQLModel(
@@ -118,6 +102,7 @@ async def create_block(
         default_storage=_to_json_compatible(block_data.default_storage),
         created_at=block_data.created_at or datetime.now(timezone.utc),
         description=block_data.description,
+        extra=drop_null_keys(block_data.extra),
     )
     session.add(new_block)
     await session.commit()
@@ -163,13 +148,18 @@ async def update_block(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
-    update_data = updated_fields.model_dump(exclude_unset=True)
+    update_data = updated_fields.model_dump(
+        exclude_unset=True,
+    )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     if "default_storage" in update_data:
         block_obj.default_storage = _to_json_compatible(update_data.pop("default_storage"))
+    extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(block_obj, field, value)
+    if extra_changes is not None:
+        block_obj.extra = merge_extra(BlockSQLModel.extra, extra_changes)
     block_obj.updated_at = datetime.now(timezone.utc)
     session.add(block_obj)
     await session.commit()
@@ -196,21 +186,6 @@ async def delete_block(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
-    session_count = (
-        await session.scalars(
-            select(func.count())
-            .select_from(CuttingSessionSQLModel)
-            .where(
-                CuttingSessionSQLModel.block_id == block_id,
-                CuttingSessionSQLModel.specimen_id == specimen_id,
-            )
-        )
-    ).one()
-    if session_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(f"Cannot delete block '{block_id}' as it has {session_count} associated cutting sessions."),
-        )
     await session.delete(block_obj)
     await session.commit()
     return None
@@ -232,7 +207,11 @@ async def list_specimen_blocks(
     return (
         (
             await session.execute(
-                select(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id).offset(skip).limit(limit)
+                select(BlockSQLModel)
+                .where(BlockSQLModel.specimen_id == specimen_id)
+                .order_by(BlockSQLModel.block_id)
+                .offset(skip)
+                .limit(limit)
             )
         )
         .scalars()

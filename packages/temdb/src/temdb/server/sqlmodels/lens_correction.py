@@ -18,10 +18,7 @@ class LensCorrectionSQLModel(ModelDumpMixin, TimestampMixin, Base):
         primary_key=True,
         server_default=func.uuidv7(monotonic=True),
     )
-    microscope_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("microscopes.microscope_id"),
-    )
+    microscope_id: Mapped[str] = mapped_column(String, ForeignKey("microscopes.microscope_id"))
     magnification: Mapped[int] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source_run_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)

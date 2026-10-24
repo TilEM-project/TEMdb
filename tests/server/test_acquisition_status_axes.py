@@ -7,7 +7,6 @@ MINIMAL_ACQ_PAYLOAD = {
     "acquisition_id": "ACQ_AXES_001",
     "montage_id": "MONTAGE_AXES_001",
     "hardware_settings": {
-        "scope_id": "TEST_SCOPE_001",
         "camera_model": "Test Camera",
         "camera_serial": "12345",
         "camera_bit_depth": 16,
@@ -61,7 +60,7 @@ async def test_create_returns_run_id_in_flight(
             **MINIMAL_ACQ_PAYLOAD,
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
         },
     )
     assert r.status_code == 201
@@ -70,7 +69,7 @@ async def test_create_returns_run_id_in_flight(
     assert body["kind"] == "montage"
     assert body["status"] is None  # in flight until terminal write
     assert body["end_time"] is None
-    assert body["microscope_id"] == str(test_microscope.microscope_id)
+    assert body["microscope_id"] == test_microscope.microscope_id
     assert body["qc_state"] == "pending"
     assert body["transfer_state"] == "not_started"
 
@@ -96,7 +95,7 @@ async def test_create_unknown_microscope_404(async_client: AsyncClient, test_roi
             **MINIMAL_ACQ_PAYLOAD,
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(uuid.uuid4()),
+            "microscope_id": "NO-SUCH-SCOPE",
         },
     )
     assert r.status_code == 404
@@ -109,7 +108,7 @@ async def test_create_montage_requires_lineage(async_client: AsyncClient, test_a
         json={
             **MINIMAL_ACQ_PAYLOAD,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
         },
     )
     assert r.status_code == 422
@@ -123,7 +122,7 @@ async def test_create_unknown_lc_404(async_client: AsyncClient, test_roi, test_a
             **MINIMAL_ACQ_PAYLOAD,
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
-            "microscope_id": str(test_microscope.microscope_id),
+            "microscope_id": test_microscope.microscope_id,
             "lc_id": str(uuid.uuid4()),
         },
     )

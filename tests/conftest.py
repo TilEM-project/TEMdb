@@ -1,8 +1,14 @@
+from uuid import uuid4
+
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import text
+from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 
+from temdb.server.cli import run_migrations
 from temdb.server.database import DatabaseManager
+from temdb.server.main import create_app
 from temdb.server.sqlmodels import Base
 
 _UNSAFE_BUT_FAST = (
@@ -18,11 +24,50 @@ _UNSAFE_BUT_FAST = (
 _PGDATA = "/var/lib/postgresql/18/docker"
 
 
+def collect_tests_using_postgres_container(items):
+    for item in items:
+        if "postgres_container" in item.fixturenames:
+            item.add_marker(pytest.mark.db)
+
+
+@pytest.fixture(scope="session")
+def app() -> FastAPI:
+    return create_app()
+
+
 @pytest.fixture(scope="session")
 def postgres_container():
     container = PostgresContainer("postgres:18").with_command(_UNSAFE_BUT_FAST).with_kwargs(tmpfs={_PGDATA: "rw"})
     with container:
         yield container
+
+
+@pytest.fixture(scope="session")
+def minio_container():
+    with MinioContainer(
+        image="ghcr.io/coollabsio/minio",
+        access_key="temdb-test-access",
+        secret_key="temdb-test-secret",
+    ) as container:
+        yield container
+
+
+@pytest.fixture
+def minio_s3(minio_container: MinioContainer, monkeypatch: pytest.MonkeyPatch):
+    config = minio_container.get_config()
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", config["access_key"])
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", config["secret_key"])
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+    bucket = f"temdb-test-{uuid4().hex[:12]}"
+    client = minio_container.get_client()
+    client.make_bucket(bucket)
+    return {
+        "server": f"http://{config['endpoint']}",
+        "bucket": bucket,
+        "client": client,
+    }
 
 
 def async_database_url(container: PostgresContainer) -> str:
@@ -35,9 +80,17 @@ def async_database_url(container: PostgresContainer) -> str:
 
 
 @pytest.fixture(scope="session")
-async def test_db_manager(postgres_container):
-    db_manager = DatabaseManager(database_url=async_database_url(postgres_container))
-    await db_manager.initialize(create_schema=True)
+def migrated_database_url(postgres_container) -> str:
+    url = async_database_url(postgres_container)
+    with pytest.MonkeyPatch.context() as environment:
+        environment.setenv("TEMDB_MIGRATION_URL", url)
+        run_migrations(url=url)
+    return url
+
+
+@pytest.fixture(scope="session")
+async def test_db_manager(migrated_database_url):
+    db_manager = DatabaseManager(database_url=migrated_database_url)
     yield db_manager
     await db_manager.dispose()
 

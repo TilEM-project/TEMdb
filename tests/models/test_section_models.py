@@ -43,12 +43,15 @@ class TestSectionCreate:
     def test_valid_section_create(self):
         section = SectionCreate(
             cutting_session_id="CUT001",
-            section_number=1,
+            timestamp=datetime(2026, 9, 4, 16, 0),
             media_id="MEDIA001",
+            aperture_index=0,
+            cut_count=3,
         )
         assert section.cutting_session_id == "CUT001"
-        assert section.section_number == 1
+        assert section.cut_count == 3
         assert section.media_id == "MEDIA001"
+        assert section.aperture_index == 0
 
     def test_required_fields(self):
         with pytest.raises(ValidationError):
@@ -57,9 +60,9 @@ class TestSectionCreate:
     def test_optional_fields(self):
         section = SectionCreate(
             cutting_session_id="CUT001",
-            section_number=1,
+            timestamp=datetime(2026, 9, 4, 16, 0),
             media_id="MEDIA001",
-            barcode="BC123456",
+            aperture_index=0,
             optical_image={
                 "protocol": "s3",
                 "server": "http://s3.example.com",
@@ -69,7 +72,6 @@ class TestSectionCreate:
             section_metrics=SectionMetrics(quality=SectionQuality.GOOD),
             run_parameters=SectioningRunParameters(cutting_thickness_um=50.0, water_added=True),
         )
-        assert section.barcode == "BC123456"
         assert section.optical_image.key == "MEDIA001/inspection.png"
         assert section.section_metrics.quality == SectionQuality.GOOD
         assert section.run_parameters.cutting_thickness_um == 50.0
@@ -98,9 +100,11 @@ class TestSectionResponse:
             cutting_session_id="CUT001",
             section_number=1,
             media_id="MEDIA001",
+            aperture_index=0,
             block_id="BLOCK001",
             specimen_id="SPEC001",
             timestamp=datetime.now(),
         )
         assert response.section_id == "MEDIA001_S00001"
         assert response.section_number == 1
+        assert response.aperture_index == 0

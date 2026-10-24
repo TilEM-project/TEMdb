@@ -1,6 +1,6 @@
 site_name: TEMdb Documentation
 site_description: Documentation for the TEMdb Microscopy Pipeline Database.
-repo_url: https://github.com/AllenInstitute/TEMdb
+repo_url: https://github.com/TilEM-project/TEMdb
 
 
 theme:
@@ -38,15 +38,19 @@ markdown_extensions:
       custom_fences:
         - name: mermaid
           class: mermaid
-          format: !!python/name:mermaid2.fence_mermaid_custom
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 
 # Plugins
 plugins:
   - search # Built-in search plugin
-  - mermaid2: # Enable the mermaid plugin
-      arguments: # Arguments passed to mermaid.initialize
-        theme: 'dark'
+  - swagger-ui-tag
+
+hooks:
+  - mkdocs_hooks.py
+
+watch:
+  - openapi.json
 
 # Navigation structure
 nav:
@@ -55,6 +59,10 @@ nav:
         - Full Schema: schema_erd.md
         - Preparation Workflow: schema_Preparation_erd.md
         - Imaging Workflow: schema_Imaging_erd.md
+  - Guides:
+      - Data Configuration: data_config.md
+      - Using URIs: using_uri_class.md
+  - API Reference: api.md
   - Models: # Create a section for individual models
       - Specimen: models/Specimen.md
       - Block: models/Block.md
@@ -68,3 +76,4 @@ nav:
       - LensCorrection: models/LensCorrection.md
       - Tile: models/Tile.md
       - Substrate: models/Substrate.md
+      - SubstrateLayout: models/SubstrateLayout.md

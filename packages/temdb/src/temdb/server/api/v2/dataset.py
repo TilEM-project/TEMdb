@@ -12,6 +12,8 @@ from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
 
+from ..utils import drop_null_keys, merge_extra
+
 dataset_api = APIRouter(tags=["Datasets"])
 
 
@@ -38,7 +40,7 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
 async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(get_async_session)):
     existing = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=400, detail=f"Dataset name '{data.name}' already exists")
+        raise HTTPException(status_code=409, detail=f"Dataset name '{data.name}' already exists")
     if data.parent_dataset_id is not None:
         parent = (
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == data.parent_dataset_id))
@@ -67,6 +69,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
         default_storage=_to_json_compatible(data.default_storage),
         metadata_json=data.metadata_json,
         created_at=data.created_at or datetime.now(timezone.utc),
+        extra=drop_null_keys(data.extra),
     )
     session.add(ds)
     await session.commit()
@@ -90,7 +93,11 @@ async def list_datasets(
         stmt = stmt.where(DatasetSQLModel.status == status_filter)
     if parent_dataset_id is not None:
         stmt = stmt.where(DatasetSQLModel.parent_dataset_id == parent_dataset_id)
-    rows = (await session.scalars(stmt.order_by(DatasetSQLModel.created_at).offset(skip).limit(limit))).all()
+    rows = (
+        await session.scalars(
+            stmt.order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id).offset(skip).limit(limit)
+        )
+    ).all()
     return rows
 
 
@@ -114,7 +121,7 @@ async def list_dataset_children(dataset_id: str, session: AsyncSession = Depends
         await session.scalars(
             select(DatasetSQLModel)
             .where(DatasetSQLModel.parent_dataset_id == parent.dataset_id)
-            .order_by(DatasetSQLModel.created_at)
+            .order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id)
         )
     ).all()
     return rows
@@ -127,9 +134,12 @@ async def update_dataset(
     session: AsyncSession = Depends(get_async_session),
 ):
     ds = await _get_by_id(session, dataset_id)
-    data = updated.model_dump(exclude_unset=True)
+    data = updated.model_dump(
+        exclude_unset=True,
+    )
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
+    extra_changes = data.pop("extra", None)
     now = datetime.now(timezone.utc)
     status_changed = "status" in data and data["status"] != ds.status
     for field, value in data.items():
@@ -146,6 +156,8 @@ async def update_dataset(
             ds.collected_at = now
         if ds.status == "archived" and ds.archived_at is None:
             ds.archived_at = now
+    if extra_changes is not None:
+        ds.extra = merge_extra(DatasetSQLModel.extra, extra_changes)
     ds.updated_at = now
     session.add(ds)
     await session.commit()

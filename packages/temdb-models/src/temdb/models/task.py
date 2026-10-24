@@ -2,17 +2,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import AliasChoices, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
-from temdb.models.base import TEMDBModel
+from temdb.models.base import TEMDBRecord
 from temdb.models.enums import TASK_KINDS
 
 
-class AcquisitionTaskBase(TEMDBModel):
+class AcquisitionTaskBase(TEMDBRecord):
     """Base acquisition task fields."""
 
-    kind: str | None = Field(None, description="Task kind: montage or lens_correction")
+    kind: str = Field(None, description="Task kind: montage or lens_correction")
     task_group_id: uuid.UUID | None = Field(None, description="Group ID linking related tasks (e.g., a tilt series)")
     tilt_angle_deg: float | None = Field(None, description="Planned tilt angle in degrees")
     sub_region: dict[str, Any] | None = Field(None, description="Planned sub-region of the ROI")
@@ -47,11 +47,12 @@ class AcquisitionTaskCreate(AcquisitionTaskBase):
 class AcquisitionTaskUpdate(AcquisitionTaskBase):
     """Schema for updating an acquisition task."""
 
-    @model_validator(mode="after")
-    def _validate_kind(self) -> "AcquisitionTaskUpdate":
-        if self.kind is not None and self.kind not in TASK_KINDS:
+    @field_validator("kind")
+    @classmethod
+    def validate_kind(cls, value: str) -> str:
+        if value not in TASK_KINDS:
             raise PydanticCustomError("value_error", f"kind must be one of {TASK_KINDS}")
-        return self
+        return value
 
 
 class AcquisitionTaskResponse(AcquisitionTaskBase):

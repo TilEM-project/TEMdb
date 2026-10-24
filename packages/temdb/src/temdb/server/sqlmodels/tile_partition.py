@@ -1,7 +1,9 @@
 import uuid
 
-from sqlalchemy import text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
+from .dataset import DatasetSQLModel
 
 # size_class -> hash subpartition modulus. Target ~25-50M rows per leaf
 # partition across the plausible dataset-size range. See the design spec.
@@ -56,8 +58,9 @@ async def _resolve_and_freeze_modulus(session: AsyncSession, dataset_id: uuid.UU
     """
     row = (
         await session.execute(
-            text("SELECT tile_hash_modulus, size_class FROM datasets WHERE dataset_id = :id FOR UPDATE"),
-            {"id": dataset_id},
+            select(DatasetSQLModel.tile_hash_modulus, DatasetSQLModel.size_class)
+            .where(DatasetSQLModel.dataset_id == dataset_id)
+            .with_for_update(key_share=True)
         )
     ).one_or_none()
     if row is None:
@@ -66,8 +69,7 @@ async def _resolve_and_freeze_modulus(session: AsyncSession, dataset_id: uuid.UU
     if modulus is None:
         modulus = resolve_modulus(size_class)
         await session.execute(
-            text("UPDATE datasets SET tile_hash_modulus = :m WHERE dataset_id = :id"),
-            {"m": modulus, "id": dataset_id},
+            update(DatasetSQLModel).where(DatasetSQLModel.dataset_id == dataset_id).values(tile_hash_modulus=modulus)
         )
     return int(modulus)
 

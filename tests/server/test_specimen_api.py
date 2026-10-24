@@ -1,5 +1,9 @@
+import json
+
 import pytest
 from httpx import AsyncClient
+
+from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel
 
 
 @pytest.mark.asyncio
@@ -58,13 +62,96 @@ async def test_update_specimen(async_client: AsyncClient, test_specimen):
 
 
 @pytest.mark.asyncio
+async def test_specimen_extra_fields_round_trip(async_client: AsyncClient):
+    specimen_id_hr = "TEST_EXTRA_SPEC_001"
+    create_response = await async_client.post(
+        "/api/v2/specimens",
+        json={
+            "specimen_id": specimen_id_hr,
+            "description": "Specimen with extra fields",
+            "extra": {"unknown_create_key": {"source": "create"}},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["extra"]["unknown_create_key"] == {"source": "create"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/specimens/{specimen_id_hr}",
+        json={
+            "description": "Specimen patched with extra fields",
+            "extra": {"unknown_patch_key": ["from", "patch"]},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == ["from", "patch"]
+
+    get_response = await async_client.get(f"/api/v2/specimens/{specimen_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"source": "create"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == ["from", "patch"]
+
+    list_response = await async_client.get(f"/api/v2/specimens?search={specimen_id_hr}")
+    assert list_response.status_code == 200
+    listed = next(spec for spec in list_response.json() if spec["specimen_id"] == specimen_id_hr)
+    assert listed["extra"]["unknown_create_key"] == {"source": "create"}
+    assert listed["extra"]["unknown_patch_key"] == ["from", "patch"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"extra": {"note": "a\x00b"}},
+        {"extra": {"note": "\ud800"}},
+        {"extra": {"a\x00b": 1}},
+        {"description": "a\x00b"},
+        {"description": "\ud800"},
+    ],
+)
+@pytest.mark.asyncio
+async def test_text_postgres_cannot_store_is_a_422(async_client: AsyncClient, test_specimen, fields):
+    headers = {"content-type": "application/json"}
+    created = await async_client.post(
+        "/api/v2/specimens", content=json.dumps({"specimen_id": "TEST_TEXT_SPEC", **fields}), headers=headers
+    )
+    updated = await async_client.patch(
+        f"/api/v2/specimens/{test_specimen.specimen_id}", content=json.dumps(fields), headers=headers
+    )
+
+    assert (created.status_code, updated.status_code) == (422, 422), (created.text, updated.text)
+    assert created.json()["error_code"] == updated.json()["error_code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_too_deep_extra_is_not_stored(async_client: AsyncClient):
+    extra = {"a": 1}
+    for _ in range(299):
+        extra = {"a": extra}
+
+    created = await async_client.post("/api/v2/specimens", json={"specimen_id": "TEST_DEEP_SPEC", "extra": extra})
+
+    assert created.status_code == 422, created.text
+    assert (await async_client.get("/api/v2/specimens/TEST_DEEP_SPEC")).status_code == 404
+    assert (await async_client.get("/api/v2/specimens")).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_delete_specimen_with_blocks(async_client: AsyncClient, test_specimen, test_block):
     """Test that deleting a specimen fails if it has associated blocks."""
     response = await async_client.delete(f"/api/v2/specimens/{test_specimen.specimen_id}")
-    assert response.status_code == 400  #
+    assert response.status_code == 409
     response_data = response.json()
-    assert "detail" in response_data
-    assert "associated blocks" in response_data["detail"].lower()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == BlockSQLModel.__tablename__
+
+
+@pytest.mark.asyncio
+async def test_delete_specimen_with_dataset(async_client: AsyncClient, test_dataset):
+    """Test that deleting a specimen fails if a dataset references it."""
+    response = await async_client.delete(f"/api/v2/specimens/{test_dataset.specimen_id}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == DatasetSQLModel.__tablename__
 
 
 @pytest.mark.asyncio
@@ -78,3 +165,20 @@ async def test_get_specimen_blocks(async_client: AsyncClient, test_specimen, tes
     assert response_data[0]["specimen_id"] == test_specimen.specimen_id
     assert response_data[0]["block_id"] == test_block.block_id
     assert response_data[0]["id"] == test_block.id
+
+
+@pytest.mark.asyncio
+async def test_list_specimens_ordered(async_client: AsyncClient):
+    ids = ["SPEC_C", "SPEC_A", "SPEC_B"]
+    for specimen_id in ids:
+        await async_client.post("/api/v2/specimens", json={"specimen_id": specimen_id})
+
+    response = await async_client.get("/api/v2/specimens")
+    assert [specimen["specimen_id"] for specimen in response.json()] == sorted(ids)
+
+
+@pytest.mark.asyncio
+async def test_get_specimen_blocks_past_last_page(async_client: AsyncClient, test_specimen, test_block):
+    response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks", params={"skip": 1})
+    assert response.status_code == 200
+    assert response.json() == []

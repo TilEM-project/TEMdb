@@ -21,21 +21,26 @@ from .base import Base, ModelDumpMixin, TimestampMixin
 class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     __tablename__ = "sections"
     __table_args__ = (
-        UniqueConstraint("cutting_session_id", "section_number", name="uq_sections_session_number"),
+        UniqueConstraint("media_id", "section_number", name="uq_sections_media_number"),
+        UniqueConstraint(
+            "media_id", "aperture_index", "timestamp", name="uq_sections_placement", postgresql_nulls_not_distinct=True
+        ),
         ForeignKeyConstraint(
             ["specimen_id", "block_id"], ["blocks.specimen_id", "blocks.block_id"], name="fk_sections_block"
         ),
         Index("ix_sections_specimen_block", "specimen_id", "block_id"),
-        Index("ix_sections_barcode_nn", "barcode", postgresql_where=text("barcode IS NOT NULL")),
         CheckConstraint(
             "condition IN ('ok', 'damaged', 'destroyed', 'contaminated', 'lost')",
             name="condition_vocab",
         ),
+        CheckConstraint("aperture_index >= 0", name="aperture_index_nonnegative"),
+        Index("ix_sections_media_aperture", "media_id", "aperture_index"),
     )
 
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
     section_id: Mapped[str] = mapped_column(String, index=True, unique=True)
     section_number: Mapped[int] = mapped_column()
+    cut_count: Mapped[int | None] = mapped_column(nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -46,9 +51,8 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     specimen_id: Mapped[str] = mapped_column(String)
     media_id: Mapped[str] = mapped_column(ForeignKey("substrates.media_id"), index=True)
     optical_image: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    aperture_uid: Mapped[str | None] = mapped_column(String, nullable=True)
     aperture_index: Mapped[int | None] = mapped_column(nullable=True)
-    barcode: Mapped[str | None] = mapped_column(String, nullable=True)
+    position: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     condition: Mapped[str] = mapped_column(String, server_default=text("'ok'"))
     condition_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     section_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

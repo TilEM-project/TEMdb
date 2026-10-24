@@ -80,6 +80,7 @@ async def test_list_acquisition_tasks_skip_destroyed(
             block_id=test_block.block_id,
             specimen_id=test_specimen.specimen_id,
             media_id=test_substrate.media_id,
+            aperture_index=0,
             condition="destroyed",
             created_at=datetime.now(timezone.utc),
         )
@@ -150,7 +151,6 @@ async def test_list_acquisition_tasks_skip_completed(
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
             hardware_settings={
-                "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
                 "camera_serial": "12345",
                 "camera_bit_depth": 16,
@@ -176,7 +176,6 @@ async def test_list_acquisition_tasks_skip_completed(
             roi_id=test_roi.roi_id,
             acquisition_task_id=test_acquisition_task.task_id,
             hardware_settings={
-                "scope_id": "TEST_SCOPE_001",
                 "camera_model": "Test Camera",
                 "camera_serial": "12345",
                 "camera_bit_depth": 16,
@@ -301,6 +300,44 @@ async def test_update_acquisition_task(async_client: AsyncClient, test_acquisiti
 
 
 @pytest.mark.asyncio
+async def test_acquisition_task_extra_fields_round_trip(async_client: AsyncClient, test_specimen, test_block, test_roi):
+    task_id_hr = f"TASK_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"
+    create_response = await async_client.post(
+        "/api/v2/acquisition-tasks",
+        json={
+            "task_id": task_id_hr,
+            "specimen_id": test_specimen.specimen_id,
+            "block_id": test_block.block_id,
+            "roi_id": test_roi.roi_id,
+            "extra": {"unknown_create_key": {"create": "task"}},
+        },
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["extra"]["unknown_create_key"] == {"create": "task"}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/acquisition-tasks/{task_id_hr}",
+        json={
+            "metadata": {"patched": True},
+            "extra": {"unknown_patch_key": "task-patch"},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "task-patch"
+
+    get_response = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_hr}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"create": "task"}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "task-patch"
+
+    list_response = await async_client.get(f"/api/v2/acquisition-tasks?roi_id={test_roi.roi_id}")
+    assert list_response.status_code == 200
+    listed = next(task for task in list_response.json() if task["task_id"] == task_id_hr)
+    assert listed["extra"]["unknown_create_key"] == {"create": "task"}
+    assert listed["extra"]["unknown_patch_key"] == "task-patch"
+
+
+@pytest.mark.asyncio
 async def test_update_acquisition_task_invalid_kind_rejected(async_client: AsyncClient, test_acquisition_task):
     response = await async_client.patch(
         f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}",
@@ -331,13 +368,37 @@ async def test_delete_task(async_client: AsyncClient, test_specimen, test_block,
     assert get_response.status_code == 404
 
 
-# @pytest.mark.asyncio
-# async def test_delete_task_with_acquisitions(async_client: AsyncClient, test_acquisition_task, test_acquisition):
-#     """Test deleting a task fails if it has associated Acquisitions."""
-#     # test_acquisition fixture links to test_acquisition_task
-#     response = await async_client.delete(f"/api/v2/acquisition-tasks/{test_acquisition_task.task_id}")
-#     assert response.status_code == 400
-#     assert "associated Acquisitions" in response.json()["detail"].lower() # Check message
+@pytest.mark.asyncio
+async def test_delete_task_with_acquisitions(async_client: AsyncClient, test_acquisition):
+    """Test that deleting a task fails if it has associated acquisitions."""
+    response = await async_client.delete(f"/api/v2/acquisition-tasks/{test_acquisition.acquisition_task_id}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == AcquisitionSQLModel.__tablename__
+
+
+@pytest.mark.asyncio
+async def test_delete_task_that_supersedes_another(
+    async_client: AsyncClient, test_acquisition_task, test_specimen, test_block, test_roi
+):
+    """Test that deleting a task fails while the task it superseded points to it."""
+    old_id = test_acquisition_task.task_id
+    new_payload = {
+        "task_id": f"{old_id}_V2",
+        "specimen_id": test_specimen.specimen_id,
+        "block_id": test_block.block_id,
+        "roi_id": test_roi.roi_id,
+    }
+    created = await async_client.post(f"/api/v2/acquisition-tasks/{old_id}/supersede", json=new_payload)
+    assert created.status_code == 201
+
+    response = await async_client.delete(f"/api/v2/acquisition-tasks/{new_payload['task_id']}")
+    assert response.status_code == 409
+    response_data = response.json()
+    assert response_data["error_code"] == "FOREIGN_KEY_VIOLATION"
+    assert response_data["context"]["table"] == AcquisitionTaskSQLModel.__tablename__
+
 
 # @pytest.mark.asyncio
 # async def test_get_task_acquisitions(async_client: AsyncClient, test_acquisition_task, test_acquisition):

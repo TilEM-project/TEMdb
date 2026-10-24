@@ -49,10 +49,59 @@ async def test_create_and_get_dataset_by_name(async_client, test_specimen):
 
 
 @pytest.mark.asyncio
+async def test_dataset_extra_fields_round_trip(async_client, test_specimen):
+    dataset_name = f"ds_extra_{uuid.uuid4().hex[:8]}"
+    create_response = await async_client.post(
+        "/api/v2/datasets",
+        json={
+            "name": dataset_name,
+            "specimen_id": test_specimen.specimen_id,
+            "size_class": "small",
+            "extra": {"unknown_create_key": {"created": True}},
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["extra"]["unknown_create_key"] == {"created": True}
+
+    patch_response = await async_client.patch(
+        f"/api/v2/datasets/{created['dataset_id']}",
+        json={
+            "status": "collected",
+            "extra": {"unknown_patch_key": "patched-extra"},
+        },
+    )
+    assert patch_response.status_code == 200
+    assert patch_response.json()["extra"]["unknown_patch_key"] == "patched-extra"
+
+    get_response = await async_client.get(f"/api/v2/datasets/{created['dataset_id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["extra"]["unknown_create_key"] == {"created": True}
+    assert get_response.json()["extra"]["unknown_patch_key"] == "patched-extra"
+
+    by_name_response = await async_client.get(f"/api/v2/datasets/by-name/{dataset_name}")
+    assert by_name_response.status_code == 200
+    assert by_name_response.json()["extra"]["unknown_create_key"] == {"created": True}
+    assert by_name_response.json()["extra"]["unknown_patch_key"] == "patched-extra"
+
+    list_response = await async_client.get(f"/api/v2/datasets?specimen_id={test_specimen.specimen_id}")
+    assert list_response.status_code == 200
+    listed = next(ds for ds in list_response.json() if ds["dataset_id"] == created["dataset_id"])
+    assert listed["extra"]["unknown_create_key"] == {"created": True}
+    assert listed["extra"]["unknown_patch_key"] == "patched-extra"
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_a_negative_tile_estimate(async_client):
+    resp = await async_client.post("/api/v2/datasets", json={"name": "negative", "estimated_tile_count": -1})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_create_duplicate_name_rejected(async_client):
     await async_client.post("/api/v2/datasets", json={"name": "dup", "size_class": "small"})
     resp = await async_client.post("/api/v2/datasets", json={"name": "dup", "size_class": "small"})
-    assert resp.status_code == 400
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -99,3 +148,20 @@ async def test_acquisition_carries_dataset_id(
             await session.scalars(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == "ACQ_DS_001"))
         ).one()
         assert fetched.dataset_id == ds_id
+
+
+@pytest.mark.asyncio
+async def test_list_datasets_pages_through_created_at_ties(init_db, async_client, test_db_manager):
+    created_at = datetime.now(timezone.utc)
+    datasets = [
+        DatasetSQLModel(dataset_id=uuid7(), name=f"ds_{n}", size_class="small", created_at=created_at) for n in range(3)
+    ]
+    async with test_db_manager.async_session_factory() as session:
+        session.add_all(datasets)
+        await session.commit()
+
+    pages = [
+        (await async_client.get("/api/v2/datasets", params={"skip": skip, "limit": 1})).json() for skip in range(3)
+    ]
+    expected = sorted(datasets, key=lambda dataset: dataset.dataset_id)
+    assert [dataset["name"] for page in pages for dataset in page] == [dataset.name for dataset in expected]
