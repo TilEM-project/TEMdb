@@ -71,11 +71,14 @@ from temdb.models.quality_control import (
     TileFocusScore,
 )
 from temdb.models.roi import (
+    ROIChildrenMetadata,
     ROIChildrenResponse,
     ROICreate,
+    ROICreatePayload,
     ROIPayload,
     ROIResponse,
     ROIUpdate,
+    ROIUpdatePayload,
 )
 from temdb.models.section import (
     SectionBase,
@@ -163,10 +166,13 @@ __all__ = [
     "BlockUpdate",
     "BlockResponse",
     # ROI
+    "ROICreatePayload",
     "ROIPayload",
+    "ROIUpdatePayload",
     "ROICreate",
     "ROIUpdate",
     "ROIResponse",
+    "ROIChildrenMetadata",
     "ROIChildrenResponse",
     # Section
     "SectionBase",
