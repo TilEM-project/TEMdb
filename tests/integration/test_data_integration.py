@@ -122,14 +122,11 @@ class TestDataIntegration:
     async def create_roi(self, section: SectionSQLModel, roi_number: int = 1) -> ROISQLModel:
         async with self.db_manager.async_session_factory() as session:
             roi = ROISQLModel(
-                roi_id=f"{section.specimen_id}.{section.block_id}.{section.section_id}.{section.media_id}.ROI{roi_number:03d}",
+                roi_id=f"{section.media_id}.A{section.aperture_index:04d}.R{roi_number:03d}",
                 roi_number=roi_number,
                 section_id=section.section_id,
-                block_id=section.block_id,
-                specimen_id=section.specimen_id,
                 substrate_media_id=section.media_id,
-                hierarchy_level=1,
-                section_number=section.section_number,
+                aperture_index=section.aperture_index,
                 roi_payload={},
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
@@ -290,8 +287,7 @@ class TestDataIntegration:
         assert roi.id is not None
         assert roi.roi_id is not None
         assert roi.section_id == section.section_id
-        assert roi.block_id == block.block_id
-        assert roi.specimen_id == specimen.specimen_id
+        assert roi.aperture_index == section.aperture_index
 
     @pytest.mark.asyncio
     async def test_acquisition_task_creation(self):

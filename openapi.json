@@ -3668,26 +3668,64 @@
         "title": "PolygonParams",
         "type": "object"
       },
+      "ROIChildrenMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "skip": {
+            "title": "Skip",
+            "type": "integer"
+          },
+          "total_children": {
+            "title": "Total Children",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "skip",
+          "limit",
+          "total_children",
+          "has_more"
+        ],
+        "title": "ROIChildrenMetadata",
+        "type": "object"
+      },
+      "ROIChildrenResponse": {
+        "description": "Response model for ROI children query.",
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/ROIResponse"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ROIChildrenMetadata"
+          }
+        },
+        "required": [
+          "children",
+          "metadata"
+        ],
+        "title": "ROIChildrenResponse",
+        "type": "object"
+      },
       "ROICreate": {
         "additionalProperties": false,
         "properties": {
-          "block_id": {
-            "description": "ID of block",
-            "title": "Block Id",
-            "type": "string"
-          },
           "created_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Creation timestamp; server-generated if omitted",
-            "title": "Created At"
+            "description": "When the ROI was created; with the section's aperture it identifies the ROI on a resend",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
           },
           "extra": {
             "anyOf": [
@@ -3702,66 +3740,38 @@
             "description": "Free-form fields outside the schema; an update merges keys and null removes one",
             "title": "Extra"
           },
-          "parent_roi_id": {
+          "parent_created_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Hierarchical ID of parent ROI (e.g., 'SPEC001.BLK001.SEC001.SUB001.ROI001')",
-            "title": "Parent Roi Id"
+            "description": "created_at of the parent ROI on the same section, for a sub-ROI",
+            "title": "Parent Created At"
           },
           "payload": {
-            "$ref": "#/components/schemas/ROIPayload",
-            "description": "Domain attributes of the ROI"
-          },
-          "roi_number": {
-            "description": "Sequential number for this ROI within its parent context",
-            "title": "Roi Number",
-            "type": "integer"
+            "$ref": "#/components/schemas/ROICreatePayload",
+            "description": "The ROI's vertices and other domain attributes"
           },
           "section_id": {
-            "description": "ID of section",
+            "description": "The section the ROI is drawn on; it gives the substrate and aperture",
             "title": "Section Id",
-            "type": "string"
-          },
-          "section_number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Number of section from collection",
-            "title": "Section Number"
-          },
-          "specimen_id": {
-            "description": "ID of specimen",
-            "title": "Specimen Id",
-            "type": "string"
-          },
-          "substrate_media_id": {
-            "description": "Media ID of the substrate this section is placed on",
-            "title": "Substrate Media Id",
             "type": "string"
           }
         },
         "required": [
-          "roi_number",
           "section_id",
-          "specimen_id",
-          "block_id",
-          "substrate_media_id"
+          "created_at",
+          "payload"
         ],
         "title": "ROICreate",
         "type": "object"
       },
-      "ROIPayload": {
+      "ROICreatePayload": {
         "properties": {
           "aperture_bounding_box": {
             "anyOf": [
@@ -3843,6 +3853,12 @@
             ],
             "description": "Bucket of ROI",
             "title": "Bucket"
+          },
+          "buffer_size": {
+            "default": 0.0,
+            "description": "Dilation of the ROI polygon when imaging, in nanometers",
+            "title": "Buffer Size",
+            "type": "number"
           },
           "corners": {
             "anyOf": [
@@ -3945,6 +3961,270 @@
             "description": "List of ROIs",
             "title": "Rois"
           },
+          "rotation_angle": {
+            "default": 0.0,
+            "description": "Rotation of the ROI polygon in radians",
+            "title": "Rotation Angle",
+            "type": "number"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rule for ROI corner detection",
+            "title": "Rule"
+          },
+          "scale_y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scaling factor for y-axis",
+            "title": "Scale Y"
+          },
+          "vertices": {
+            "description": "Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 3,
+            "title": "Vertices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "vertices"
+        ],
+        "title": "ROICreatePayload",
+        "type": "object"
+      },
+      "ROIPayload": {
+        "properties": {
+          "aperture_bounding_box": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bounding box of aperture measured in pixel coordinates",
+            "title": "Aperture Bounding Box"
+          },
+          "aperture_centroid": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Center of aperture measured in pixel coordinates from aperture_image",
+            "title": "Aperture Centroid"
+          },
+          "aperture_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of aperture image",
+            "title": "Aperture Image"
+          },
+          "aperture_width_height": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Width and height of aperture in mm calculated from aperture_image",
+            "title": "Aperture Width Height"
+          },
+          "auto_roi": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flag if auto generated ROI was used",
+            "title": "Auto Roi"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bucket of ROI",
+            "title": "Bucket"
+          },
+          "buffer_size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dilation of the ROI polygon when imaging, in nanometers",
+            "title": "Buffer Size"
+          },
+          "corners": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corners of ROI",
+            "title": "Corners"
+          },
+          "corners_perpendicular": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Perpendicular corners of ROI",
+            "title": "Corners Perpendicular"
+          },
+          "edits": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List of edits to ROI",
+            "title": "Edits"
+          },
+          "optical_pixel_size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optical resolution in nm per pixel",
+            "title": "Optical Pixel Size"
+          },
+          "roi_mask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of ROI mask",
+            "title": "Roi Mask"
+          },
+          "roi_mask_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bucket of ROI mask",
+            "title": "Roi Mask Bucket"
+          },
+          "roi_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Parameters of ROI",
+            "title": "Roi Parameters"
+          },
+          "rois": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List of ROIs",
+            "title": "Rois"
+          },
+          "rotation_angle": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rotation of the ROI polygon in radians",
+            "title": "Rotation Angle"
+          },
           "rule": {
             "anyOf": [
               {
@@ -3988,22 +4268,23 @@
       },
       "ROIResponse": {
         "properties": {
-          "block_id": {
-            "description": "ID of block",
-            "title": "Block Id",
-            "type": "string"
-          },
-          "created_at": {
+          "aperture_index": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Created At"
+            "description": "Index of the layout aperture; none for a section off apertures",
+            "title": "Aperture Index"
+          },
+          "created_at": {
+            "description": "When the ROI was created",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
           },
           "dataset_id": {
             "anyOf": [
@@ -4031,11 +4312,6 @@
             "description": "Free-form fields outside the schema; an update merges keys and null removes one",
             "title": "Extra"
           },
-          "hierarchy_level": {
-            "description": "Depth level in ROI hierarchy (1=top-level, 2=child, etc.)",
-            "title": "Hierarchy Level",
-            "type": "integer"
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -4055,16 +4331,16 @@
                 "type": "null"
               }
             ],
-            "description": "Hierarchical ID of parent ROI",
+            "description": "ID of the parent ROI",
             "title": "Parent Roi Id"
           },
           "roi_id": {
-            "description": "Hierarchical ID of ROI",
+            "description": "{media_id}.A{aperture:04d}.R{roi_number:03d}, or {media_id}.R{roi_number:04d} on a section with no aperture; set by TEMdb",
             "title": "Roi Id",
             "type": "string"
           },
           "roi_number": {
-            "description": "Sequential number for this ROI within its parent context",
+            "description": "Number TEMdb assigned on the aperture (or on the substrate, with no aperture), in create order",
             "title": "Roi Number",
             "type": "integer"
           },
@@ -4080,25 +4356,8 @@
             "description": "Domain attributes of the ROI"
           },
           "section_id": {
-            "description": "ID of section",
+            "description": "The section the ROI is drawn on",
             "title": "Section Id",
-            "type": "string"
-          },
-          "section_number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Number of section from collection",
-            "title": "Section Number"
-          },
-          "specimen_id": {
-            "description": "ID of specimen",
-            "title": "Specimen Id",
             "type": "string"
           },
           "substrate_media_id": {
@@ -4123,11 +4382,9 @@
           "id",
           "roi_id",
           "roi_number",
-          "section_id",
-          "block_id",
-          "specimen_id",
           "substrate_media_id",
-          "hierarchy_level"
+          "section_id",
+          "created_at"
         ],
         "title": "ROIResponse",
         "type": "object"
@@ -4149,11 +4406,252 @@
             "title": "Extra"
           },
           "payload": {
-            "$ref": "#/components/schemas/ROIPayload",
+            "$ref": "#/components/schemas/ROIUpdatePayload",
             "description": "Domain attributes to merge into the ROI"
           }
         },
         "title": "ROIUpdate",
+        "type": "object"
+      },
+      "ROIUpdatePayload": {
+        "properties": {
+          "aperture_bounding_box": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bounding box of aperture measured in pixel coordinates",
+            "title": "Aperture Bounding Box"
+          },
+          "aperture_centroid": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Center of aperture measured in pixel coordinates from aperture_image",
+            "title": "Aperture Centroid"
+          },
+          "aperture_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of aperture image",
+            "title": "Aperture Image"
+          },
+          "aperture_width_height": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Width and height of aperture in mm calculated from aperture_image",
+            "title": "Aperture Width Height"
+          },
+          "auto_roi": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flag if auto generated ROI was used",
+            "title": "Auto Roi"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bucket of ROI",
+            "title": "Bucket"
+          },
+          "buffer_size": {
+            "description": "Dilation of the ROI polygon when imaging, in nanometers",
+            "title": "Buffer Size",
+            "type": "number"
+          },
+          "corners": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corners of ROI",
+            "title": "Corners"
+          },
+          "corners_perpendicular": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Perpendicular corners of ROI",
+            "title": "Corners Perpendicular"
+          },
+          "edits": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List of edits to ROI",
+            "title": "Edits"
+          },
+          "optical_pixel_size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optical resolution in nm per pixel",
+            "title": "Optical Pixel Size"
+          },
+          "roi_mask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of ROI mask",
+            "title": "Roi Mask"
+          },
+          "roi_mask_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bucket of ROI mask",
+            "title": "Roi Mask Bucket"
+          },
+          "roi_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Parameters of ROI",
+            "title": "Roi Parameters"
+          },
+          "rois": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List of ROIs",
+            "title": "Rois"
+          },
+          "rotation_angle": {
+            "description": "Rotation of the ROI polygon in radians",
+            "title": "Rotation Angle",
+            "type": "number"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rule for ROI corner detection",
+            "title": "Rule"
+          },
+          "scale_y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scaling factor for y-axis",
+            "title": "Scale Y"
+          },
+          "vertices": {
+            "description": "Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 3,
+            "title": "Vertices",
+            "type": "array"
+          }
+        },
+        "title": "ROIUpdatePayload",
         "type": "object"
       },
       "RasterPosition": {
@@ -11060,6 +11558,43 @@
             }
           },
           {
+            "description": "Filter by substrate media ID",
+            "in": "query",
+            "name": "substrate_media_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by substrate media ID",
+              "title": "Substrate Media Id"
+            }
+          },
+          {
+            "description": "Filter by layout aperture index",
+            "in": "query",
+            "name": "aperture_index",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by layout aperture index",
+              "title": "Aperture Index"
+            }
+          },
+          {
             "description": "Filter ROIs that are parents (have children)",
             "in": "query",
             "name": "is_parent_roi",
@@ -11133,7 +11668,7 @@
         ]
       },
       "post": {
-        "description": "Create a new ROI with hierarchical ID generation.",
+        "description": "Create an ROI, or return the stored one with the same created_at.",
         "operationId": "create_roi_api_v2_rois_post",
         "requestBody": {
           "content": {
@@ -11146,6 +11681,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ROIResponse"
+                }
+              }
+            },
+            "description": "The ROI was already stored"
+          },
           "201": {
             "content": {
               "application/json": {
@@ -11155,6 +11700,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Same created_at, different ROI"
           },
           "422": {
             "content": {
@@ -11175,7 +11730,7 @@
     },
     "/api/v2/rois/batch": {
       "post": {
-        "description": "Creates multiple ROI documents from a list with hierarchical ID generation.",
+        "description": "Create ROIs in order, storing none if one fails.",
         "operationId": "create_rois_batch_api_v2_rois_batch_post",
         "requestBody": {
           "content": {
@@ -11224,17 +11779,7 @@
                 }
               }
             },
-            "description": "Parent section not found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIErrorResponse"
-                }
-              }
-            },
-            "description": "Duplicate ROI ID"
+            "description": "Section not found"
           },
           "422": {
             "content": {
@@ -11340,7 +11885,7 @@
         ]
       },
       "patch": {
-        "description": "Update details (attributes from ROIPayload) of a specific ROI.",
+        "description": "Update an ROI's payload and extra.",
         "operationId": "update_roi_api_v2_rois__roi_id__patch",
         "parameters": [
           {
@@ -11434,9 +11979,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Child Rois Api V2 Rois  Roi Id  Children Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ROIChildrenResponse"
                 }
               }
             },

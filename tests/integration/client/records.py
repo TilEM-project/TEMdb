@@ -116,11 +116,9 @@ class Records:
         return await self._once(
             "roi",
             lambda: self.client.roi.create(
-                roi_number=1,
+                created_at=datetime(2026, 1, 1, 2, tzinfo=timezone.utc),
                 section_id=section.section_id,
-                specimen_id="SP1",
-                block_id="B1",
-                substrate_media_id="M1",
+                payload={"vertices": [[0, 0], [10, 0], [10, 10]], "rotation_angle": 0.0},
             ),
         )
 

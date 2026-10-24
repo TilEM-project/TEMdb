@@ -96,6 +96,10 @@ async def _validate_lineage(session: AsyncSession, task_data: AcquisitionTaskCre
                 ),
             )
             .outerjoin(ROISQLModel, ROISQLModel.roi_id == task_data.roi_id)
+            .outerjoin(SectionSQLModel, SectionSQLModel.section_id == ROISQLModel.section_id)
+            .add_columns(
+                SectionSQLModel.specimen_id.label("roi_specimen_id"), SectionSQLModel.block_id.label("roi_block_id")
+            )
             .where(SpecimenSQLModel.specimen_id == task_data.specimen_id)
         )
     ).first()
@@ -108,7 +112,7 @@ async def _validate_lineage(session: AsyncSession, task_data: AcquisitionTaskCre
     roi_obj = validation_row[2]
     if roi_obj is None:
         raise HTTPException(404, f"ROI '{task_data.roi_id}' not found")
-    if roi_obj.block_id != block_obj.block_id or roi_obj.specimen_id != specimen_obj.specimen_id:
+    if (validation_row.roi_specimen_id, validation_row.roi_block_id) != (specimen_obj.specimen_id, block_obj.block_id):
         raise HTTPException(
             400,
             f"ROI '{task_data.roi_id}' does not belong to block '{block_obj.block_id}' "
