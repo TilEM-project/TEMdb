@@ -46,8 +46,12 @@ async def test_acquisition_put_image_url(client, records, image_location):
     assert (await client.acquisition.get_tile("A1", tile.tile_id)).image.key == "image.tif"
 
 
-async def test_acquisition_put_image(client, tile_image, minio_s3):
-    result = await client.acquisition.put_image("A1", tile_image.tile_id, io.BytesIO(b"replacement"))
+async def test_acquisition_put_image(client, tile_image, minio_s3, tmp_path):
+    path = tmp_path / "image.tif"
+    path.write_bytes(b"replacement")
+    with path.open("rb") as image:
+        result = await client.acquisition.put_image("A1", tile_image.tile_id, image)
+        assert not image.closed
     assert result.key == "image.tif"
     response = minio_s3["client"].get_object(minio_s3["bucket"], "image.tif")
     try:
@@ -66,6 +70,24 @@ async def test_acquisition_put_image_urls(client, tile_image):
 async def test_acquisition_get_image_url(client, tile_image):
     result = await client.acquisition.get_image_url("A1", tile_image.tile_id, expiration=300)
     assert requests.get(result.url).content == CONTENTS
+
+
+async def test_acquisition_get_image(client, tile_image):
+    image = await client.acquisition.get_image("A1", tile_image.tile_id, expiration=300)
+    assert image == CONTENTS
+
+
+@pytest.mark.parametrize("size", [0, 11, 3 * 1024 * 1024 + 7])
+async def test_acquisition_open_image(client, tile_image, size):
+    contents = b"x" * size
+    async with client.acquisition.open_image("A1", tile_image.tile_id, "wb", size=size) as image:
+        await image.write(contents[:5])
+        await image.write(contents[5:])
+    async with client.acquisition.open_image("A1", tile_image.tile_id, "rb") as image:
+        assert await image.read(0) == b""
+        assert await image.read(5) == contents[:5]
+        assert await image.read() == contents[5:]
+        assert await image.read() == b""
 
 
 async def test_acquisition_get_image_urls(client, tile_image):
@@ -97,10 +119,9 @@ async def test_section_put_image_url(client, records, image_location):
 
 async def test_section_put_image(client, section_image):
     result = await client.section.put_image(section_image.section_id, io.BytesIO(b"replacement"))
-    downloaded = await client.section.get_image(section_image.section_id)
-    with downloaded:
-        assert downloaded.read() == b"replacement"
     assert result.key == "image.tif"
+    downloaded = await client.section.get_image(section_image.section_id)
+    assert downloaded == b"replacement"
 
 
 async def test_section_get_image_url(client, section_image):
@@ -110,8 +131,16 @@ async def test_section_get_image_url(client, section_image):
 
 async def test_section_get_image(client, section_image):
     image = await client.section.get_image(section_image.section_id, expiration=300)
-    with image:
-        assert image.read() == CONTENTS
+    assert image == CONTENTS
+
+
+async def test_section_open_image(client, section_image):
+    async with client.section.open_image(section_image.section_id, "wb", size=11) as image:
+        await image.write(b"first")
+        await image.write(b"second")
+    async with client.section.open_image(section_image.section_id, "rb") as image:
+        assert await image.read(5) == b"first"
+        assert await image.read() == b"second"
 
 
 async def test_section_delete_image(client, section_image, minio_s3):

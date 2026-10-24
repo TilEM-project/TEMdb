@@ -1,9 +1,9 @@
 import builtins
-import io
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime
-from typing import Any
+from typing import Any, BinaryIO, Literal, overload
 
-import requests
+import httpx
 from pydantic import BaseModel
 
 from temdb.models import (
@@ -22,6 +22,7 @@ from temdb.models import (
 )
 
 from .base import BaseResource, accepts_keywords
+from .image import ImageReader, ImageWriter, open_image, put_image
 
 
 class PaginatedAcquisitionResponse(BaseModel):
@@ -35,8 +36,8 @@ class PaginatedTileResponse(BaseModel):
 
 
 class AcquisitionResource(BaseResource):
-    def __init__(self, *args, **kwargs):
-        self._file_session = requests.Session()
+    def __init__(self, *args, file_client: httpx.AsyncClient | None = None, **kwargs):
+        self._file_client = file_client
         super().__init__(*args, **kwargs)
 
     async def list(
@@ -235,14 +236,63 @@ class AcquisitionResource(BaseResource):
         self,
         acquisition_id: str,
         tile_id: str,
-        image_data: io.IOBase,
+        image_data: BinaryIO,
         storage_location: FileObjectRequest | None = None,
     ) -> FileObjectResponse:
-        """Upload an image for a specific tile."""
-        file_object = await self.put_image_url(acquisition_id, tile_id, storage_location)
-        response = self._file_session.put(file_object.url, data=image_data)
-        response.raise_for_status()
-        return file_object
+        """Upload an open binary file directly and return its storage metadata."""
+        location = await self.put_image_url(acquisition_id, tile_id, storage_location)
+        return await put_image(location, image_data, self._file_client)
+
+    @overload
+    def open_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        mode: Literal["rb"] = "rb",
+        storage_location: FileObjectRequest | None = None,
+        expiration: int | None = None,
+        *,
+        size: int | None = None,
+    ) -> AbstractAsyncContextManager[ImageReader]: ...
+
+    @overload
+    def open_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        mode: Literal["wb"],
+        storage_location: FileObjectRequest | None = None,
+        expiration: int | None = None,
+        *,
+        size: int,
+    ) -> AbstractAsyncContextManager[ImageWriter]: ...
+
+    def open_image(
+        self,
+        acquisition_id: str,
+        tile_id: str,
+        mode: str = "rb",
+        storage_location: FileObjectRequest | None = None,
+        expiration: int | None = None,
+        *,
+        size: int | None = None,
+    ) -> AbstractAsyncContextManager[ImageReader | ImageWriter]:
+        """Open an async binary stream; 'wb' requires the total byte size."""
+        return open_image(
+            lambda: (
+                self.put_image_url(acquisition_id, tile_id, storage_location)
+                if mode == "wb"
+                else self.get_image_url(acquisition_id, tile_id, expiration)
+            ),
+            mode,
+            size,
+            self._file_client,
+        )
+
+    async def get_image(self, acquisition_id: str, tile_id: str, expiration: int | None = None) -> bytes:
+        """Download the entire tile image into memory."""
+        async with self.open_image(acquisition_id, tile_id, expiration=expiration) as image:
+            return await image.read()
 
     async def get_image_url(
         self, acquisition_id: str, tile_id: str, expiration: int | None = None

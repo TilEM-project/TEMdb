@@ -1,7 +1,8 @@
 import io
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 import requests
 
@@ -18,7 +19,6 @@ NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
 def _resource():
     request = AsyncMock()
     resource = SectionResource(request, API)
-    resource._file_session = Mock()
     return resource, request
 
 
@@ -135,36 +135,41 @@ async def test_put_image_url_without_location_posts_none():
 
 
 @pytest.mark.asyncio
-async def test_put_image_uploads_bytes_to_presigned_url():
+async def test_put_image_uploads_bytes_to_presigned_url(monkeypatch):
     resource, _ = _resource()
     file_object = FileObjectResponse.model_validate(_file_object_response())
     put_image_url = AsyncMock(return_value=file_object)
     resource.put_image_url = put_image_url
+    uploaded = []
+
+    async def handle(request):
+        uploaded.append(await request.aread())
+        return httpx.Response(200)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
+
     contents = io.BytesIO(b"section image")
-    upload_response = Mock()
-    resource._file_session.put.return_value = upload_response
+    assert await resource.put_image("SEC001", contents) is file_object
 
-    result = await resource.put_image("SEC001", contents)
-
-    put_image_url.assert_awaited_once_with("SEC001", None)
-    resource._file_session.put.assert_called_once_with(result.url, data=contents)
-    upload_response.raise_for_status.assert_called_once_with()
-    assert result is file_object
+    put_image_url.assert_awaited_once_with("SEC001", storage_location=None)
+    assert uploaded == [b"section image"]
+    assert not contents.closed
+    assert client.is_closed
 
 
 @pytest.mark.asyncio
-async def test_put_image_propagates_upload_failure():
+async def test_put_image_propagates_upload_failure(monkeypatch):
     resource, _ = _resource()
     put_image_url = AsyncMock(return_value=FileObjectResponse.model_validate(_file_object_response()))
     resource.put_image_url = put_image_url
-    upload_response = Mock()
-    upload_response.raise_for_status.side_effect = requests.HTTPError("upload failed")
-    resource._file_session.put.return_value = upload_response
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(500)))
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
-    with pytest.raises(requests.HTTPError, match="upload failed"):
+    with pytest.raises(httpx.HTTPStatusError):
         await resource.put_image("SEC001", io.BytesIO(b"image"))
 
-    put_image_url.assert_awaited_once_with("SEC001", None)
+    put_image_url.assert_awaited_once_with("SEC001", storage_location=None)
 
 
 @pytest.mark.asyncio
@@ -189,40 +194,34 @@ async def test_get_image_url_omits_expiration_when_unspecified():
 
 
 @pytest.mark.asyncio
-async def test_get_image_streams_presigned_response():
+async def test_get_image_streams_presigned_response(monkeypatch):
     resource, _ = _resource()
     get_image_url = AsyncMock(return_value=FileObjectResponse.model_validate(_file_object_response()))
     resource.get_image_url = get_image_url
-    response = Mock()
-    response.raw = io.BytesIO(b"downloaded section image")
-    resource._file_session.get.return_value = response
+    response = httpx.Response(200, content=b"downloaded section image")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response))
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
     result = await resource.get_image("SEC001", expiration=300)
 
     get_image_url.assert_awaited_once_with("SEC001", 300)
-    resource._file_session.get.assert_called_once_with(
-        "http://minio.example.com/section-images/sections/SEC001.png?signature=test",
-        stream=True,
-    )
-    response.raise_for_status.assert_called_once_with()
-    assert isinstance(result, io.BufferedReader)
-    assert result.read() == b"downloaded section image"
-    result.close()
+    assert str(response.request.url) == _file_object_response()["url"]
+    assert result == b"downloaded section image"
+    assert response.is_closed
 
 
 @pytest.mark.asyncio
-async def test_get_image_closes_response_when_download_fails():
+async def test_get_image_closes_response_when_download_fails(monkeypatch):
     resource, _ = _resource()
     resource.get_image_url = AsyncMock(return_value=FileObjectResponse.model_validate(_file_object_response()))
-    response = Mock()
-    response.raw = io.BytesIO(b"")
-    response.raise_for_status.side_effect = requests.HTTPError("download failed")
-    resource._file_session.get.return_value = response
+    response = httpx.Response(500)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response))
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
-    with pytest.raises(requests.HTTPError, match="download failed"):
+    with pytest.raises(httpx.HTTPStatusError):
         await resource.get_image("SEC001")
 
-    response.close.assert_called_once_with()
+    assert response.is_closed
 
 
 @pytest.mark.asyncio

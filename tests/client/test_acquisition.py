@@ -1,10 +1,10 @@
 import io
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import httpx
 import pytest
-import requests
 
 from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.models import AcquisitionCreate, AcquisitionUpdate, FileObjectRequest, FileObjectResponse
@@ -256,23 +256,49 @@ async def test_tile_put_image_uploads_and_propagates_errors(image_resource, monk
     resource, _ = image_resource
     file_object = FileObjectResponse.model_validate(_image_response())
     resource.put_image_url = AsyncMock(return_value=file_object)
-    upload_response = Mock()
-    if upload_fails:
-        upload_response.raise_for_status.side_effect = requests.HTTPError("upload failed")
-    file_session = Mock()
-    file_session.put.return_value = upload_response
-    monkeypatch.setattr("requests.Session.put", file_session.put)
+    uploaded = []
+
+    async def handle(request):
+        assert request.headers["Content-Length"] == "10"
+        uploaded.append(await request.aread())
+        return httpx.Response(500 if upload_fails else 200)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
     contents = io.BytesIO(b"tile image")
 
     if upload_fails:
-        with pytest.raises(requests.HTTPError, match="upload failed"):
+        with pytest.raises(httpx.HTTPStatusError):
             await resource.put_image("ACQ001", "tile", contents)
     else:
         assert await resource.put_image("ACQ001", "tile", contents) is file_object
 
     resource.put_image_url.assert_awaited_once_with("ACQ001", "tile", None)
-    file_session.put.assert_called_once_with(file_object.url, data=contents)
-    upload_response.raise_for_status.assert_called_once_with()
+    assert uploaded == [b"tile image"]
+    assert client.is_closed
+    assert not contents.closed
+
+
+@pytest.mark.parametrize("download_fails", [False, True])
+async def test_tile_get_image_streams_and_propagates_errors(image_resource, download_fails, monkeypatch):
+    resource, _ = image_resource
+    file_object = FileObjectResponse.model_validate(_image_response())
+    resource.get_image_url = AsyncMock(return_value=file_object)
+    response = httpx.Response(500 if download_fails else 200, content=b"tile image")
+    transport = httpx.MockTransport(lambda request: response)
+    client = httpx.AsyncClient(transport=transport)
+    monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
+
+    if download_fails:
+        with pytest.raises(httpx.HTTPStatusError):
+            await resource.get_image("ACQ001", "tile", expiration=300)
+    else:
+        image = await resource.get_image("ACQ001", "tile", expiration=300)
+        assert image == b"tile image"
+
+    resource.get_image_url.assert_awaited_once_with("ACQ001", "tile", 300)
+    assert str(response.request.url) == file_object.url
+    assert response.is_closed
 
 
 async def test_tile_delete_image(image_resource):
