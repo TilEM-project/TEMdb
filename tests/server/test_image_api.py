@@ -23,6 +23,7 @@ def image_target(request, test_acquisition, test_tile, test_section, test_block,
                 TileSQLModel.retake == test_tile.retake,
             ),
             "field": "image",
+            "name": None,
             "parent_model": DatasetSQLModel,
             "parent_condition": DatasetSQLModel.dataset_id == test_dataset.dataset_id,
             "path": (
@@ -34,9 +35,10 @@ def image_target(request, test_acquisition, test_tile, test_section, test_block,
         "model": SectionSQLModel,
         "condition": SectionSQLModel.id == test_section.id,
         "field": "optical_image",
+        "name": "thumbnail",
         "parent_model": BlockSQLModel,
         "parent_condition": BlockSQLModel.id == test_block.id,
-        "path": f"/api/v2/sections/{test_section.section_id}/image",
+        "path": f"/api/v2/sections/{test_section.section_id}/images/thumbnail",
     }
 
 
@@ -53,6 +55,8 @@ def _location(**overrides):
 async def _set_image(manager, target, image):
     async with manager.async_session_factory() as session:
         row = await session.scalar(select(target["model"]).where(target["condition"]))
+        if image is not None and target["name"]:
+            image = {target["name"]: image}
         setattr(row, target["field"], image if image is not None else null())
         await session.commit()
 
@@ -60,7 +64,10 @@ async def _set_image(manager, target, image):
 async def _image_state(manager, target):
     async with manager.async_session_factory() as session:
         row = await session.scalar(select(target["model"]).where(target["condition"]))
-        return getattr(row, target["field"]), row.updated_at
+        image = getattr(row, target["field"])
+        if image is not None and target["name"]:
+            image = image.get(target["name"])
+        return image, row.updated_at
 
 
 @pytest.fixture

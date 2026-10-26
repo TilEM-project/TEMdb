@@ -88,10 +88,12 @@ def generate_section(
         "specimen_id": cutting_session.specimen_id,
         "optical_image": (
             {
-                "protocol": "s3",
-                "server": "https://s3.example.com",
-                "bucket": "integration-images",
-                "key": f"sections/{cutting_session.cutting_session_id}/{section_number}.png",
+                "thumbnail": {
+                    "protocol": "s3",
+                    "server": "https://s3.example.com",
+                    "bucket": "integration-images",
+                    "key": f"sections/{cutting_session.cutting_session_id}/{section_number}.png",
+                }
             }
             if fake.boolean()
             else None

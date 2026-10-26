@@ -77,10 +77,10 @@ class SectionResource(BaseResource):
 
     @accepts_keywords(FileObjectRequest)
     async def put_image_url(
-        self, section_id: str, storage_location: FileObjectRequest | None = None
+        self, section_id: str, name: str, storage_location: FileObjectRequest | None = None
     ) -> FileObjectResponse:
-        """Get a presigned URL for uploading an image for a specific section."""
-        endpoint = f"sections/{section_id}/image"
+        """Get a presigned URL for uploading a named image of a section."""
+        endpoint = f"sections/{section_id}/images/{name}"
         payload = storage_location.model_dump(exclude_unset=True) if storage_location else None
         response_data = await self._post(endpoint, data=payload)
         return FileObjectResponse.model_validate(response_data)
@@ -88,15 +88,16 @@ class SectionResource(BaseResource):
     async def put_image(
         self,
         section_id: str,
+        name: str,
         image_data: BinaryIO,
         storage_location: FileObjectRequest | None = None,
         **kwargs: Any,
     ) -> FileObjectResponse:
         """Upload an open binary file directly and return its storage metadata."""
         location = (
-            await self.put_image_url(section_id, **kwargs)
+            await self.put_image_url(section_id, name, **kwargs)
             if storage_location is None and kwargs
-            else await self.put_image_url(section_id, storage_location=storage_location, **kwargs)
+            else await self.put_image_url(section_id, name, storage_location=storage_location, **kwargs)
         )
         return await put_image(location, image_data, self._file_client)
 
@@ -104,6 +105,7 @@ class SectionResource(BaseResource):
     def open_image(
         self,
         section_id: str,
+        name: str,
         mode: Literal["rb"] = "rb",
         storage_location: FileObjectRequest | None = None,
         expiration: int | None = None,
@@ -115,6 +117,7 @@ class SectionResource(BaseResource):
     def open_image(
         self,
         section_id: str,
+        name: str,
         mode: Literal["wb"],
         storage_location: FileObjectRequest | None = None,
         expiration: int | None = None,
@@ -125,6 +128,7 @@ class SectionResource(BaseResource):
     def open_image(
         self,
         section_id: str,
+        name: str,
         mode: str = "rb",
         storage_location: FileObjectRequest | None = None,
         expiration: int | None = None,
@@ -134,29 +138,29 @@ class SectionResource(BaseResource):
         """Open an async binary stream; 'wb' requires the total byte size."""
         return open_image(
             lambda: (
-                self.put_image_url(section_id, storage_location)
+                self.put_image_url(section_id, name, storage_location)
                 if mode == "wb"
-                else self.get_image_url(section_id, expiration)
+                else self.get_image_url(section_id, name, expiration)
             ),
             mode,
             size,
             self._file_client,
         )
 
-    async def get_image_url(self, section_id: str, expiration: int | None = None) -> FileObjectResponse:
-        """Get a presigned URL for downloading an image for a specific section."""
-        endpoint = f"sections/{section_id}/image"
+    async def get_image_url(self, section_id: str, name: str, expiration: int | None = None) -> FileObjectResponse:
+        """Get a presigned URL for downloading a named image of a section."""
+        endpoint = f"sections/{section_id}/images/{name}"
         response_data = await self._get(endpoint, params={"expiration": expiration} if expiration else None)
         return FileObjectResponse.model_validate(response_data)
 
-    async def get_image(self, section_id: str, expiration: int | None = None) -> bytes:
-        """Download the entire section image into memory."""
-        async with self.open_image(section_id, expiration=expiration) as image:
+    async def get_image(self, section_id: str, name: str, expiration: int | None = None) -> bytes:
+        """Download a named section image into memory."""
+        async with self.open_image(section_id, name, expiration=expiration) as image:
             return await image.read()
 
-    async def delete_image(self, section_id: str) -> None:
-        """Delete the image associated with a specific section."""
-        endpoint = f"sections/{section_id}/image"
+    async def delete_image(self, section_id: str, name: str) -> None:
+        """Delete a named image of a section."""
+        endpoint = f"sections/{section_id}/images/{name}"
         await self._delete(endpoint)
 
     @accepts_keywords(SectionUpdate)
