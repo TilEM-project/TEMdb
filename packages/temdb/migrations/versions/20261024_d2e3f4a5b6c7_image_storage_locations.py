@@ -1,7 +1,7 @@
-"""Add structured image storage while retaining current non-S3 tile paths.
+"""Add structured image storage while retaining legacy tile paths.
 
-sections.optical_image becomes {name: FileObject}. S3 URLs are converted. Bare file names have no known location, so
-they move unchanged to extra["optical_image_names"].
+sections.optical_image becomes one FileObject: the "thumbnail" entry when it is an S3 URL without metadata. Every other
+entry moves unchanged to extra["optical_images"].
 
 Revision ID: d2e3f4a5b6c7
 Revises: b0c1d2e3f4a5
@@ -29,7 +29,7 @@ def save_sections(bind, updates: list[dict]) -> None:
     if updates:
         bind.execute(
             sa.text(
-                "UPDATE sections SET optical_image = CAST(:images AS jsonb), extra = CAST(:extra AS jsonb) "
+                "UPDATE sections SET optical_image = CAST(:image AS jsonb), extra = CAST(:extra AS jsonb) "
                 "WHERE id = :id"
             ),
             updates,
@@ -44,36 +44,24 @@ def upgrade() -> None:
 
     bind = op.get_bind()
     s3_url = re.compile(r"^https://([a-z0-9.-]+)\.s3\.([a-z0-9-]+)\.amazonaws\.com/(.+)$")
-    rejected, updates = [], []
+    updates = []
     rows = bind.execute(
-        sa.text(
-            "SELECT id, section_id, optical_image, extra FROM sections WHERE jsonb_typeof(optical_image) = 'object'"
-        )
+        sa.text("SELECT id, optical_image, extra FROM sections WHERE jsonb_typeof(optical_image) = 'object'")
     ).all()
     for row in rows:
-        files, stems = {}, {}
-        for name, image in loaded(row.optical_image).items():
-            path = image.get("image_path") if isinstance(image, dict) else None
-            if not re.fullmatch(r"[a-z0-9_]+", name) or not isinstance(path, str) or image.get("metadata"):
-                rejected.append((row.section_id, name))
-            elif match := s3_url.match(path):
-                bucket, region, key = match.groups()
-                files[name] = {
-                    "protocol": "s3",
-                    "server": f"https://s3.{region}.amazonaws.com",
-                    "bucket": bucket,
-                    "key": key,
-                }
-            else:
-                stems[name] = image
+        images = loaded(row.optical_image)
+        thumbnail = images.get("thumbnail")
+        path = thumbnail.get("image_path") if isinstance(thumbnail, dict) else None
+        match = s3_url.match(path) if isinstance(path, str) and not thumbnail.get("metadata") else None
+        image = None
+        if match:
+            bucket, region, key = match.groups()
+            image = {"protocol": "s3", "server": f"https://s3.{region}.amazonaws.com", "bucket": bucket, "key": key}
+            del images["thumbnail"]
         extra = loaded(row.extra)
-        if stems:
-            extra["optical_image_names"] = stems
-        updates.append({"id": row.id, "images": json.dumps(files) if files else None, "extra": json.dumps(extra)})
-    if rejected:
-        raise RuntimeError(
-            f"{len(rejected)} optical_image entries need a lowercase name, an image_path and no metadata: {rejected[:20]}"
-        )
+        if images:
+            extra["optical_images"] = images
+        updates.append({"id": row.id, "image": json.dumps(image) if image else None, "extra": json.dumps(extra)})
     save_sections(bind, updates)
 
 
@@ -84,20 +72,20 @@ def downgrade() -> None:
     rows = bind.execute(
         sa.text(
             "SELECT id, optical_image, extra FROM sections "
-            "WHERE jsonb_typeof(optical_image) = 'object' OR extra ? 'optical_image_names'"
+            "WHERE jsonb_typeof(optical_image) = 'object' OR extra ? 'optical_images'"
         )
     ).all()
     for row in rows:
-        images = {}
-        for name, file in loaded(row.optical_image).items():
+        extra = loaded(row.extra)
+        images = extra.pop("optical_images", {})
+        if row.optical_image is not None:
+            file = loaded(row.optical_image)
             if match := aws_server.match(file["server"] or ""):
                 path = f"https://{file['bucket']}.s3.{match.group(1)}.amazonaws.com/{file['key']}"
             else:
                 path = f"{file['server']}/{file['bucket']}/{file['key']}"
-            images[name] = {"image_path": path, "metadata": {}}
-        extra = loaded(row.extra)
-        images.update(extra.pop("optical_image_names", {}))
-        updates.append({"id": row.id, "images": json.dumps(images) if images else None, "extra": json.dumps(extra)})
+            images["thumbnail"] = {"image_path": path, "metadata": {}}
+        updates.append({"id": row.id, "image": json.dumps(images) if images else None, "extra": json.dumps(extra)})
     save_sections(bind, updates)
 
     op.alter_column("tiles", "image_path", existing_type=sa.String(), nullable=False)

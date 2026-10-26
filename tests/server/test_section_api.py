@@ -74,7 +74,12 @@ async def test_create_section(async_client: AsyncClient, test_cutting_session, t
         "timestamp": "2026-09-04T16:00:00+00:00",
         "media_id": substrate_id_hr,
         "aperture_index": 0,
-        "optical_image": {"thumbnail": _image_object("http://example.com/image.png")},
+        "optical_image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": "http://example.com/image.png",
+        },
         "run_parameters": {"cutting_thickness_um": 45.5, "water_added": True},
     }
     response = await async_client.post("/api/v2/sections", json=section_data)
@@ -118,7 +123,12 @@ async def test_create_sections_batch(async_client: AsyncClient, test_cutting_ses
                 "timestamp": f"2026-09-04T16:0{i}:00+00:00",
                 "media_id": f"{media_base}_{substrate_idx}",
                 "aperture_index": i % 3,
-                "optical_image": {"thumbnail": _image_object(f"http://example.com/image_{i}.png")},
+                "optical_image": {
+                    "protocol": "s3",
+                    "server": "http://localhost:9000",
+                    "bucket": "images",
+                    "key": f"http://example.com/image_{i}.png",
+                },
             }
         )
 
@@ -166,7 +176,12 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
             "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": test_substrate.media_id,
             "aperture_index": 0,
-            "optical_image": {"thumbnail": _image_object("http://foobar.com/image.png")},
+            "optical_image": {
+                "protocol": "s3",
+                "server": "http://localhost:9000",
+                "bucket": "images",
+                "key": "http://foobar.com/image.png",
+            },
         }
     ]
 
@@ -185,7 +200,12 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
             "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": "NON_EXISTENT_MEDIA_ID",
             "aperture_index": 0,
-            "optical_image": {"thumbnail": _image_object("http://example.com/image.png")},
+            "optical_image": {
+                "protocol": "s3",
+                "server": "http://localhost:9000",
+                "bucket": "images",
+                "key": "http://example.com/image.png",
+            },
         }
     ]
 
@@ -229,14 +249,24 @@ async def test_create_sections_batch_duplicate_placements(async_client: AsyncCli
             "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": media_id,
             "aperture_index": 0,
-            "optical_image": {"thumbnail": _image_object("http://image.server.com/image1.png")},
+            "optical_image": {
+                "protocol": "s3",
+                "server": "http://localhost:9000",
+                "bucket": "images",
+                "key": "http://image.server.com/image1.png",
+            },
         },
         {
             "cutting_session_id": test_cutting_session.cutting_session_id,
             "timestamp": "2026-09-04T16:00:00+00:00",
             "media_id": media_id,
             "aperture_index": 0,
-            "optical_image": {"thumbnail": _image_object("http://some.other.place.com/image2.png")},
+            "optical_image": {
+                "protocol": "s3",
+                "server": "http://localhost:9000",
+                "bucket": "images",
+                "key": "http://some.other.place.com/image2.png",
+            },
         },
     ]
 
@@ -271,7 +301,12 @@ async def test_update_section(async_client: AsyncClient, test_cutting_session, t
     update_data = {
         "section_metrics": {"quality": SectionQuality.BROKEN},
         "run_parameters": {"cut_cycle": 0.6},
-        "optical_image": {"thumbnail": _image_object("/allen/something/something/profit.jpg")},
+        "optical_image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": "/allen/something/something/profit.jpg",
+        },
     }
     path = f"/api/v2/sections/{test_section.section_id}"
     response = await async_client.patch(path, json=update_data)
@@ -280,21 +315,6 @@ async def test_update_section(async_client: AsyncClient, test_cutting_session, t
     assert response_data["section_id"] == test_section.section_id
     assert response_data["section_metrics"]["quality"] == SectionQuality.BROKEN.value
     assert response_data["run_parameters"]["cut_cycle"] == 0.6
-
-
-@pytest.mark.asyncio
-async def test_update_images_keeps_unnamed(async_client: AsyncClient, test_section):
-    """Patching some optical images keeps the section's other named images."""
-    path = f"/api/v2/sections/{test_section.section_id}"
-    await async_client.patch(path, json={"optical_image": {"roi": _image_object("roi.png")}})
-
-    response = await async_client.patch(path, json={"optical_image": {"thumbnail": _image_object("thumb.png")}})
-
-    assert response.status_code == 200, response.text
-    assert response.json()["optical_image"] == {
-        "roi": _image_object("roi.png"),
-        "thumbnail": _image_object("thumb.png"),
-    }
 
 
 @pytest.mark.asyncio
@@ -560,7 +580,7 @@ async def test_put_section_image_url_uploads_to_minio(
     test_section,
     minio_s3,
 ):
-    path = f"/api/v2/sections/{test_section.section_id}/images/thumbnail"
+    path = f"/api/v2/sections/{test_section.section_id}/image"
     location = {
         "protocol": "s3",
         "server": minio_s3["server"],
@@ -621,10 +641,10 @@ async def test_get_section_image_url_downloads_from_minio(
         section = await session.scalar(
             select(SectionSQLModel).where(SectionSQLModel.section_id == test_section.section_id)
         )
-        section.optical_image = {"thumbnail": image}
+        section.optical_image = image
         await session.commit()
 
-    path = f"/api/v2/sections/{test_section.section_id}/images/thumbnail"
+    path = f"/api/v2/sections/{test_section.section_id}/image"
     response = await async_client.get(path, params={"expiration": 600})
 
     assert response.status_code == 200, response.text
@@ -640,19 +660,20 @@ async def test_get_section_image_url_downloads_from_minio(
 
 
 @pytest.mark.parametrize("method", ["GET", "DELETE"])
-@pytest.mark.parametrize("missing", ["section", "image"])
+@pytest.mark.parametrize("missing", ["section", "session", "image"])
 async def test_section_image_missing_resource_returns_404(
     async_client, test_cutting_session, test_section, method, missing
 ):
+    session_id = "MISSING_SESSION" if missing == "session" else test_cutting_session.cutting_session_id
     section_id = "MISSING_SECTION" if missing == "section" else test_section.section_id
-    path = f"/api/v2/sections/{section_id}/images/thumbnail"
+    path = f"/api/v2/sections/sessions/{session_id}/sections/{section_id}/image"
 
     response = await async_client.request(method, path)
 
     assert response.status_code == 404, response.text
 
 
-async def test_delete_section_image_keeps_other_images(
+async def test_delete_section_image_removes_object_and_clears_metadata(
     async_client, test_db_manager, test_cutting_session, test_section, minio_s3
 ):
     image = {
@@ -665,9 +686,9 @@ async def test_delete_section_image_keeps_other_images(
     minio_s3["client"].put_object(image["bucket"], image["key"], io.BytesIO(contents), length=len(contents))
     async with test_db_manager.async_session_factory() as session:
         section = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.id == test_section.id))
-        section.optical_image = {"thumbnail": image, "roi": _image_object("roi.png")}
+        section.optical_image = image
         await session.commit()
-    path = f"/api/v2/sections/{test_section.section_id}/images/thumbnail"
+    path = f"/api/v2/sections/{test_section.section_id}/image"
 
     response = await async_client.delete(path)
 
@@ -679,6 +700,6 @@ async def test_delete_section_image_keeps_other_images(
     async with test_db_manager.async_session_factory() as session:
         section = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.id == test_section.id))
         assert section is not None
-        assert section.optical_image == {"roi": _image_object("roi.png")}
+        assert section.optical_image is None
     assert (await async_client.get(path)).status_code == 404
     assert (await async_client.delete(path)).status_code == 404

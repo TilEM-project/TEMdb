@@ -4845,19 +4845,13 @@
           "optical_image": {
             "anyOf": [
               {
-                "patternProperties": {
-                  "^[a-z0-9_]+$": {
-                    "$ref": "#/components/schemas/FileObject"
-                  }
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/FileObject"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Images of the section by name, e.g. thumbnail, autotome_qc_snapshot, roi",
-            "title": "Optical Image"
+            "description": "Optical image collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -5196,19 +5190,13 @@
           "optical_image": {
             "anyOf": [
               {
-                "patternProperties": {
-                  "^[a-z0-9_]+$": {
-                    "$ref": "#/components/schemas/FileObject"
-                  }
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/FileObject"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Images of the section by name, e.g. thumbnail, autotome_qc_snapshot, roi",
-            "title": "Optical Image"
+            "description": "Optical image collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -5361,19 +5349,13 @@
           "optical_image": {
             "anyOf": [
               {
-                "patternProperties": {
-                  "^[a-z0-9_]+$": {
-                    "$ref": "#/components/schemas/FileObject"
-                  }
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/FileObject"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Images of the section by name, e.g. thumbnail, autotome_qc_snapshot, roi",
-            "title": "Optical Image"
+            "description": "Optical image collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -13226,10 +13208,10 @@
         ]
       }
     },
-    "/api/v2/sections/{section_id}/images/{name}": {
+    "/api/v2/sections/{section_id}/image": {
       "delete": {
-        "description": "Delete a named image of a section.",
-        "operationId": "delete_image_api_v2_sections__section_id__images__name__delete",
+        "description": "Delete the image associated with a specific section.",
+        "operationId": "delete_image_api_v2_sections__section_id__image_delete",
         "parameters": [
           {
             "in": "path",
@@ -13237,15 +13219,6 @@
             "required": true,
             "schema": {
               "title": "Section Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "title": "Name",
               "type": "string"
             }
           }
@@ -13271,8 +13244,8 @@
         ]
       },
       "get": {
-        "description": "Generate a pre-signed URL for downloading a named image of a section.",
-        "operationId": "image_get_url_api_v2_sections__section_id__images__name__get",
+        "description": "Generate a pre-signed URL for downloading an image for a specific section.",
+        "operationId": "image_get_url_api_v2_sections__section_id__image_get",
         "parameters": [
           {
             "in": "path",
@@ -13280,15 +13253,6 @@
             "required": true,
             "schema": {
               "title": "Section Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "title": "Name",
               "type": "string"
             }
           },
@@ -13333,8 +13297,8 @@
         ]
       },
       "post": {
-        "description": "Generate a pre-signed URL for uploading a named image of a section.",
-        "operationId": "image_put_url_api_v2_sections__section_id__images__name__post",
+        "description": "Generate a pre-signed URL for uploading an image for a specific section.",
+        "operationId": "image_put_url_api_v2_sections__section_id__image_post",
         "parameters": [
           {
             "in": "path",
@@ -13342,16 +13306,6 @@
             "required": true,
             "schema": {
               "title": "Section Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "pattern": "^[a-z0-9_]+$",
-              "title": "Name",
               "type": "string"
             }
           }

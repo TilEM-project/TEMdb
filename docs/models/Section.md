@@ -12,7 +12,7 @@
 | `block_id` | string | ID of the block |
 | `specimen_id` | string | ID of the specimen |
 | `media_id` | string | ID of the substrate |
-| `optical_image` | object | Images of the section by name, e.g. thumbnail, autotome_qc_snapshot, roi |
+| `optical_image` | object | Optical image collected before imaging |
 | `aperture_index` | int | Index of the layout aperture holding this section; empty for a section on a blank |
 | `position` | object | Where the section sits on the substrate, if known |
 | `condition` | string | Physical condition of the section |
