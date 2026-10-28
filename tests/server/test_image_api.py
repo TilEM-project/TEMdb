@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -6,7 +7,7 @@ from sqlalchemy import and_, null, select
 
 from temdb.models import StorageDefault
 from temdb.server.config import config
-from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel, SectionSQLModel, TileSQLModel
+from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel, SectionSQLModel, SpecimenSQLModel, TileSQLModel
 from temdb.server.sqlmodels.tile import format_tile_id
 
 
@@ -289,3 +290,25 @@ async def test_missing_credentials_is_logged_500(async_client, test_db_manager, 
     assert response.status_code == 500, response.text
     assert "Unable to locate credentials" in caplog.text
     assert await _image_state(test_db_manager, image_target) == before
+
+
+async def test_section_upload_uses_own_specimen_block(async_client, test_db_manager, test_section, image_s3):
+    async with test_db_manager.async_session_factory() as session:
+        block = await session.scalar(select(BlockSQLModel).where(BlockSQLModel.block_id == test_section.block_id))
+        block.default_storage = {"protocol": "s3", "server": "http://own.example.com", "bucket": "own"}
+        session.add(SpecimenSQLModel(specimen_id="OTHER_SPECIMEN", created_at=datetime.now(timezone.utc)))
+        await session.flush()
+        session.add(
+            BlockSQLModel(
+                block_id=test_section.block_id,
+                specimen_id="OTHER_SPECIMEN",
+                default_storage={"protocol": "s3", "server": "http://other.example.com", "bucket": "other"},
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    response = await async_client.post(f"/api/v2/sections/{test_section.section_id}/image", json={"key": "a.tif"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["bucket"] == "own"

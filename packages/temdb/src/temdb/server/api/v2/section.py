@@ -482,28 +482,14 @@ async def image_put_url(
     if storage_location is None:
         storage_location = FileObjectRequest.from_file_object(section_obj.optical_image)
     if not storage_location.complete:
-        cutting_session = await session.scalars(
-            select(CuttingSessionSQLModel).where(
-                CuttingSessionSQLModel.cutting_session_id == section_obj.cutting_session_id
+        block_default = await session.scalar(
+            select(BlockSQLModel.default_storage).where(
+                BlockSQLModel.specimen_id == section_obj.specimen_id,
+                BlockSQLModel.block_id == section_obj.block_id,
             )
         )
-        cutting_session_obj = cutting_session.one_or_none()
-        if cutting_session_obj is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Cutting Session '{section_obj.cutting_session_id}' not found",
-            )
-        block = await session.scalars(
-            select(BlockSQLModel).where(BlockSQLModel.block_id == cutting_session_obj.block_id)
-        )
-        block_obj = block.one_or_none()
-        if block_obj is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Block '{cutting_session_obj.block_id}' not found",
-            )
-        if block_obj.default_storage is not None:
-            storage_location = storage_location.apply_defaults(block_obj.default_storage)
+        if block_default is not None:
+            storage_location = storage_location.apply_defaults(block_default)
 
     if not storage_location.complete and config.default_storage is not None:
         storage_location = storage_location.apply_defaults(config.default_storage)
