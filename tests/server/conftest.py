@@ -46,7 +46,7 @@ async def fresh_database_url(postgres_container):
 
 
 @pytest.fixture(scope="function")
-async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db) -> AsyncClient:
+async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db, storage_client_manager) -> AsyncClient:
     app.dependency_overrides[get_db_manager] = lambda: test_db_manager
     try:
         async with AsyncClient(base_url="http://test", transport=ASGITransport(app=app)) as client:

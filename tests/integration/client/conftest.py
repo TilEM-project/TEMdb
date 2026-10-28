@@ -8,7 +8,7 @@ from tests.integration.client.transport import RecordingTransport
 
 
 @pytest_asyncio.fixture
-async def transport(app, init_db):
+async def transport(app, init_db, storage_client_manager):
     app.dependency_overrides[get_db_manager] = lambda: init_db
     recording = RecordingTransport(app)
     try:

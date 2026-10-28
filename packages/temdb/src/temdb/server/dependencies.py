@@ -22,3 +22,7 @@ async def get_async_session(
 
     async with db_manager.async_session_factory() as session:
         yield session
+
+
+def get_storage_client_manager(request: Request):
+    return request.app.state.storage_client_manager

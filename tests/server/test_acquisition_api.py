@@ -1800,7 +1800,7 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
         params={"expiration": 300},
     )
 
-    assert response.status_code == (501 if failure == "gcs" else 200), response.text
+    assert response.status_code == 200, response.text
     async with test_db_manager.async_session_factory() as session:
         stored = {
             format_tile_id(
@@ -1813,21 +1813,25 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
             ): tile.image
             for tile in (await session.scalars(select(TileSQLModel))).all()
         }
-    if failure == "gcs":
-        assert stored == images
-        assert "not implemented" in response.json()["detail"]
-        return
-    expected = set(requested) - ({failed_id} if failure == "storage" else set())
+    expected = set(requested) - ({failed_id} if failure is not None else set())
     assert set(response.json()) == expected
-    assert {call.kwargs["endpoint_url"] for call in factory.call_args_list} == set(clients)
+    assert {call.kwargs["endpoint_url"] for call in factory.call_args_list} == {
+        images[tile_id]["server"] for tile_id in requested if images[tile_id]["protocol"] == "s3"
+    }
     if failure == "storage":
         assert ("delete denied" if method == "DELETE" else "presign denied") in caplog.text
+    elif failure == "gcs":
+        assert "not implemented" in caplog.text
     for tile_id, image in images.items():
         assert stored[tile_id] == (None if method == "DELETE" and tile_id in expected else image)
     operation = "delete_object" if method == "DELETE" else "generate_presigned_url"
     for server, client in clients.items():
         calls = getattr(client, operation).call_args_list
-        expected_keys = {images[tile_id]["key"] for tile_id in requested if images[tile_id]["server"] == server}
+        expected_keys = {
+            images[tile_id]["key"]
+            for tile_id in requested
+            if images[tile_id]["server"] == server and images[tile_id]["protocol"] == "s3"
+        }
         actual_keys = {call.kwargs["Key"] if method == "DELETE" else call.kwargs["Params"]["Key"] for call in calls}
         assert actual_keys == expected_keys
         assert len(calls) == len(expected_keys)

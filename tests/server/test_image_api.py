@@ -69,6 +69,7 @@ def image_s3(monkeypatch):
     client.generate_presigned_url.return_value = "https://storage.example.com/signed"
     factory = Mock(return_value=client)
     monkeypatch.setattr("boto3.client", factory)
+
     return client, factory
 
 

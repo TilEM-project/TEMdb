@@ -10,6 +10,7 @@ from temdb.server.cli import run_migrations
 from temdb.server.database import DatabaseManager
 from temdb.server.main import create_app
 from temdb.server.sqlmodels import Base
+from temdb.server.storage import StorageClientManager
 
 _UNSAFE_BUT_FAST = (
     "-c fsync=off "
@@ -33,6 +34,14 @@ def collect_tests_using_postgres_container(items):
 @pytest.fixture(scope="session")
 def app() -> FastAPI:
     return create_app()
+
+
+@pytest.fixture
+def storage_client_manager(app, monkeypatch):
+    manager = StorageClientManager()
+    monkeypatch.setattr(app.state, "storage_client_manager", manager, raising=False)
+    yield manager
+    manager.close()
 
 
 @pytest.fixture(scope="session")

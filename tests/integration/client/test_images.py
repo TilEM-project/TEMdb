@@ -26,7 +26,7 @@ async def tile_image(client, records, image_location):
 
 
 @pytest.fixture
-async def section_image(client, records, image_location):
+async def section_image(client, records, image_location, storage_client_manager):
     section = await records.section()
     await client.section.put_image(section.section_id, io.BytesIO(CONTENTS), image_location)
     return section
@@ -110,7 +110,7 @@ async def test_acquisition_delete_images(client, tile_image, minio_s3):
     await client.acquisition.delete_tile("A1", tile_image.tile_id)
 
 
-async def test_section_put_image_url(client, records, image_location):
+async def test_section_put_image_url(client, records, image_location, storage_client_manager):
     section = await records.section()
     result = await client.section.put_image_url(section.section_id, image_location)
     assert requests.put(result.url, data=CONTENTS).status_code == 200

@@ -1,8 +1,6 @@
 import logging
 from datetime import datetime, timezone
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, select
@@ -18,10 +16,9 @@ from temdb.models import (
     SectionQuality,
     SectionResponse,
     SectionUpdate,
-    StorageProtocol,
 )
 from temdb.server.config import config
-from temdb.server.dependencies import get_async_session
+from temdb.server.dependencies import get_async_session, get_storage_client_manager
 from temdb.server.exception_handlers import BaseError
 from temdb.server.sqlmodels import (
     BlockSQLModel,
@@ -461,6 +458,7 @@ async def image_put_url(
     section_id: str,
     storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager=Depends(get_storage_client_manager),
 ):
     """Generate a pre-signed URL for uploading an image for a specific section."""
     section = await session.scalars(
@@ -482,8 +480,8 @@ async def image_put_url(
             detail="Storage location must be provided.",
         )
     if storage_location is None:
-        storage_location = FileObject.model_validate(section_obj.optical_image)
-    if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
+        storage_location = FileObjectRequest.from_file_object(section_obj.optical_image)
+    if not storage_location.complete:
         cutting_session = await session.scalars(
             select(CuttingSessionSQLModel).where(
                 CuttingSessionSQLModel.cutting_session_id == section_obj.cutting_session_id
@@ -507,54 +505,21 @@ async def image_put_url(
         if block_obj.default_storage is not None:
             storage_location = storage_location.apply_defaults(block_obj.default_storage)
 
-        if config.default_storage is not None:
-            storage_location = storage_location.apply_defaults(config.default_storage)
+    if not storage_location.complete and config.default_storage is not None:
+        storage_location = storage_location.apply_defaults(config.default_storage)
 
-    storage_location.key = storage_location.key.lstrip("/")
+    storage_client_manager.finalize(storage_location)
 
-    if (
-        section_obj.optical_image is not None
-        and storage_location.model_dump(exclude={"expiration"}) != section_obj.optical_image
-    ):
+    if section_obj.optical_image is not None and storage_location != section_obj.optical_image:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Delete the existing image for section '{section_id}' before uploading a new one.",
         )
 
-    match storage_location.protocol:
-        case StorageProtocol.S3:
-            client = boto3.client("s3", endpoint_url=storage_location.server)
-            expiration = getattr(storage_location, "expiration", None) or 3600
-            try:
-                presigned_url = client.generate_presigned_url(
-                    "put_object",
-                    Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
-                    ExpiresIn=expiration,
-                )
-            except ClientError as e:
-                logger.error(f"Error generating presigned URL: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error generating presigned URL for S3.",
-                )
-            response = FileObjectResponse(
-                expiration=expiration,
-                url=presigned_url,
-                **storage_location.model_dump(exclude={"expiration"}),
-            )
-        case StorageProtocol.GCS:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail=f"Storage protocol '{storage_location.protocol}' is not yet implemented.",
-            )
-        case _:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
-            )
+    response = storage_client_manager.put_url(storage_location)
 
-    if storage_location.model_dump(exclude={"expiration"}) != section_obj.optical_image:
-        section_obj.optical_image = FileObject.model_validate(storage_location, from_attributes=True).model_dump()
+    if storage_location != section_obj.optical_image:
+        section_obj.optical_image = response.dump_file_object()
         section_obj.updated_at = datetime.now(timezone.utc)
         session.add(section_obj)
         await session.commit()
@@ -567,6 +532,7 @@ async def image_get_url(
     section_id: str,
     expiration: int = Query(3600, description="Expiration time in seconds for the presigned URL"),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager=Depends(get_storage_client_manager),
 ):
     """Generate a pre-signed URL for downloading an image for a specific section."""
     section = await session.scalars(
@@ -588,42 +554,14 @@ async def image_get_url(
 
     storage_location = FileObject.model_validate(section_obj.optical_image)
 
-    match storage_location.protocol:
-        case StorageProtocol.S3:
-            client = boto3.client("s3", endpoint_url=storage_location.server)
-            try:
-                presigned_url = client.generate_presigned_url(
-                    "get_object",
-                    Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
-                    ExpiresIn=expiration,
-                )
-            except ClientError as e:
-                logger.error(f"Error generating presigned URL: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error generating presigned URL for S3.",
-                )
-            return FileObjectResponse(
-                expiration=expiration,
-                url=presigned_url,
-                **storage_location.model_dump(),
-            )
-        case StorageProtocol.GCS:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail=f"Storage protocol '{storage_location.protocol}' is not yet implemented.",
-            )
-        case _:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
-            )
+    return storage_client_manager.get_url(storage_location, expiration)
 
 
 @section_api.delete("/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_image(
     section_id: str,
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager=Depends(get_storage_client_manager),
 ):
     """Delete the image associated with a specific section."""
     section = await session.scalars(
@@ -647,27 +585,7 @@ async def delete_image(
 
     storage_location = FileObject.model_validate(section_obj.optical_image)
 
-    match storage_location.protocol:
-        case StorageProtocol.S3:
-            client = boto3.client("s3", endpoint_url=storage_location.server)
-            try:
-                client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
-            except ClientError as e:
-                logger.error(f"Error deleting object from S3: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error deleting object from S3.",
-                )
-        case StorageProtocol.GCS:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail=f"Storage protocol '{storage_location.protocol}' is not yet implemented.",
-            )
-        case _:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported storage protocol '{storage_location.protocol}'.",
-            )
+    storage_client_manager.delete(storage_location)
 
     section_obj.optical_image = None
     section_obj.updated_at = datetime.now(timezone.utc)

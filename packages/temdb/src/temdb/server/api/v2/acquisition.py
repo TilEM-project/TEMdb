@@ -4,8 +4,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import (
     APIRouter,
     Body,
@@ -29,7 +27,6 @@ from temdb.models import (
     FileObject,
     FileObjectRequest,
     FileObjectResponse,
-    StorageProtocol,
     TileBulkDeleteResult,
     TileCreate,
     TileDeleteAllResult,
@@ -37,7 +34,7 @@ from temdb.models import (
     TileUpdate,
 )
 from temdb.server.config import config
-from temdb.server.dependencies import get_async_session
+from temdb.server.dependencies import get_async_session, get_storage_client_manager
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -54,6 +51,7 @@ from temdb.server.sqlmodels import (
 )
 from temdb.server.sqlmodels.tile import format_tile_id, parse_tile_id
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
+from temdb.server.storage import StorageClientManager
 
 from ..utils import drop_null_keys, merge_extra
 
@@ -816,6 +814,7 @@ async def image_put_urls(
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
     tile_ids: list[str] | None = Body(None),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Generate presigned PUT URLs for tiles in an acquisition.
 
@@ -838,41 +837,19 @@ async def image_put_urls(
     tiles_obj = tiles.all()
     if not tiles_obj:
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
-    protocol = None
-    server = None
-    client = None
     urls = {}
     for tile in tiles_obj:
-        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         if tile.image is None:
             continue
-        storage_location = FileObject.model_validate(tile.image)
-        if client is None or protocol != storage_location.protocol or server != storage_location.server:
-            match storage_location.protocol:
-                case StorageProtocol.S3:
-                    protocol = StorageProtocol.S3
-                    server = storage_location.server
-                    client = boto3.client("s3", endpoint_url=server)
-                case StorageProtocol.GCS:
-                    raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
-                case _:
-                    raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
+        storage_location = FileObjectRequest.from_file_object(tile.image)
+        storage_location.expiration = expiration
+        storage_client_manager.finalize(storage_location)
         try:
-            presigned_url = client.generate_presigned_url(
-                "put_object",
-                Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
-                ExpiresIn=expiration,
-            )
-            urls[tile_id] = FileObjectResponse(
-                protocol=storage_location.protocol,
-                server=storage_location.server,
-                bucket=storage_location.bucket,
-                key=storage_location.key,
-                expiration=expiration,
-                url=presigned_url,
-            )
-        except ClientError as e:
-            logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
+            url_data = storage_client_manager.put_url(storage_location)
+            urls[tile_id] = url_data
+        except HTTPException as e:
+            logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
     return urls
 
 
@@ -882,6 +859,7 @@ async def image_get_urls(
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
     tile_ids: list[str] | None = Body(None),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Generate presigned PUT URLs for tiles in an acquisition.
 
@@ -904,41 +882,17 @@ async def image_get_urls(
     tiles_obj = tiles.all()
     if not tiles_obj:
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
-    protocol = None
-    server = None
-    client = None
     urls = {}
     for tile in tiles_obj:
-        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         if tile.image is None:
             continue
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         storage_location = FileObject.model_validate(tile.image)
-        if client is None or protocol != storage_location.protocol or server != storage_location.server:
-            match storage_location.protocol:
-                case StorageProtocol.S3:
-                    protocol = StorageProtocol.S3
-                    server = storage_location.server
-                    client = boto3.client("s3", endpoint_url=server)
-                case StorageProtocol.GCS:
-                    raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
-                case _:
-                    raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
         try:
-            presigned_url = client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
-                ExpiresIn=expiration,
-            )
-            urls[tile_id] = FileObjectResponse(
-                protocol=storage_location.protocol,
-                server=storage_location.server,
-                bucket=storage_location.bucket,
-                key=storage_location.key,
-                expiration=expiration,
-                url=presigned_url,
-            )
-        except ClientError as e:
-            logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
+            url_data = storage_client_manager.get_url(storage_location, expiration)
+            urls[tile_id] = url_data
+        except HTTPException as e:
+            logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
     return urls
 
 
@@ -947,6 +901,7 @@ async def delete_tile_images(
     acquisition_id: str,
     tile_ids: list[str] | None = Body(None),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Delete the images associated with specific tiles in an acquisition.
 
@@ -969,36 +924,21 @@ async def delete_tile_images(
     tiles_obj = tiles.all()
     if not tiles_obj:
         raise HTTPException(404, f"No tile images to delete for acquisition '{acquisition_id}'")
-    protocol = None
-    server = None
-    client = None
     deleted_tiles = []
     for tile in tiles_obj:
-        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         if tile.image is None:
             continue
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         storage_location = FileObject.model_validate(tile.image)
-        if client is None or protocol != storage_location.protocol or server != storage_location.server:
-            match storage_location.protocol:
-                case StorageProtocol.S3:
-                    protocol = StorageProtocol.S3
-                    server = storage_location.server
-                    client = boto3.client("s3", endpoint_url=server)
-                case StorageProtocol.GCS:
-                    raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
-                case _:
-                    raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
         try:
-            client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
+            storage_client_manager.delete(storage_location)
             tile.image = None
             tile.updated_at = datetime.now(timezone.utc)
             session.add(tile)
             deleted_tiles.append(tile_id)
-        except ClientError as e:
-            logger.error(f"Error deleting image for tile {tile_id}: {e}")
-
+        except HTTPException as e:
+            logger.error(f"Error deleting image for tile {tile_id}: {e.detail}")
     await session.commit()
-
     return deleted_tiles
 
 
@@ -1028,6 +968,7 @@ async def image_put_url(
     tile_id: str,
     storage_location: FileObjectRequest | None = Body(None, description="Storage location for the tile image"),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Generate a presigned PUT URL for a tile in an acquisition.
 
@@ -1046,8 +987,8 @@ async def image_put_url(
     if storage_location is None and tile_obj.image is None:
         raise HTTPException(400, "No storage location provided and tile has no existing image")
     if storage_location is None:
-        storage_location = FileObject.model_validate(tile_obj.image)
-    if any([val is None for key, val in storage_location.model_dump().items() if key != "server"]):
+        storage_location = FileObjectRequest.from_file_object(tile_obj.image)
+    if not storage_location.complete:
         dataset = (
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == acq_obj.dataset_id))
         ).one_or_none()
@@ -1056,39 +997,18 @@ async def image_put_url(
         if dataset.default_storage is not None:
             storage_location = storage_location.apply_defaults(dataset.default_storage)
 
-        if config.default_storage is not None:
-            storage_location = storage_location.apply_defaults(config.default_storage)
+    if not storage_location.complete and config.default_storage is not None:
+        storage_location = storage_location.apply_defaults(config.default_storage)
 
-    storage_location.key = storage_location.key.lstrip("/")
+    storage_location = storage_client_manager.finalize(storage_location)
 
-    if tile_obj.image is not None and storage_location.model_dump(exclude={"expiration"}) != tile_obj.image:
+    if tile_obj.image is not None and storage_location != tile_obj.image:
         raise HTTPException(400, "Delete the existing image for the tile before uploading a new one.")
 
-    match storage_location.protocol:
-        case StorageProtocol.S3:
-            client = boto3.client("s3", endpoint_url=storage_location.server)
-            expiration = getattr(storage_location, "expiration", None) or 3600
-            try:
-                presigned_url = client.generate_presigned_url(
-                    "put_object",
-                    Params={"Bucket": storage_location.bucket, "Key": storage_location.key},
-                    ExpiresIn=expiration,
-                )
-            except ClientError as e:
-                logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
-                raise HTTPException(500, "Error generating presigned URL")
-            response = FileObjectResponse(
-                expiration=expiration,
-                url=presigned_url,
-                **storage_location.model_dump(exclude={"expiration"}),
-            )
-        case StorageProtocol.GCS:
-            raise HTTPException(501, f"Presigned URLs for {storage_location.protocol} are not implemented")
-        case _:
-            raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
+    response = storage_client_manager.put_url(storage_location)
 
-    if storage_location.model_dump(exclude={"expiration"}) != tile_obj.image:
-        tile_obj.image = FileObject.model_validate(storage_location, from_attributes=True).model_dump()
+    if storage_location != tile_obj.image:
+        tile_obj.image = response.dump_file_object()
         tile_obj.updated_at = datetime.now(timezone.utc)
         session.add(tile_obj)
         await session.commit()
@@ -1102,32 +1022,13 @@ async def image_get_url(
     tile_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Generate a presigned GET URL for a tile in an acquisition."""
     tile = TileResponse.model_validate(await get_tile_from_acquisition(acquisition_id, tile_id, session))
     if tile.image is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' has no image")
-    match tile.image.protocol:
-        case StorageProtocol.S3:
-            client = boto3.client("s3", endpoint_url=tile.image.server)
-            try:
-                presigned_url = client.generate_presigned_url(
-                    "get_object",
-                    Params={"Bucket": tile.image.bucket, "Key": tile.image.key},
-                    ExpiresIn=expiration,
-                )
-            except ClientError as e:
-                logger.error(f"Error generating presigned URL for tile {tile_id}: {e}")
-                raise HTTPException(500, "Error generating presigned URL")
-            return FileObjectResponse(
-                expiration=expiration,
-                url=presigned_url,
-                **tile.image.model_dump(exclude={"expiration"}),
-            )
-        case StorageProtocol.GCS:
-            raise HTTPException(501, f"Presigned URLs for {tile.image.protocol} are not implemented")
-        case _:
-            raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {tile.image.protocol}")
+    return storage_client_manager.get_url(FileObject.model_validate(tile.image), expiration)
 
 
 @acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", status_code=status.HTTP_204_NO_CONTENT)
@@ -1135,6 +1036,7 @@ async def delete_tile_image(
     acquisition_id: str,
     tile_id: str,
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Delete the image associated with a specific tile in an acquisition."""
     acquisition = await session.scalars(
@@ -1152,18 +1054,7 @@ async def delete_tile_image(
 
     storage_location = FileObject.model_validate(tile_obj.image)
 
-    match storage_location.protocol:
-        case StorageProtocol.S3:
-            client = boto3.client("s3", endpoint_url=storage_location.server)
-            try:
-                client.delete_object(Bucket=storage_location.bucket, Key=storage_location.key)
-            except ClientError as e:
-                logger.error(f"Error deleting image for tile {tile_id}: {e}")
-                raise HTTPException(500, "Error deleting image")
-        case StorageProtocol.GCS:
-            raise HTTPException(501, f"Image deletion for {storage_location.protocol} is not implemented")
-        case _:
-            raise HTTPException(400, f"Tile {tile_id} has unsupported protocol {storage_location.protocol}")
+    storage_client_manager.delete(storage_location)
 
     tile_obj.image = None
     tile_obj.updated_at = datetime.now(timezone.utc)

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import Field, model_validator
 
 from .base import TEMDBModel
@@ -12,8 +14,20 @@ class FileObject(TEMDBModel):
     bucket: str = Field(..., description="Bucket where the file is stored.")
     key: str = Field(..., description="Key to the file within the bucket.")
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, dict):
+            return self.model_dump(include=set(FileObject.model_fields)) == other
+        if isinstance(other, FileObjectRequest):
+            return (
+                self.protocol == other.protocol
+                and self.server == other.server
+                and self.bucket == other.bucket
+                and self.key == other.key
+            )
+        return super().__eq__(other)
 
-class FileObjectRequest(TEMDBModel):
+
+class FileObjectRequest(FileObject):
     protocol: StorageProtocol | None = Field(
         None, description="Storage protocol used for the file, or None to use the default."
     )
@@ -54,10 +68,37 @@ class FileObjectRequest(TEMDBModel):
                 self.expiration = default.expiration
         return self
 
+    @classmethod
+    def from_file_object(cls, file_object: FileObject | dict[str, Any]) -> "FileObjectRequest":
+        """Populate the request from a FileObject or dict."""
+        if isinstance(file_object, FileObject):
+            file_object = file_object.model_dump()
+        location = {key: file_object[key] for key in FileObject.model_fields}
+        location["key"] = f"/{location['key'].lstrip('/')}"
+        return cls.model_validate(location)
+
+    @property
+    def complete(self) -> bool:
+        """Check if the file object has all required fields filled."""
+        return all([self.protocol, self.bucket, self.key, self.expiration])
+
 
 class FileObjectResponse(FileObject):
     url: str = Field(..., description="Presigned URL to upload or download the file.")
     expiration: int = Field(..., description="Expiration time in seconds for the presigned URL.")
+
+    def to_file_object(self) -> FileObject:
+        """Return a FileObject representation of this response."""
+        return FileObject(
+            protocol=self.protocol,
+            server=self.server,
+            bucket=self.bucket,
+            key=self.key,
+        )
+
+    def dump_file_object(self) -> dict[str, Any]:
+        """Return a dict of the FileObject representation of this response."""
+        return self.to_file_object().model_dump()
 
 
 class StorageDefault(TEMDBModel):
