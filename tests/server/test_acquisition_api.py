@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 from httpx import AsyncClient
 from minio.error import S3Error
 from sqlalchemy import and_, null, or_, select, update
@@ -1907,3 +1907,20 @@ async def _seed_image_tiles(
         assert test_db_manager is not None
         await _set_tiles_image_to_sql_null(test_db_manager, tile_ids)
     return tile_ids
+
+
+@pytest.mark.parametrize("method", ["POST", "GET"])
+async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisition, monkeypatch, caplog, method):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
+    client = Mock()
+    client.generate_presigned_url.side_effect = [NoCredentialsError(), "https://signed", "https://signed"]
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+
+    response = await async_client.request(
+        method, f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 2
+    assert set(response.json()) < set(tile_ids)
+    assert "Unable to locate credentials" in caplog.text

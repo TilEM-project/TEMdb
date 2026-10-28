@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 from sqlalchemy import and_, null, select
 
 from temdb.models import StorageDefault
@@ -274,3 +274,18 @@ async def test_key_prefix_skips_leading_slash(
 
     assert response.status_code == 200, response.text
     assert (await _image_state(test_db_manager, image_target))[0] == _location(key=stored)
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+async def test_missing_credentials_is_logged_500(async_client, test_db_manager, image_target, image_s3, caplog, method):
+    await _set_image(test_db_manager, image_target, None if method == "POST" else _location())
+    before = await _image_state(test_db_manager, image_target)
+    operation = "delete_object" if method == "DELETE" else "generate_presigned_url"
+    getattr(image_s3[0], operation).side_effect = NoCredentialsError()
+    body = _location(key="/images/test.tif", expiration=600) if method == "POST" else None
+
+    response = await async_client.request(method, image_target["path"], json=body)
+
+    assert response.status_code == 500, response.text
+    assert "Unable to locate credentials" in caplog.text
+    assert await _image_state(test_db_manager, image_target) == before

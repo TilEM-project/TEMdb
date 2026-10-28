@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 
 from temdb.models import FileObject, FileObjectRequest, FileObjectResponse, StorageProtocol
@@ -54,7 +54,7 @@ class S3StorageClient(StorageClient):
                 },
                 ExpiresIn=expiration,
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to generate presigned URL for GET: %s", e)
             raise HTTPException(
                 status_code=500,
@@ -76,7 +76,7 @@ class S3StorageClient(StorageClient):
                 },
                 ExpiresIn=storage_location.expiration or 3600,
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to generate presigned URL for PUT: %s", e)
             raise HTTPException(
                 status_code=500,
@@ -94,7 +94,7 @@ class S3StorageClient(StorageClient):
                 Bucket=storage_location.bucket,
                 Key=storage_location.key,
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to delete object from S3: %s", e)
             raise HTTPException(
                 status_code=500,
