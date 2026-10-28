@@ -312,3 +312,16 @@ async def test_section_upload_uses_own_specimen_block(async_client, test_db_mana
 
     assert response.status_code == 200, response.text
     assert response.json()["bucket"] == "own"
+
+
+@pytest.mark.parametrize("key", ["", "/", "///"])
+async def test_upload_empty_key_is_400(async_client, test_db_manager, image_target, image_s3, monkeypatch, key):
+    monkeypatch.setattr(
+        config, "default_storage", StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images")
+    )
+
+    response = await async_client.post(image_target["path"], json={"key": key})
+
+    assert response.status_code == 400, response.text
+    image_s3[0].generate_presigned_url.assert_not_called()
+    assert (await _image_state(test_db_manager, image_target))[0] is None

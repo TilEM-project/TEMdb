@@ -175,4 +175,9 @@ class StorageClientManager:
                 detail="Storage key must be specified.",
             )
         storage_location.key = storage_location.key.lstrip("/")
+        if not storage_location.key:
+            raise HTTPException(
+                status_code=400,
+                detail="Storage key must not be empty.",
+            )
         return storage_location
