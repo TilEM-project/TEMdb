@@ -1865,15 +1865,8 @@ async def test_tile_deletion_preserves_tiles_with_images(
         else None,
     )
 
-    if operation == "single":
-        assert response.status_code == 404, response.text
-    else:
-        assert response.status_code == 200, response.text
-        assert response.json()["deleted"] == 0
-        if operation == "bulk":
-            assert response.json()["not_found"] == [
-                str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))
-            ]
+    assert response.status_code == 409, response.text
+    assert "image" in response.json()["detail"]
     async with test_db_manager.async_session_factory() as session:
         tile = await session.scalar(
             select(TileSQLModel).where(

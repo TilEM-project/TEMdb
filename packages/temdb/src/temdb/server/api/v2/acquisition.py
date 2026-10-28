@@ -1189,6 +1189,15 @@ async def _lock_acquisition_for_tile_delete(session: AsyncSession, acquisition_i
     return acq_obj
 
 
+async def _reject_tiles_with_images(session: AsyncSession, *where) -> None:
+    """Refuse when any tile matched by where still has an image."""
+    count = await session.scalar(
+        select(func.count()).select_from(TileSQLModel).where(*where).where(TileSQLModel.image.isnot(None))
+    )
+    if count:
+        raise HTTPException(409, f"{count} of these tiles still have images; delete their images first")
+
+
 @acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/bulk", response_model=TileBulkDeleteResult)
 async def delete_tiles_from_acquisition_bulk(
     acquisition_id: str,
@@ -1201,10 +1210,10 @@ async def delete_tiles_from_acquisition_bulk(
     """
     acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
     requested = list(dict.fromkeys(tile_ids))
+    await _reject_tiles_with_images(session, *_where_tiles(acq_obj, requested))
     result = await session.execute(
         delete(TileSQLModel)
         .where(*_where_tiles(acq_obj, requested))
-        .where(TileSQLModel.image.is_(None))
         .returning(TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
     )
     deleted = {format_tile_id(acq_obj.montage_id, *key) for key in result.all()}
@@ -1223,13 +1232,9 @@ async def delete_tiles_from_acquisition_all(
 ):
     """Delete all tiles belonging to the specified acquisition. 409 if the acquisition is complete."""
     acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
-    result = await session.execute(
-        delete(TileSQLModel).where(
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-            TileSQLModel.image.is_(None),
-        )
-    )
+    where = (TileSQLModel.dataset_id == acq_obj.dataset_id, TileSQLModel.run_id == acq_obj.run_id)
+    await _reject_tiles_with_images(session, *where)
+    result = await session.execute(delete(TileSQLModel).where(*where))
     await session.commit()
     return TileDeleteAllResult(deleted=result.rowcount)
 
@@ -1245,12 +1250,12 @@ async def delete_tile_from_acquisition(
 ):
     """Delete a specific tile of an acquisition. Error if the acquisition is complete."""
     acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
-    tile = await session.scalars(
-        select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)).where(TileSQLModel.image.is_(None))
-    )
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
     tile_obj = tile.first()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    if tile_obj.image is not None:
+        raise HTTPException(409, f"Delete the image of tile '{tile_id}' before the tile")
     await session.delete(tile_obj)
     await session.commit()
     return None
