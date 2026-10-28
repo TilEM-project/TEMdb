@@ -1,6 +1,8 @@
+import asyncio
 import io
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
@@ -1917,3 +1919,44 @@ async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisitio
     assert len(response.json()) == 2
     assert set(response.json()) < set(tile_ids)
     assert "Unable to locate credentials" in caplog.text
+
+
+async def test_image_delete_keeps_server_responsive(async_client, test_acquisition, monkeypatch):
+    await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 4)
+    client = Mock()
+    client.delete_object.side_effect = lambda **_: time.sleep(0.5)
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+
+    async def health_wait():
+        due = time.perf_counter() + 0.6
+        await asyncio.sleep(0.6)
+        await async_client.get("/health")
+        return time.perf_counter() - due
+
+    response, waited = await asyncio.gather(
+        async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"), health_wait()
+    )
+
+    assert response.status_code == 200, response.text
+    assert waited < 0.3
+
+
+@pytest.mark.parametrize(("method", "single"), [("POST", False), ("GET", False), ("POST", True), ("GET", True)])
+async def test_presign_keeps_server_responsive(async_client, test_acquisition, monkeypatch, method, single):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1 if single else 4)
+    client = Mock()
+    client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(1.0 if single else 0.5) or "https://signed"
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    path = f"{base}/{tile_ids[0]}/image" if single else f"{base}/images"
+
+    async def health_wait():
+        due = time.perf_counter() + 0.6
+        await asyncio.sleep(0.6)
+        await async_client.get("/health")
+        return time.perf_counter() - due
+
+    response, waited = await asyncio.gather(async_client.request(method, path), health_wait())
+
+    assert response.status_code == 200, response.text
+    assert waited < 0.3

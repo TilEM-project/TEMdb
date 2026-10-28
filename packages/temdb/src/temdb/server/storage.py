@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -139,17 +140,17 @@ class StorageClientManager:
                     detail=f"Unsupported storage protocol: {protocol}",
                 )
 
-    def put_url(self, storage_location: FileObjectRequest) -> FileObjectResponse:
+    async def put_url(self, storage_location: FileObjectRequest) -> FileObjectResponse:
         client = self.get_client(storage_location.protocol, storage_location.server)
-        return client.put_url(storage_location)
+        return await asyncio.to_thread(client.put_url, storage_location)
 
-    def get_url(self, storage_location: FileObject, expiration=None) -> FileObjectResponse:
+    async def get_url(self, storage_location: FileObject, expiration=None) -> FileObjectResponse:
         client = self.get_client(storage_location.protocol, storage_location.server)
-        return client.get_url(storage_location, expiration)
+        return await asyncio.to_thread(client.get_url, storage_location, expiration)
 
-    def delete(self, storage_location: FileObject) -> None:
+    async def delete(self, storage_location: FileObject) -> None:
         client = self.get_client(storage_location.protocol, storage_location.server)
-        return client.delete(storage_location)
+        await asyncio.to_thread(client.delete, storage_location)
 
     def close(self) -> None:
         for client in self._clients.values():

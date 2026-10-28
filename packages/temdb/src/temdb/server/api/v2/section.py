@@ -507,7 +507,7 @@ async def image_put_url(
             detail=f"Delete the existing image for section '{section_id}' before uploading a new one.",
         )
 
-    response = storage_client_manager.put_url(storage_location)
+    response = await storage_client_manager.put_url(storage_location)
 
     if storage_location != section_obj.optical_image:
         section_obj.optical_image = response.dump_file_object()
@@ -545,7 +545,7 @@ async def image_get_url(
 
     storage_location = FileObject.model_validate(section_obj.optical_image)
 
-    return storage_client_manager.get_url(storage_location, expiration)
+    return await storage_client_manager.get_url(storage_location, expiration)
 
 
 @section_api.delete("/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT)
@@ -576,7 +576,7 @@ async def delete_image(
 
     storage_location = FileObject.model_validate(section_obj.optical_image)
 
-    storage_client_manager.delete(storage_location)
+    await storage_client_manager.delete(storage_location)
 
     section_obj.optical_image = None
     section_obj.updated_at = datetime.now(timezone.utc)

@@ -846,7 +846,7 @@ async def image_put_urls(
         storage_location.expiration = expiration
         storage_client_manager.finalize(storage_location)
         try:
-            url_data = storage_client_manager.put_url(storage_location)
+            url_data = await storage_client_manager.put_url(storage_location)
             urls[tile_id] = url_data
         except HTTPException as e:
             logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
@@ -889,7 +889,7 @@ async def image_get_urls(
         tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         storage_location = FileObject.model_validate(tile.image)
         try:
-            url_data = storage_client_manager.get_url(storage_location, expiration)
+            url_data = await storage_client_manager.get_url(storage_location, expiration)
             urls[tile_id] = url_data
         except HTTPException as e:
             logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
@@ -931,7 +931,7 @@ async def delete_tile_images(
         tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
         storage_location = FileObject.model_validate(tile.image)
         try:
-            storage_client_manager.delete(storage_location)
+            await storage_client_manager.delete(storage_location)
             tile.image = None
             tile.updated_at = datetime.now(timezone.utc)
             session.add(tile)
@@ -1005,7 +1005,7 @@ async def image_put_url(
     if tile_obj.image is not None and storage_location != tile_obj.image:
         raise HTTPException(400, "Delete the existing image for the tile before uploading a new one.")
 
-    response = storage_client_manager.put_url(storage_location)
+    response = await storage_client_manager.put_url(storage_location)
 
     if storage_location != tile_obj.image:
         tile_obj.image = response.dump_file_object()
@@ -1028,7 +1028,7 @@ async def image_get_url(
     tile = TileResponse.model_validate(await get_tile_from_acquisition(acquisition_id, tile_id, session))
     if tile.image is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' has no image")
-    return storage_client_manager.get_url(FileObject.model_validate(tile.image), expiration)
+    return await storage_client_manager.get_url(FileObject.model_validate(tile.image), expiration)
 
 
 @acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", status_code=status.HTTP_204_NO_CONTENT)
@@ -1054,7 +1054,7 @@ async def delete_tile_image(
 
     storage_location = FileObject.model_validate(tile_obj.image)
 
-    storage_client_manager.delete(storage_location)
+    await storage_client_manager.delete(storage_location)
 
     tile_obj.image = None
     tile_obj.updated_at = datetime.now(timezone.utc)
