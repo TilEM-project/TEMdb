@@ -62,8 +62,8 @@ class FileObjectRequest(FileObject):
                 self.server = default.server
             if self.bucket is None:
                 self.bucket = default.bucket
-            if self.key.startswith("/") and default.key_prefix is not None:
-                self.key = f"{default.key_prefix.strip('/')}/{self.key.lstrip('/')}"
+            if not self.key.startswith("/") and default.key_prefix is not None:
+                self.key = f"/{default.key_prefix.strip('/')}/{self.key}"
             if self.expiration is None:
                 self.expiration = default.expiration
         return self

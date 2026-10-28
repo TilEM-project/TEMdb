@@ -232,3 +232,45 @@ async def test_image_delete_clears_metadata_and_updates_timestamp(
     after = await _image_state(test_db_manager, image_target)
     assert after[0] is None
     assert after[1] != before[1]
+
+
+async def test_reupload_keeps_prefixed_key(async_client, test_db_manager, image_target, image_s3, monkeypatch):
+    await _set_image(test_db_manager, image_target, None)
+    monkeypatch.setattr(
+        config,
+        "default_storage",
+        StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images", key_prefix="proj"),
+    )
+    first = await async_client.post(image_target["path"], json={"key": "images/test.tif"})
+    assert first.status_code == 200, first.text
+
+    response = await async_client.post(image_target["path"])
+
+    assert response.status_code == 200, response.text
+    assert response.json()["key"] == "proj/images/test.tif"
+    assert (await _image_state(test_db_manager, image_target))[0] == _location(key="proj/images/test.tif")
+
+
+@pytest.mark.parametrize(
+    ("key", "stored"),
+    [
+        ("images/test.tif", "proj/images/test.tif"),
+        ("/images/test.tif", "images/test.tif"),
+        ("/proj/images/test.tif", "proj/images/test.tif"),
+    ],
+)
+async def test_key_prefix_skips_leading_slash(
+    async_client, test_db_manager, image_target, image_s3, monkeypatch, key, stored
+):
+    """The default key_prefix goes on a key without a leading slash; a key with one is stored as given."""
+    await _set_image(test_db_manager, image_target, None)
+    monkeypatch.setattr(
+        config,
+        "default_storage",
+        StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images", key_prefix="proj"),
+    )
+
+    response = await async_client.post(image_target["path"], json={"key": key})
+
+    assert response.status_code == 200, response.text
+    assert (await _image_state(test_db_manager, image_target))[0] == _location(key=stored)
