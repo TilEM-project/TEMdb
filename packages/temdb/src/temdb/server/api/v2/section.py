@@ -431,6 +431,11 @@ async def delete_section(
 ):
     """Delete a section by its section_id."""
     section_obj = await section_or_404(session, section_id)
+    if section_obj.optical_image is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Delete the image of section '{section_id}' before the section.",
+        )
     await session.delete(section_obj)
     await session.commit()
     return None
