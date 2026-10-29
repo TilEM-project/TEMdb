@@ -1958,8 +1958,34 @@ async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisitio
     )
 
     assert response.status_code == 200, response.text
-    assert len(response.json()) == 2
-    assert set(response.json()) < set(tile_ids)
+    urls = response.json().get("urls")
+    metadata = response.json().get("metadata")
+    assert len(urls) == 2
+    assert len(set(tile_ids) - set(urls)) == 1
+    assert metadata["returned_count"] == 2
+    assert len(metadata["errors"])
+    assert tile_ids[0] in metadata["errors"]
+    assert "Unable to locate credentials" in metadata["errors"][tile_ids[0]]
+    assert "Unable to locate credentials" in caplog.text
+
+
+async def test_bulk_delete_missing_credentials_skips_tile(async_client, test_acquisition, monkeypatch, caplog):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
+    client = Mock()
+    client.delete_object.side_effect = [NoCredentialsError(), None, None]
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images")
+
+    assert response.status_code == 200, response.text
+    deleted = response.json().get("deleted_images")
+    metadata = response.json().get("metadata")
+    assert len(deleted) == 2
+    assert len(set(tile_ids) - set(deleted)) == 1
+    assert metadata["returned_count"] == 2
+    assert len(metadata["errors"])
+    assert tile_ids[0] in metadata["errors"]
+    assert "Unable to locate credentials" in metadata["errors"][tile_ids[0]]
     assert "Unable to locate credentials" in caplog.text
 
 
