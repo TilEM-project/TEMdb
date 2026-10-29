@@ -808,10 +808,12 @@ def _where_tiles(acq_obj: AcquisitionSQLModel, tile_ids: list[str]) -> list:
     ]
 
 
-@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, FileObjectResponse])
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, Any])
 async def image_put_urls(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
     tile_ids: list[str] | None = Body(None),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
@@ -831,13 +833,28 @@ async def image_put_urls(
         TileSQLModel.run_id == acq_obj.run_id,
         TileSQLModel.image.isnot(None),
     )
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     if tile_ids is not None:
         tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+    if after is not None:
+        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
+    tile_query = tile_query.order_by(*key).limit(limit + 1)
     tiles = await session.scalars(tile_query)
     tiles_obj = tiles.all()
+    has_more = len(tiles_obj) > limit
+    tiles_obj = tiles_obj[:limit]
     if not tiles_obj:
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
     urls = {}
+    errors = {}
     for tile in tiles_obj:
         if tile.image is None:
             continue
@@ -850,13 +867,27 @@ async def image_put_urls(
             urls[tile_id] = url_data
         except HTTPException as e:
             logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
-    return urls
+            errors[tile_id] = e.detail
+    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
+    return {
+        "urls": urls,
+        "metadata": {
+            "returned_count": len(urls),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "errors": errors,
+        },
+    }
 
 
-@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, FileObjectResponse])
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, Any])
 async def image_get_urls(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
     tile_ids: list[str] | None = Body(None),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
@@ -871,6 +902,14 @@ async def image_get_urls(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     tile_query = select(TileSQLModel).where(
         TileSQLModel.dataset_id == acq_obj.dataset_id,
         TileSQLModel.run_id == acq_obj.run_id,
@@ -878,11 +917,18 @@ async def image_get_urls(
     )
     if tile_ids is not None:
         tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+    if after is not None:
+        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
+    tile_query = tile_query.order_by(*key).limit(limit + 1)
     tiles = await session.scalars(tile_query)
     tiles_obj = tiles.all()
+    has_more = len(tiles_obj) > limit
+    tiles_obj = tiles_obj[:limit]
     if not tiles_obj:
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
     urls = {}
+    errors = {}
     for tile in tiles_obj:
         if tile.image is None:
             continue
@@ -893,13 +939,27 @@ async def image_get_urls(
             urls[tile_id] = url_data
         except HTTPException as e:
             logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
-    return urls
+            errors[tile_id] = e.detail
+    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
+    return {
+        "urls": urls,
+        "metadata": {
+            "returned_count": len(urls),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "errors": errors,
+        },
+    }
 
 
-@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/images", response_model=list[str])
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, Any])
 async def delete_tile_images(
     acquisition_id: str,
     tile_ids: list[str] | None = Body(None),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
@@ -913,6 +973,14 @@ async def delete_tile_images(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     tile_query = select(TileSQLModel).where(
         TileSQLModel.dataset_id == acq_obj.dataset_id,
         TileSQLModel.run_id == acq_obj.run_id,
@@ -920,11 +988,18 @@ async def delete_tile_images(
     )
     if tile_ids is not None:
         tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+    if after is not None:
+        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
+    tile_query = tile_query.order_by(*key).limit(limit + 1)
     tiles = await session.scalars(tile_query)
     tiles_obj = tiles.all()
+    has_more = len(tiles_obj) > limit
+    tiles_obj = tiles_obj[:limit]
     if not tiles_obj:
         raise HTTPException(404, f"No tile images to delete for acquisition '{acquisition_id}'")
     deleted_tiles = []
+    errors = {}
     for tile in tiles_obj:
         if tile.image is None:
             continue
@@ -938,8 +1013,20 @@ async def delete_tile_images(
             deleted_tiles.append(tile_id)
         except HTTPException as e:
             logger.error(f"Error deleting image for tile {tile_id}: {e.detail}")
+            errors[tile_id] = e.detail
     await session.commit()
-    return deleted_tiles
+    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
+    return {
+        "deleted_images": deleted_tiles,
+        "metadata": {
+            "returned_count": len(deleted_tiles),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "errors": errors,
+        },
+    }
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=TileResponse)

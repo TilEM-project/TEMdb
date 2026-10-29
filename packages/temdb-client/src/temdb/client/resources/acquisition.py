@@ -220,17 +220,63 @@ class AcquisitionResource(BaseResource):
         return FileObjectResponse.model_validate(response_data)
 
     async def put_image_urls(
-        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None, expiration: int | None = None
+        self,
+        acquisition_id: str,
+        tile_ids: builtins.list[str] | None = None,
+        expiration: int | None = None,
+        *,
+        cursor: str | None = None,
+        limit: int = 100,
     ) -> builtins.dict[str, FileObjectResponse]:
         """Get presigned URLs for uploading images for multiple tiles.
 
         If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
         """
         endpoint = f"acquisitions/{acquisition_id}/tiles/images"
-        response_data = await self._post(
-            endpoint, data=tile_ids, params={"expiration": expiration} if expiration else None
-        )
-        return {tile_id: FileObjectResponse.model_validate(response) for tile_id, response in response_data.items()}
+        params = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if expiration is not None:
+            params["expiration"] = expiration
+        response_data = await self._post(endpoint, data=tile_ids, params=params)
+        return {
+            "urls": {
+                tile_id: FileObjectResponse.model_validate(response)
+                for tile_id, response in response_data.pop("urls", {}).items()
+            },
+            **response_data,
+        }
+
+    async def all_put_image_urls(
+        self,
+        acquisition_id: str,
+        tile_ids: builtins.list[str] | None = None,
+        expiration: int | None = None,
+        page_limit: int = 100,
+    ) -> builtins.dict[str, FileObjectResponse]:
+        """Get presigned URLs for uploading images for all tiles in an acquisition, auto-following cursor pagination.
+
+        If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
+        """
+        all_urls: builtins.dict[str, FileObjectResponse] = {}
+        errors: builtins.dict[str, str] = {}
+        cursor: str | None = None
+        while True:
+            page = await self.put_image_urls(
+                acquisition_id, tile_ids=tile_ids, expiration=expiration, cursor=cursor, limit=page_limit
+            )
+            all_urls.update(page.get("urls", {}))
+            metadata = page.get("metadata", {})
+            errors.update(metadata.get("errors", {}))
+            if not metadata.get("has_more"):
+                break
+            cursor = metadata.get("next_cursor")
+            if cursor is None:
+                break
+        return {
+            "urls": all_urls,
+            "errors": errors,
+        }
 
     async def put_image(
         self,
@@ -303,17 +349,63 @@ class AcquisitionResource(BaseResource):
         return FileObjectResponse.model_validate(response_data)
 
     async def get_image_urls(
-        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None, expiration: int | None = None
-    ) -> builtins.list[FileObjectResponse]:
+        self,
+        acquisition_id: str,
+        tile_ids: builtins.list[str] | None = None,
+        expiration: int | None = None,
+        *,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> builtins.dict[str, FileObjectResponse]:
         """Get presigned URLs for downloading images for multiple tiles.
 
         If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
         """
         endpoint = f"acquisitions/{acquisition_id}/tiles/images"
-        response_data = await self._get(
-            endpoint, json=tile_ids, params={"expiration": expiration} if expiration else None
-        )
-        return {tile_id: FileObjectResponse.model_validate(response) for tile_id, response in response_data.items()}
+        params = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if expiration is not None:
+            params["expiration"] = expiration
+        response_data = await self._get(endpoint, json=tile_ids, params=params)
+        return {
+            "urls": {
+                tile_id: FileObjectResponse.model_validate(response)
+                for tile_id, response in response_data.pop("urls", {}).items()
+            },
+            **response_data,
+        }
+
+    async def all_get_image_urls(
+        self,
+        acquisition_id: str,
+        tile_ids: builtins.list[str] | None = None,
+        expiration: int | None = None,
+        page_limit: int = 100,
+    ) -> builtins.dict[str, Any]:
+        """Get presigned URLs for downloading images for all tiles in an acquisition, auto-following cursor pagination.
+
+        If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
+        """
+        all_urls: builtins.dict[str, FileObjectResponse] = {}
+        errors: builtins.dict[str, str] = {}
+        cursor: str | None = None
+        while True:
+            page = await self.get_image_urls(
+                acquisition_id, tile_ids=tile_ids, expiration=expiration, cursor=cursor, limit=page_limit
+            )
+            all_urls.update(page.get("urls", {}))
+            metadata = page.get("metadata", {})
+            errors.update(metadata.get("errors", {}))
+            if not metadata.get("has_more"):
+                break
+            cursor = metadata.get("next_cursor")
+            if cursor is None:
+                break
+        return {
+            "urls": all_urls,
+            "errors": errors,
+        }
 
     async def delete_image(self, acquisition_id: str, tile_id: str) -> None:
         """Delete the image for a specific tile."""
@@ -321,8 +413,13 @@ class AcquisitionResource(BaseResource):
         await self._delete(endpoint)
 
     async def delete_images(
-        self, acquisition_id: str, tile_ids: builtins.list[str] | None = None
-    ) -> builtins.list[str]:
+        self,
+        acquisition_id: str,
+        tile_ids: builtins.list[str] | None = None,
+        *,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> builtins.dict[str, Any]:
         """Delete images for multiple tiles.
 
         If tile_ids is None, all images will be deleted for the acquisition.
@@ -330,7 +427,28 @@ class AcquisitionResource(BaseResource):
         Returns a list of tile IDs for which images were successfully deleted.
         """
         endpoint = f"acquisitions/{acquisition_id}/tiles/images"
-        return await self._delete(endpoint, json=tile_ids)
+        params = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        return await self._delete(endpoint, json=tile_ids, params=params)
+
+    async def delete_all_images(self, acquisition_id: str, page_limit: int = 100) -> builtins.dict[str, Any]:
+        """Delete images for all tiles in an acquisition, auto-following cursor pagination."""
+        all_deleted: builtins.list[str] = []
+        errors = {}
+        cursor: str | None = None
+        while True:
+            page = await self.delete_images(acquisition_id, cursor=cursor, limit=page_limit)
+            deleted_tile_ids = page.get("deleted_images", [])
+            all_deleted.extend(deleted_tile_ids)
+            metadata = page.get("metadata", {})
+            errors.update(metadata.get("errors", {}))
+            if not metadata.get("has_more"):
+                break
+            cursor = metadata.get("next_cursor")
+            if cursor is None:
+                break
+        return {"deleted": all_deleted, "errors": errors}
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""

@@ -8740,6 +8740,36 @@
               "title": "Acquisition Id",
               "type": "string"
             }
+          },
+          {
+            "description": "next_cursor of the previous page, as 'row,col,retake'",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "requestBody": {
@@ -8767,11 +8797,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "type": "string"
-                  },
+                  "additionalProperties": true,
                   "title": "Response Delete Tile Images Api V2 Acquisitions  Acquisition Id  Tiles Images Delete",
-                  "type": "array"
+                  "type": "object"
                 }
               }
             },
@@ -8824,6 +8852,36 @@
               "description": "Expiration time in seconds for the presigned URL",
               "title": "Expiration"
             }
+          },
+          {
+            "description": "next_cursor of the previous page, as 'row,col,retake'",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "requestBody": {
@@ -8851,9 +8909,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "$ref": "#/components/schemas/FileObjectResponse"
-                  },
+                  "additionalProperties": true,
                   "title": "Response Image Get Urls Api V2 Acquisitions  Acquisition Id  Tiles Images Get",
                   "type": "object"
                 }
@@ -8908,6 +8964,36 @@
               "description": "Expiration time in seconds for the presigned URL",
               "title": "Expiration"
             }
+          },
+          {
+            "description": "next_cursor of the previous page, as 'row,col,retake'",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "requestBody": {
@@ -8935,9 +9021,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "$ref": "#/components/schemas/FileObjectResponse"
-                  },
+                  "additionalProperties": true,
                   "title": "Response Image Put Urls Api V2 Acquisitions  Acquisition Id  Tiles Images Post",
                   "type": "object"
                 }

@@ -1707,8 +1707,11 @@ async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
     response = await async_client.request(method, path, json=selected, params={"expiration": 300})
 
     assert response.status_code == 200, response.text
-    result = response.json()
+    body = response.json()
+    result = body["deleted_images"] if method == "DELETE" else body["urls"]
     assert set(result) == set(expected)
+    if method == "DELETE":
+        assert body["metadata"]["returned_count"] == len(expected)
     if method == "DELETE":
         async with test_db_manager.async_session_factory() as session:
             tiles = {
@@ -1801,6 +1804,8 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
     )
 
     assert response.status_code == 200, response.text
+    body = response.json()
+    result = body["deleted_images"] if method == "DELETE" else body["urls"]
     async with test_db_manager.async_session_factory() as session:
         stored = {
             format_tile_id(
@@ -1814,7 +1819,8 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
             for tile in (await session.scalars(select(TileSQLModel))).all()
         }
     expected = set(requested) - ({failed_id} if failure is not None else set())
-    assert set(response.json()) == expected
+    assert set(result) == expected
+    assert set(body["metadata"]["errors"]) == ({failed_id} if failure is not None else set())
     assert {call.kwargs["endpoint_url"] for call in factory.call_args_list} == {
         images[tile_id]["server"] for tile_id in requested if images[tile_id]["protocol"] == "s3"
     }
@@ -1837,13 +1843,49 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
         assert len(calls) == len(expected_keys)
     if method != "DELETE":
         for tile_id in expected:
-            result = response.json()[tile_id]
-            assert result["server"] == images[tile_id]["server"]
-            assert result["expiration"] == 300
-            assert result["url"] == (
+            url_data = result[tile_id]
+            assert url_data["server"] == images[tile_id]["server"]
+            assert url_data["expiration"] == 300
+            assert url_data["url"] == (
                 f"{images[tile_id]['server']}/{images[tile_id]['key']}"
                 f"?operation={'put_object' if method == 'POST' else 'get_object'}&expiration=300"
             )
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+async def test_bulk_tile_images_cursor_pagination(async_client, test_db_manager, test_acquisition, minio_s3, method):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
+    for tile_id in tile_ids:
+        await _store_tile_image(test_db_manager, minio_s3, tile_id)
+
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
+    params = {"limit": 1}
+    seen = []
+    has_more = []
+    for page_index in range(len(tile_ids)):
+        response = await async_client.request(method, path, params=params)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        metadata = body["metadata"]
+        result = body["deleted_images"] if method == "DELETE" else body["urls"]
+        seen.extend(result)
+        has_more.append(metadata["has_more"])
+        if metadata["has_more"]:
+            params["cursor"] = metadata["next_cursor"]
+
+    assert seen == tile_ids
+    assert has_more == [True, True, False]
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+async def test_bulk_tile_images_reject_malformed_cursor(async_client, test_acquisition, method):
+    response = await async_client.request(
+        method,
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
+        params={"cursor": "not,a,cursor"},
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize("operation", ["bulk", "all", "single"])
