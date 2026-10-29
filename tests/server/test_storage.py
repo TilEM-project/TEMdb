@@ -24,17 +24,17 @@ def location():
 
 @pytest.mark.parametrize("operation", ["put_url", "get_url", "delete"])
 @pytest.mark.parametrize("expiration", [None, 600])
-def test_manager_routes_s3_operations(storage_client_manager, s3, location, operation, expiration):
+async def test_manager_routes_s3_operations(storage_client_manager, s3, location, operation, expiration):
     client, factory = s3
     if operation == "put_url":
         request = FileObjectRequest.from_file_object(location)
         request.expiration = expiration
         storage_client_manager.finalize(request)
-        response = storage_client_manager.put_url(request)
+        response = await storage_client_manager.put_url(request)
     elif operation == "get_url":
-        response = storage_client_manager.get_url(location, expiration)
+        response = await storage_client_manager.get_url(location, expiration)
     else:
-        storage_client_manager.delete(location)
+        await storage_client_manager.delete(location)
         client.delete_object.assert_called_once_with(Bucket="images", Key="image.tif")
         return
 
@@ -50,14 +50,14 @@ def test_manager_routes_s3_operations(storage_client_manager, s3, location, oper
 
 
 @pytest.mark.parametrize("operation", ["put_url", "get_url", "delete"])
-def test_s3_errors_become_http_errors(storage_client_manager, s3, location, operation, caplog):
+async def test_s3_errors_become_http_errors(storage_client_manager, s3, location, operation, caplog):
     client, _ = s3
     method = client.delete_object if operation == "delete" else client.generate_presigned_url
     method.side_effect = ClientError({"Error": {"Code": "AccessDenied", "Message": "storage denied"}}, operation)
     argument = FileObjectRequest.from_file_object(location) if operation == "put_url" else location
 
     with pytest.raises(HTTPException) as error:
-        getattr(storage_client_manager, operation)(argument)
+        await getattr(storage_client_manager, operation)(argument)
 
     assert error.value.status_code == 500
     assert "storage denied" in error.value.detail

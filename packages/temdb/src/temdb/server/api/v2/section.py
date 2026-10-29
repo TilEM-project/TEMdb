@@ -431,6 +431,11 @@ async def delete_section(
 ):
     """Delete a section by its section_id."""
     section_obj = await section_or_404(session, section_id)
+    if section_obj.optical_image is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Delete the image of section '{section_id}' before the section.",
+        )
     await session.delete(section_obj)
     await session.commit()
     return None
@@ -482,28 +487,14 @@ async def image_put_url(
     if storage_location is None:
         storage_location = FileObjectRequest.from_file_object(section_obj.optical_image)
     if not storage_location.complete:
-        cutting_session = await session.scalars(
-            select(CuttingSessionSQLModel).where(
-                CuttingSessionSQLModel.cutting_session_id == section_obj.cutting_session_id
+        block_default = await session.scalar(
+            select(BlockSQLModel.default_storage).where(
+                BlockSQLModel.specimen_id == section_obj.specimen_id,
+                BlockSQLModel.block_id == section_obj.block_id,
             )
         )
-        cutting_session_obj = cutting_session.one_or_none()
-        if cutting_session_obj is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Cutting Session '{section_obj.cutting_session_id}' not found",
-            )
-        block = await session.scalars(
-            select(BlockSQLModel).where(BlockSQLModel.block_id == cutting_session_obj.block_id)
-        )
-        block_obj = block.one_or_none()
-        if block_obj is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Block '{cutting_session_obj.block_id}' not found",
-            )
-        if block_obj.default_storage is not None:
-            storage_location = storage_location.apply_defaults(block_obj.default_storage)
+        if block_default is not None:
+            storage_location = storage_location.apply_defaults(block_default)
 
     if not storage_location.complete and config.default_storage is not None:
         storage_location = storage_location.apply_defaults(config.default_storage)
@@ -516,7 +507,7 @@ async def image_put_url(
             detail=f"Delete the existing image for section '{section_id}' before uploading a new one.",
         )
 
-    response = storage_client_manager.put_url(storage_location)
+    response = await storage_client_manager.put_url(storage_location)
 
     if storage_location != section_obj.optical_image:
         section_obj.optical_image = response.dump_file_object()
@@ -554,7 +545,7 @@ async def image_get_url(
 
     storage_location = FileObject.model_validate(section_obj.optical_image)
 
-    return storage_client_manager.get_url(storage_location, expiration)
+    return await storage_client_manager.get_url(storage_location, expiration)
 
 
 @section_api.delete("/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT)
@@ -585,7 +576,7 @@ async def delete_image(
 
     storage_location = FileObject.model_validate(section_obj.optical_image)
 
-    storage_client_manager.delete(storage_location)
+    await storage_client_manager.delete(storage_location)
 
     section_obj.optical_image = None
     section_obj.updated_at = datetime.now(timezone.utc)

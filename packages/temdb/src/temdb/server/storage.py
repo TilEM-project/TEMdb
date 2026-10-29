@@ -1,9 +1,10 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 
 from temdb.models import FileObject, FileObjectRequest, FileObjectResponse, StorageProtocol
@@ -54,7 +55,7 @@ class S3StorageClient(StorageClient):
                 },
                 ExpiresIn=expiration,
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to generate presigned URL for GET: %s", e)
             raise HTTPException(
                 status_code=500,
@@ -76,7 +77,7 @@ class S3StorageClient(StorageClient):
                 },
                 ExpiresIn=storage_location.expiration or 3600,
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to generate presigned URL for PUT: %s", e)
             raise HTTPException(
                 status_code=500,
@@ -94,7 +95,7 @@ class S3StorageClient(StorageClient):
                 Bucket=storage_location.bucket,
                 Key=storage_location.key,
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to delete object from S3: %s", e)
             raise HTTPException(
                 status_code=500,
@@ -139,17 +140,17 @@ class StorageClientManager:
                     detail=f"Unsupported storage protocol: {protocol}",
                 )
 
-    def put_url(self, storage_location: FileObjectRequest) -> FileObjectResponse:
+    async def put_url(self, storage_location: FileObjectRequest) -> FileObjectResponse:
         client = self.get_client(storage_location.protocol, storage_location.server)
-        return client.put_url(storage_location)
+        return await asyncio.to_thread(client.put_url, storage_location)
 
-    def get_url(self, storage_location: FileObject, expiration=None) -> FileObjectResponse:
+    async def get_url(self, storage_location: FileObject, expiration=None) -> FileObjectResponse:
         client = self.get_client(storage_location.protocol, storage_location.server)
-        return client.get_url(storage_location, expiration)
+        return await asyncio.to_thread(client.get_url, storage_location, expiration)
 
-    def delete(self, storage_location: FileObject) -> None:
+    async def delete(self, storage_location: FileObject) -> None:
         client = self.get_client(storage_location.protocol, storage_location.server)
-        return client.delete(storage_location)
+        await asyncio.to_thread(client.delete, storage_location)
 
     def close(self) -> None:
         for client in self._clients.values():
@@ -174,4 +175,9 @@ class StorageClientManager:
                 detail="Storage key must be specified.",
             )
         storage_location.key = storage_location.key.lstrip("/")
+        if not storage_location.key:
+            raise HTTPException(
+                status_code=400,
+                detail="Storage key must not be empty.",
+            )
         return storage_location

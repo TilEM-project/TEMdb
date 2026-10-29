@@ -350,6 +350,19 @@ async def test_delete_section_with_rois(async_client: AsyncClient, test_section,
     assert response_data["context"]["table"] == ROISQLModel.__tablename__
 
 
+async def test_delete_section_with_image_is_409(async_client: AsyncClient, test_db_manager, test_section):
+    async with test_db_manager.async_session_factory() as session:
+        section = await session.get(SectionSQLModel, test_section.id)
+        section.optical_image = {"protocol": "s3", "server": "http://m", "bucket": "images", "key": "a.tif"}
+        await session.commit()
+
+    response = await async_client.delete(f"/api/v2/sections/{test_section.section_id}")
+
+    assert response.status_code == 409, response.text
+    assert "image" in response.json()["detail"]
+    assert (await async_client.get(f"/api/v2/sections/{test_section.section_id}")).status_code == 200
+
+
 @pytest.mark.asyncio
 async def test_list_cutting_session_sections(async_client: AsyncClient, test_cutting_session, test_section):
     """Test retrieving sections via the simplified session path."""

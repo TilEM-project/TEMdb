@@ -1,12 +1,14 @@
+import asyncio
 import io
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import httpx
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 from httpx import AsyncClient
 from minio.error import S3Error
 from sqlalchemy import and_, null, or_, select, update
@@ -1907,15 +1909,8 @@ async def test_tile_deletion_preserves_tiles_with_images(
         else None,
     )
 
-    if operation == "single":
-        assert response.status_code == 404, response.text
-    else:
-        assert response.status_code == 200, response.text
-        assert response.json()["deleted"] == 0
-        if operation == "bulk":
-            assert response.json()["not_found"] == [
-                str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))
-            ]
+    assert response.status_code == 409, response.text
+    assert "image" in response.json()["detail"]
     async with test_db_manager.async_session_factory() as session:
         tile = await session.scalar(
             select(TileSQLModel).where(
@@ -1949,3 +1944,82 @@ async def _seed_image_tiles(
         assert test_db_manager is not None
         await _set_tiles_image_to_sql_null(test_db_manager, tile_ids)
     return tile_ids
+
+
+@pytest.mark.parametrize("method", ["POST", "GET"])
+async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisition, monkeypatch, caplog, method):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
+    client = Mock()
+    client.generate_presigned_url.side_effect = [NoCredentialsError(), "https://signed", "https://signed"]
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+
+    response = await async_client.request(
+        method, f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 2
+    assert set(response.json()) < set(tile_ids)
+    assert "Unable to locate credentials" in caplog.text
+
+
+async def test_image_delete_keeps_server_responsive(async_client, test_acquisition, monkeypatch):
+    await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 4)
+    client = Mock()
+    client.delete_object.side_effect = lambda **_: time.sleep(0.5)
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+
+    async def health_wait():
+        due = time.perf_counter() + 0.6
+        await asyncio.sleep(0.6)
+        await async_client.get("/health")
+        return time.perf_counter() - due
+
+    response, waited = await asyncio.gather(
+        async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"), health_wait()
+    )
+
+    assert response.status_code == 200, response.text
+    assert waited < 0.3
+
+
+@pytest.mark.parametrize(("method", "single"), [("POST", False), ("GET", False), ("POST", True), ("GET", True)])
+async def test_presign_keeps_server_responsive(async_client, test_acquisition, monkeypatch, method, single):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1 if single else 4)
+    client = Mock()
+    client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(1.0 if single else 0.5) or "https://signed"
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+    base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    path = f"{base}/{tile_ids[0]}/image" if single else f"{base}/images"
+
+    async def health_wait():
+        due = time.perf_counter() + 0.6
+        await asyncio.sleep(0.6)
+        await async_client.get("/health")
+        return time.perf_counter() - due
+
+    response, waited = await asyncio.gather(async_client.request(method, path), health_wait())
+
+    assert response.status_code == 200, response.text
+    assert waited < 0.3
+
+
+async def test_concurrent_uploads_keep_one_location(async_client, test_db_manager, test_acquisition, monkeypatch):
+    [tile_id] = await _seed_image_tiles(
+        async_client, test_acquisition.acquisition_id, 1, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
+    client = Mock()
+    client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(0.3) or "https://signed"
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+    bodies = [
+        {"protocol": "s3", "server": "http://storage.example.com", "bucket": "images", "key": f"/{name}.tif"}
+        for name in ("first", "second")
+    ]
+
+    responses = await asyncio.gather(*(async_client.post(path, json=body) for body in bodies))
+
+    assert sorted(response.status_code for response in responses) == [200, 400]
+    [winner] = [response.json() for response in responses if response.status_code == 200]
+    stored = (await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}")).json()
+    assert stored["image"]["key"] == winner["key"]

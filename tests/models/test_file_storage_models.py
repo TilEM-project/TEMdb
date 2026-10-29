@@ -36,7 +36,7 @@ def test_file_object_request_requires_leading_slash_for_explicit_bucket():
 
 
 def test_file_object_request_applies_storage_defaults():
-    request = FileObjectRequest(key="/section/image.png", expiration=120)
+    request = FileObjectRequest(key="section/image.png", expiration=120)
     defaults = StorageDefault(
         protocol="s3",
         server="http://s3.example.com",
@@ -50,7 +50,7 @@ def test_file_object_request_applies_storage_defaults():
     assert request.protocol is StorageProtocol.S3
     assert request.server == "http://s3.example.com"
     assert request.bucket == "images"
-    assert request.key == "project/section/image.png"
+    assert request.key == "/project/section/image.png"
     assert request.expiration == 120
 
 
@@ -88,3 +88,20 @@ def test_request_compares_stored_location_without_expiration(expiration):
     assert request == stored.model_dump()
     assert stored.model_dump() == request
     assert request != {**stored.model_dump(), "key": "other.png"}
+
+
+@pytest.mark.parametrize(("key", "expected"), [("image.png", "/block/image.png"), ("/image.png", "/image.png")])
+def test_key_prefix_applied_once(key, expected):
+    """Only the first default's key_prefix goes on a relative key, and none goes on a key with a leading slash."""
+    request = FileObjectRequest(key=key)
+    request.apply_defaults(
+        StorageDefault(key_prefix="block"), StorageDefault(protocol="s3", bucket="images", key_prefix="config")
+    )
+    assert request.key == expected
+
+
+def test_stored_key_reloads_without_prefix():
+    stored = {"protocol": "s3", "server": "http://s3.example.com", "bucket": "images", "key": "proj/images/test.tif"}
+    request = FileObjectRequest.from_file_object(stored)
+    request.apply_defaults(StorageDefault(key_prefix="proj"))
+    assert request.key == "/proj/images/test.tif"

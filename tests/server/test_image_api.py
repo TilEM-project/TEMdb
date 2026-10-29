@@ -1,12 +1,13 @@
+from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 from sqlalchemy import and_, null, select
 
 from temdb.models import StorageDefault
 from temdb.server.config import config
-from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel, SectionSQLModel, TileSQLModel
+from temdb.server.sqlmodels import BlockSQLModel, DatasetSQLModel, SectionSQLModel, SpecimenSQLModel, TileSQLModel
 from temdb.server.sqlmodels.tile import format_tile_id
 
 
@@ -232,3 +233,96 @@ async def test_image_delete_clears_metadata_and_updates_timestamp(
     after = await _image_state(test_db_manager, image_target)
     assert after[0] is None
     assert after[1] != before[1]
+
+
+async def test_reupload_keeps_prefixed_key(async_client, test_db_manager, image_target, image_s3, monkeypatch):
+    await _set_image(test_db_manager, image_target, None)
+    monkeypatch.setattr(
+        config,
+        "default_storage",
+        StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images", key_prefix="proj"),
+    )
+    first = await async_client.post(image_target["path"], json={"key": "images/test.tif"})
+    assert first.status_code == 200, first.text
+
+    response = await async_client.post(image_target["path"])
+
+    assert response.status_code == 200, response.text
+    assert response.json()["key"] == "proj/images/test.tif"
+    assert (await _image_state(test_db_manager, image_target))[0] == _location(key="proj/images/test.tif")
+
+
+@pytest.mark.parametrize(
+    ("key", "stored"),
+    [
+        ("images/test.tif", "proj/images/test.tif"),
+        ("/images/test.tif", "images/test.tif"),
+        ("/proj/images/test.tif", "proj/images/test.tif"),
+    ],
+)
+async def test_key_prefix_skips_leading_slash(
+    async_client, test_db_manager, image_target, image_s3, monkeypatch, key, stored
+):
+    """The default key_prefix goes on a key without a leading slash; a key with one is stored as given."""
+    await _set_image(test_db_manager, image_target, None)
+    monkeypatch.setattr(
+        config,
+        "default_storage",
+        StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images", key_prefix="proj"),
+    )
+
+    response = await async_client.post(image_target["path"], json={"key": key})
+
+    assert response.status_code == 200, response.text
+    assert (await _image_state(test_db_manager, image_target))[0] == _location(key=stored)
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+async def test_missing_credentials_is_logged_500(async_client, test_db_manager, image_target, image_s3, caplog, method):
+    await _set_image(test_db_manager, image_target, None if method == "POST" else _location())
+    before = await _image_state(test_db_manager, image_target)
+    operation = "delete_object" if method == "DELETE" else "generate_presigned_url"
+    getattr(image_s3[0], operation).side_effect = NoCredentialsError()
+    body = _location(key="/images/test.tif", expiration=600) if method == "POST" else None
+
+    response = await async_client.request(method, image_target["path"], json=body)
+
+    assert response.status_code == 500, response.text
+    assert "Unable to locate credentials" in caplog.text
+    assert await _image_state(test_db_manager, image_target) == before
+
+
+async def test_section_upload_uses_own_specimen_block(async_client, test_db_manager, test_section, image_s3):
+    async with test_db_manager.async_session_factory() as session:
+        block = await session.scalar(select(BlockSQLModel).where(BlockSQLModel.block_id == test_section.block_id))
+        block.default_storage = {"protocol": "s3", "server": "http://own.example.com", "bucket": "own"}
+        session.add(SpecimenSQLModel(specimen_id="OTHER_SPECIMEN", created_at=datetime.now(timezone.utc)))
+        await session.flush()
+        session.add(
+            BlockSQLModel(
+                block_id=test_section.block_id,
+                specimen_id="OTHER_SPECIMEN",
+                default_storage={"protocol": "s3", "server": "http://other.example.com", "bucket": "other"},
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    response = await async_client.post(f"/api/v2/sections/{test_section.section_id}/image", json={"key": "a.tif"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["bucket"] == "own"
+
+
+@pytest.mark.parametrize("key", ["", "/", "///"])
+async def test_upload_empty_key_is_400(async_client, test_db_manager, image_target, image_s3, monkeypatch, key):
+    await _set_image(test_db_manager, image_target, None)
+    monkeypatch.setattr(
+        config, "default_storage", StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images")
+    )
+
+    response = await async_client.post(image_target["path"], json={"key": key})
+
+    assert response.status_code == 400, response.text
+    image_s3[0].generate_presigned_url.assert_not_called()
+    assert (await _image_state(test_db_manager, image_target))[0] is None
