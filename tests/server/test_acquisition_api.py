@@ -1960,3 +1960,24 @@ async def test_presign_keeps_server_responsive(async_client, test_acquisition, m
 
     assert response.status_code == 200, response.text
     assert waited < 0.3
+
+
+async def test_concurrent_uploads_keep_one_location(async_client, test_db_manager, test_acquisition, monkeypatch):
+    [tile_id] = await _seed_image_tiles(
+        async_client, test_acquisition.acquisition_id, 1, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
+    client = Mock()
+    client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(0.3) or "https://signed"
+    monkeypatch.setattr("boto3.client", Mock(return_value=client))
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
+    bodies = [
+        {"protocol": "s3", "server": "http://storage.example.com", "bucket": "images", "key": f"/{name}.tif"}
+        for name in ("first", "second")
+    ]
+
+    responses = await asyncio.gather(*(async_client.post(path, json=body) for body in bodies))
+
+    assert sorted(response.status_code for response in responses) == [200, 400]
+    [winner] = [response.json() for response in responses if response.status_code == 200]
+    stored = (await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}")).json()
+    assert stored["image"]["key"] == winner["key"]

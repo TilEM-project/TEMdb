@@ -316,6 +316,7 @@ async def test_section_upload_uses_own_specimen_block(async_client, test_db_mana
 
 @pytest.mark.parametrize("key", ["", "/", "///"])
 async def test_upload_empty_key_is_400(async_client, test_db_manager, image_target, image_s3, monkeypatch, key):
+    await _set_image(test_db_manager, image_target, None)
     monkeypatch.setattr(
         config, "default_storage", StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images")
     )

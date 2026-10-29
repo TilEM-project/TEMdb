@@ -980,7 +980,7 @@ async def image_put_url(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)).with_for_update())
     tile_obj = tile.one_or_none()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
