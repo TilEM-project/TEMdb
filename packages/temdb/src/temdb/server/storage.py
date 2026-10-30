@@ -34,7 +34,7 @@ class S3StorageClient(StorageClient):
     def __init__(self, server: str | None = None):
         try:
             self._client = boto3.client("s3", endpoint_url=server)
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             logger.error("Failed to create S3 client: %s", e)
             raise HTTPException(
                 status_code=500,

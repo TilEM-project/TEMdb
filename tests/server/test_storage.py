@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, InvalidRegionError
 from fastapi import HTTPException
 
 from temdb.models import FileObject, FileObjectRequest, StorageProtocol
@@ -72,6 +72,15 @@ def test_s3_creation_failure_is_not_cached(storage_client_manager, s3):
             storage_client_manager.get_client(StorageProtocol.S3, None)
         assert error.value.status_code == 500
     assert factory.call_count == 2
+
+
+def test_s3_creation_config_error_is_500(storage_client_manager, s3, caplog):
+    _, factory = s3
+    factory.side_effect = InvalidRegionError(region_name="bad region!")
+    with pytest.raises(HTTPException) as error:
+        storage_client_manager.get_client(StorageProtocol.S3, None)
+    assert error.value.status_code == 500
+    assert "bad region!" in caplog.text
 
 
 @pytest.mark.parametrize(("protocol", "status"), [("gcs", 501), ("unsupported", 400), (None, 400)])
