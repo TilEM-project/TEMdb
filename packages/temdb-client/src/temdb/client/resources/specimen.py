@@ -45,20 +45,6 @@ class SpecimenResource(BaseResource):
         """Delete a specimen."""
         await self._delete(f"specimens/{specimen_id}")
 
-    async def add_image(self, specimen_id: str, image_url: str) -> SpecimenResponse:
-        """Add an image URL to a specimen."""
-        endpoint = f"specimens/{specimen_id}/images"
-        payload = {"image_url": image_url}
-        response_data = await self._post(endpoint, data=payload)
-        return SpecimenResponse.model_validate(response_data)
-
-    async def remove_image(self, specimen_id: str, image_url: str) -> SpecimenResponse:
-        """Remove an image URL from a specimen."""
-        endpoint = f"specimens/{specimen_id}/images"
-        params = {"image_url": image_url}
-        response_data = await self._request("DELETE", endpoint, params=params)
-        return SpecimenResponse.model_validate(response_data)
-
     async def list_blocks(self, specimen_id: str, skip: int = 0, limit: int = 100) -> builtins.list[BlockResponse]:
         """List blocks associated with a specific specimen."""
         endpoint = f"specimens/{specimen_id}/blocks"

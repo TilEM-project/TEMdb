@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field
 
 from .base import TEMDBRecord
+from .file_storage import StorageDefault
 
 SizeClass = Literal["small", "medium", "large", "xlarge"]
 DatasetStatus = Literal["collecting", "collected", "archived"]
@@ -14,6 +15,7 @@ class DatasetBase(TEMDBRecord):
     description: str | None = Field(None, description="Human description of the dataset")
     specimen_id: str | None = Field(None, description="Specimen this dataset belongs to")
     size_class: SizeClass | None = Field(None, description="Planner size class; drives tile partitioning")
+    default_storage: StorageDefault | None = Field(None, description="Default storage for tiles in this dataset")
     estimated_tile_count: int | None = Field(
         None, ge=0, description="Estimated total tiles; resolves size_class when set"
     )

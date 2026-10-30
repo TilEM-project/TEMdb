@@ -15,7 +15,12 @@ def _tile(row: int, col: int, *, retake: int | None = None, focus_score: float =
         "max_value": 240,
         "mean_value": 100,
         "std_value": 20,
-        "image_path": f"/raw/r{row}_c{col}_{retake}.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "images",
+            "key": f"/raw/r{row}_c{col}_{retake}.tif",
+        },
     }
     if retake is not None:
         tile["retake"] = retake
@@ -144,7 +149,7 @@ async def test_duplicate_position_in_bulk_request_is_422(async_client: AsyncClie
 
 @pytest.mark.asyncio
 async def test_bulk_update_and_delete_by_tile_id(async_client: AsyncClient, test_acquisition):
-    await async_client.post(f"{_tiles_url(test_acquisition)}/bulk", json=[_tile(0, 0), _tile(0, 1)])
+    await async_client.post(f"{_tiles_url(test_acquisition)}/bulk", json=[_tile(0, 0) | {"image": None}, _tile(0, 1)])
 
     patched = await async_client.patch(
         f"{_tiles_url(test_acquisition)}/bulk", json={"TEST_MONTAGE_001_r000_c001": {"focus_score": 0.1}}

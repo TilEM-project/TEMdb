@@ -19,6 +19,11 @@ class MatchPosition(str, Enum):
     BOTTOM = "bottom"
 
 
+class StorageProtocol(str, Enum):
+    S3 = "s3"
+    GCS = "gcs"
+
+
 class SubstrateType(str, Enum):
     GRID_DISC = "grid_disc"
     WAFER = "wafer"

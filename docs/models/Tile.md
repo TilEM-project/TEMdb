@@ -18,7 +18,7 @@
 | `max_value` | float | Maximum pixel value of the tile |
 | `mean_value` | float | Mean pixel value of the tile |
 | `std_value` | float | Standard deviation of pixel values of the tile |
-| `image_path` | string | URL to the image of the tile |
+| `image` | object | The tile image |
 | `matcher` | object | List of matchers for the tile |
 | `supertile_id` | string | ID of the supertile the tile belongs to |
 | `supertile_raster_position` | object | Row, column raster position of the supertile |

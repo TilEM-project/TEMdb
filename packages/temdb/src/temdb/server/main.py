@@ -27,6 +27,7 @@ from temdb.server.api.v2.tasks import acquisition_task_api
 from temdb.server.config import config, is_debug_traceback_enabled
 from temdb.server.database import DatabaseManager
 from temdb.server.exception_handlers import register_exception_handlers
+from temdb.server.storage import StorageClientManager
 
 __version__ = importlib.metadata.version("temdb")
 
@@ -116,11 +117,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"Connecting to SQL database: {database_url if database_url else 'disabled'}")
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
+    app.state.storage_client_manager = StorageClientManager()
     await db_manager.initialize()
     try:
         yield
     finally:
         await db_manager.dispose()
+        app.state.storage_client_manager.close()
 
 
 def create_app():

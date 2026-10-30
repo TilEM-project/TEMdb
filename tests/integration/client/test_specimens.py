@@ -35,27 +35,6 @@ async def test_specimen_delete(client, records):
         await client.specimen.get("SP1")
 
 
-@pytest.mark.parametrize(
-    "image_uri",
-    ["https://images.example.org/sp1.png", "s3://bucket/specimens/sp1.png"],
-)
-async def test_specimen_add_image(client, records, image_uri):
-    await records.specimen()
-    updated = await client.specimen.add_image("SP1", image_uri)
-    assert image_uri in {str(uri) for uri in updated.specimen_images}
-
-
-@pytest.mark.parametrize(
-    "image_uri",
-    ["https://images.example.org/sp1.png", "s3://bucket/specimens/sp1.png"],
-)
-async def test_specimen_remove_image(client, records, image_uri):
-    await records.specimen()
-    await client.specimen.add_image("SP1", image_uri)
-    updated = await client.specimen.remove_image("SP1", image_uri)
-    assert image_uri not in {str(uri) for uri in updated.specimen_images}
-
-
 async def test_specimen_list_blocks(client, records):
     await records.block()
     assert [b.block_id for b in await client.specimen.list_blocks("SP1")] == ["B1"]

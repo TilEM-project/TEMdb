@@ -224,7 +224,12 @@ class TestDataIntegration:
                 max_value=65535.0,
                 mean_value=10000.0,
                 std_value=500.0,
-                image_path=f"/tmp/{raster_index}.tif",
+                image={
+                    "protocol": "s3",
+                    "server": "https://s3.example.com",
+                    "bucket": "integration-images",
+                    "key": f"tiles/{acquisition.run_id}/{raster_index}.tif",
+                },
                 created_at=datetime.now(timezone.utc),
             )
             session.add(tile)

@@ -22,7 +22,12 @@ def _tile_payload() -> dict:
         "max_value": 255,
         "mean_value": 128,
         "std_value": 25,
-        "image_path": "/path/to/tile_0.tif",
+        "image": {
+            "protocol": "s3",
+            "server": "http://localhost:9000",
+            "bucket": "tiles",
+            "key": "path/to/tile_0.tif",
+        },
     }
 
 

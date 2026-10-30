@@ -60,6 +60,7 @@ class TEMdbClient:
             timeout=timeout,
             transport=transport,
         )
+        self._file_client = httpx.AsyncClient(timeout=timeout)
 
         self.logger.info(f"Async TEMdb client initialized: {base_url} (API v{api_version})")
         self.contract: dict[str, Any] | None = None
@@ -71,9 +72,9 @@ class TEMdbClient:
         self._substrate = SubstrateResource(self._api_request, self.api_url)
         self._acquisition_task = AcquisitionTaskResource(self._api_request, self.api_url)
         self._roi = ROIResource(self._api_request, self.api_url)
-        self._acquisition = AcquisitionResource(self._api_request, self.api_url)
+        self._acquisition = AcquisitionResource(self._api_request, self.api_url, file_client=self._file_client)
         self._dataset = DatasetResource(self._api_request, self.api_url)
-        self._section = SectionResource(self._api_request, self.api_url)
+        self._section = SectionResource(self._api_request, self.api_url, file_client=self._file_client)
         self._microscope = MicroscopeResource(self._api_request, self.api_url)
         self._lens_correction = LensCorrectionResource(self._api_request, self.api_url)
         self._substrate_layout = SubstrateLayoutResource(self._api_request, self.api_url)
@@ -183,7 +184,10 @@ class TEMdbClient:
 
     async def close(self) -> None:
         self.logger.info("Closing async TEMdb client")
-        await self._http_client.aclose()
+        try:
+            await self._http_client.aclose()
+        finally:
+            await self._file_client.aclose()
 
     async def check_contract(self) -> dict[str, Any]:
         """Check server contract compatibility with this client's model version."""

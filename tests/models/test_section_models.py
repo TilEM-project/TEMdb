@@ -64,14 +64,15 @@ class TestSectionCreate:
             media_id="MEDIA001",
             aperture_index=0,
             optical_image={
-                "inspection": {
-                    "image_path": "http://example.com/image.png",
-                    "metadata": {"this": "that", "those": "these", "one": 2},
-                },
+                "protocol": "s3",
+                "server": "http://s3.example.com",
+                "bucket": "images",
+                "key": "MEDIA001/inspection.png",
             },
             section_metrics=SectionMetrics(quality=SectionQuality.GOOD),
             run_parameters=SectioningRunParameters(cutting_thickness_um=50.0, water_added=True),
         )
+        assert section.optical_image.key == "MEDIA001/inspection.png"
         assert section.section_metrics.quality == SectionQuality.GOOD
         assert section.run_parameters.cutting_thickness_um == 50.0
         assert section.run_parameters.water_added is True

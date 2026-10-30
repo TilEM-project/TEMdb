@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,14 @@ from ..utils import drop_null_keys, merge_extra
 specimen_api = APIRouter(
     tags=["Specimens"],
 )
+
+
+def _to_json_compatible(value):
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    return jsonable_encoder(value)
 
 
 @specimen_api.get("/specimens", response_model=list[SpecimenResponse])
@@ -90,7 +99,6 @@ async def create_specimen(
     specimen = SpecimenSQLModel(
         specimen_id=specimen_data.specimen_id,
         description=specimen_data.description,
-        specimen_images=sorted(image.uri for image in specimen_data.specimen_images or []),
         functional_imaging_metadata=specimen_data.functional_imaging_metadata,
         created_at=specimen_data.created_at or datetime.now(timezone.utc),
         extra=drop_null_keys(specimen_data.extra),
@@ -138,11 +146,6 @@ async def update_specimen(
     if "description" in update_data and specimen.description != update_data["description"]:
         specimen.description = update_data["description"]
         needs_save = True
-    if "specimen_images" in update_data:
-        updated_images = sorted(update_data["specimen_images"] or [])
-        if (specimen.specimen_images or []) != updated_images:
-            specimen.specimen_images = updated_images
-            needs_save = True
     if (
         "functional_imaging_metadata" in update_data
         and specimen.functional_imaging_metadata != update_data["functional_imaging_metadata"]
@@ -175,67 +178,3 @@ async def delete_specimen(specimen_id: str, session: AsyncSession = Depends(get_
     await session.delete(specimen)
     await session.commit()
     return None
-
-
-@specimen_api.post(
-    "/specimens/{specimen_id}/images",
-    status_code=status.HTTP_200_OK,
-    response_model=SpecimenResponse,
-)
-async def add_specimen_image(
-    specimen_id: str,
-    image_url: str = Body(..., embed=True),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Add an image URL to a specimen."""
-    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
-    specimen = specimen_result.one_or_none()
-    if specimen is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Specimen with ID '{specimen_id}' not found",
-        )
-    images = set(specimen.specimen_images or [])
-    image_url_str = str(image_url)
-    if image_url_str not in images:
-        images.add(image_url_str)
-        specimen.specimen_images = sorted(images)
-        specimen.updated_at = datetime.now(timezone.utc)
-        session.add(specimen)
-        await session.commit()
-        await session.refresh(specimen)
-    return specimen
-
-
-@specimen_api.delete(
-    "/specimens/{specimen_id}/images",
-    status_code=status.HTTP_200_OK,
-    response_model=SpecimenResponse,
-)
-async def remove_specimen_image(
-    specimen_id: str,
-    image_url: str = Query(..., description="The URL of the image to remove"),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Remove an image URL from a specimen using a query parameter."""
-    specimen_result = await session.scalars(select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_id))
-    specimen = specimen_result.one_or_none()
-    if specimen is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Specimen with ID '{specimen_id}' not found",
-        )
-    image_url_str = str(image_url)
-    images = set(specimen.specimen_images or [])
-    if image_url_str not in images:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Image URL '{image_url_str}' not found in specimen '{specimen_id}'",
-        )
-    images.remove(image_url_str)
-    specimen.specimen_images = sorted(images)
-    specimen.updated_at = datetime.now(timezone.utc)
-    session.add(specimen)
-    await session.commit()
-    await session.refresh(specimen)
-    return specimen

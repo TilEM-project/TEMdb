@@ -5,8 +5,6 @@ description = "TEMdb monorepo workspace"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
 dependencies = [
-    "platformdirs>=4.10",
-    "smart-open[s3]>=7.6",
 ]
 [tool.uv.workspace]
 members = [
@@ -28,7 +26,7 @@ dev = [
     "pytest>=9.0",
     "pytest-asyncio>=1.4",
     "httpx>=0.28",
-    "testcontainers>=4.14",
+    "testcontainers[minio]>=4.14",
     "ruff>=0.15",
     "faker>=40.0",
     "bump-my-version>=1.3",

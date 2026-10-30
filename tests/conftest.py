@@ -1,12 +1,16 @@
+from uuid import uuid4
+
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
+from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 
 from temdb.server.cli import run_migrations
 from temdb.server.database import DatabaseManager
 from temdb.server.main import create_app
 from temdb.server.sqlmodels import Base
+from temdb.server.storage import StorageClientManager
 
 _UNSAFE_BUT_FAST = (
     "-c fsync=off "
@@ -32,11 +36,47 @@ def app() -> FastAPI:
     return create_app()
 
 
+@pytest.fixture
+def storage_client_manager(app, monkeypatch):
+    manager = StorageClientManager()
+    monkeypatch.setattr(app.state, "storage_client_manager", manager, raising=False)
+    yield manager
+    manager.close()
+
+
 @pytest.fixture(scope="session")
 def postgres_container():
     container = PostgresContainer("postgres:18").with_command(_UNSAFE_BUT_FAST).with_kwargs(tmpfs={_PGDATA: "rw"})
     with container:
         yield container
+
+
+@pytest.fixture(scope="session")
+def minio_container():
+    with MinioContainer(
+        image="ghcr.io/coollabsio/minio",
+        access_key="temdb-test-access",
+        secret_key="temdb-test-secret",
+    ) as container:
+        yield container
+
+
+@pytest.fixture
+def minio_s3(minio_container: MinioContainer, monkeypatch: pytest.MonkeyPatch):
+    config = minio_container.get_config()
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", config["access_key"])
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", config["secret_key"])
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+    bucket = f"temdb-test-{uuid4().hex[:12]}"
+    client = minio_container.get_client()
+    client.make_bucket(bucket)
+    return {
+        "server": f"http://{config['endpoint']}",
+        "bucket": bucket,
+        "client": client,
+    }
 
 
 def async_database_url(container: PostgresContainer) -> str:

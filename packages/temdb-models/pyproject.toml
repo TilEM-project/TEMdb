@@ -6,11 +6,7 @@ license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
-    "pathlib-abc>=0.5",
-    "platformdirs>=4.10",
     "pydantic>=2.13",
-    "pyyaml>=6.0",
-    "smart-open[s3]>=7.6",
 ]
 
 [build-system]

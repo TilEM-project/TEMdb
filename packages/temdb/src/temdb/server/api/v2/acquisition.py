@@ -24,15 +24,17 @@ from temdb.models import (
     AcquisitionFullMetadata,
     AcquisitionResponse,
     AcquisitionUpdate,
-    StorageLocation,
-    StorageLocationCreate,
+    FileObject,
+    FileObjectRequest,
+    FileObjectResponse,
     TileBulkDeleteResult,
     TileCreate,
     TileDeleteAllResult,
     TileResponse,
     TileUpdate,
 )
-from temdb.server.dependencies import get_async_session
+from temdb.server.config import config
+from temdb.server.dependencies import get_async_session, get_storage_client_manager
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -49,6 +51,7 @@ from temdb.server.sqlmodels import (
 )
 from temdb.server.sqlmodels.tile import format_tile_id, parse_tile_id
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
+from temdb.server.storage import StorageClientManager
 
 from ..utils import drop_null_keys, merge_extra
 
@@ -82,7 +85,7 @@ def _tile_payload(tile: TileSQLModel, acq_obj: AcquisitionSQLModel) -> dict[str,
         "max_value": tile.max_value,
         "mean_value": tile.mean_value,
         "std_value": tile.std_value,
-        "image_path": tile.image_path,
+        "image": tile.image,
         "matcher": tile.matcher,
         "supertile_id": tile.supertile_id,
         "supertile_raster_position": tile.supertile_raster_position,
@@ -127,7 +130,7 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
         "max_value": tile_data.max_value,
         "mean_value": tile_data.mean_value,
         "std_value": tile_data.std_value,
-        "image_path": str(tile_data.image_path),
+        "image": tile_data.image.model_dump() if tile_data.image else None,
         "matcher": [m.model_dump() for m in tile_data.matcher] if tile_data.matcher else None,
         "supertile_id": tile_data.supertile_id,
         "supertile_raster_position": (
@@ -805,6 +808,227 @@ def _where_tiles(acq_obj: AcquisitionSQLModel, tile_ids: list[str]) -> list:
     ]
 
 
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, Any])
+async def image_put_urls(
+    acquisition_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
+    tile_ids: list[str] | None = Body(None),
+    session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
+):
+    """Generate presigned PUT URLs for tiles in an acquisition.
+
+    The tile_id list is optional; if omitted, all tiles in the acquisition are returned.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile_query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.image.isnot(None),
+    )
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
+    if tile_ids is not None:
+        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+    if after is not None:
+        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
+    tile_query = tile_query.order_by(*key).limit(limit + 1)
+    tiles = await session.scalars(tile_query)
+    tiles_obj = tiles.all()
+    has_more = len(tiles_obj) > limit
+    tiles_obj = tiles_obj[:limit]
+    if not tiles_obj:
+        raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
+    urls = {}
+    errors = {}
+    for tile in tiles_obj:
+        if tile.image is None:
+            continue
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
+        storage_location = FileObjectRequest.from_file_object(tile.image)
+        storage_location.expiration = expiration
+        storage_client_manager.finalize(storage_location)
+        try:
+            url_data = await storage_client_manager.put_url(storage_location)
+            urls[tile_id] = url_data
+        except HTTPException as e:
+            logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
+            errors[tile_id] = e.detail
+    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
+    return {
+        "urls": urls,
+        "metadata": {
+            "returned_count": len(urls),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "errors": errors,
+        },
+    }
+
+
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, Any])
+async def image_get_urls(
+    acquisition_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
+    tile_ids: list[str] | None = Body(None),
+    session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
+):
+    """Generate presigned PUT URLs for tiles in an acquisition.
+
+    The tile_id list is optional; if omitted, all tiles in the acquisition are returned.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
+    tile_query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.image.isnot(None),
+    )
+    if tile_ids is not None:
+        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+    if after is not None:
+        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
+    tile_query = tile_query.order_by(*key).limit(limit + 1)
+    tiles = await session.scalars(tile_query)
+    tiles_obj = tiles.all()
+    has_more = len(tiles_obj) > limit
+    tiles_obj = tiles_obj[:limit]
+    if not tiles_obj:
+        raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
+    urls = {}
+    errors = {}
+    for tile in tiles_obj:
+        if tile.image is None:
+            continue
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
+        storage_location = FileObject.model_validate(tile.image)
+        try:
+            url_data = await storage_client_manager.get_url(storage_location, expiration)
+            urls[tile_id] = url_data
+        except HTTPException as e:
+            logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
+            errors[tile_id] = e.detail
+    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
+    return {
+        "urls": urls,
+        "metadata": {
+            "returned_count": len(urls),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "errors": errors,
+        },
+    }
+
+
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/images", response_model=dict[str, Any])
+async def delete_tile_images(
+    acquisition_id: str,
+    tile_ids: list[str] | None = Body(None),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
+    session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
+):
+    """Delete the images associated with specific tiles in an acquisition.
+
+    The tile_id list is optional; if omitted, all tiles in the acquisition are deleted.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    after = None
+    if cursor is not None:
+        try:
+            after = tuple(int(part) for part in cursor.split(","))
+        except ValueError:
+            after = ()
+        if len(after) != 3:
+            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
+    tile_query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        TileSQLModel.image.isnot(None),
+    )
+    if tile_ids is not None:
+        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
+    if after is not None:
+        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
+    tile_query = tile_query.order_by(*key).limit(limit + 1)
+    tiles = await session.scalars(tile_query)
+    tiles_obj = tiles.all()
+    has_more = len(tiles_obj) > limit
+    tiles_obj = tiles_obj[:limit]
+    if not tiles_obj:
+        raise HTTPException(404, f"No tile images to delete for acquisition '{acquisition_id}'")
+    deleted_tiles = []
+    errors = {}
+    for tile in tiles_obj:
+        if tile.image is None:
+            continue
+        tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
+        storage_location = FileObject.model_validate(tile.image)
+        try:
+            await storage_client_manager.delete(storage_location)
+            tile.image = None
+            tile.updated_at = datetime.now(timezone.utc)
+            session.add(tile)
+            deleted_tiles.append(tile_id)
+        except HTTPException as e:
+            logger.error(f"Error deleting image for tile {tile_id}: {e.detail}")
+            errors[tile_id] = e.detail
+    await session.commit()
+    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
+    return {
+        "deleted_images": deleted_tiles,
+        "metadata": {
+            "returned_count": len(deleted_tiles),
+            "limit": limit,
+            "current_cursor": cursor,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "errors": errors,
+        },
+    }
+
+
 @acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}", response_model=TileResponse)
 async def get_tile_from_acquisition(
     acquisition_id: str,
@@ -825,103 +1049,104 @@ async def get_tile_from_acquisition(
     return _tile_payload(tile_obj, acq_obj)
 
 
-def _current_storage_location(storage_locations: list[dict[str, Any]] | None) -> dict[str, Any] | None:
-    if not storage_locations:
-        return None
-    return next((loc for loc in storage_locations if loc.get("is_current")), None)
-
-
-@acquisition_api.post("/acquisitions/{acquisition_id}/storage-locations", response_model=AcquisitionResponse)
-async def add_storage_location(
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", response_model=FileObjectResponse)
+async def image_put_url(
     acquisition_id: str,
-    storage_location: StorageLocationCreate,
+    tile_id: str,
+    storage_location: FileObjectRequest | None = Body(None, description="Storage location for the tile image"),
     session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
-    """Add a storage location entry to an acquisition."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    """Generate a presigned PUT URL for a tile in an acquisition.
+
+    The storage_location is optional; if omitted, the existing location is used.
+    """
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)).with_for_update())
+    tile_obj = tile.one_or_none()
+    if tile_obj is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    if storage_location is None and tile_obj.image is None:
+        raise HTTPException(400, "No storage location provided and tile has no existing image")
+    if storage_location is None:
+        storage_location = FileObjectRequest.from_file_object(tile_obj.image)
+    if not storage_location.complete:
+        dataset = (
+            await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == acq_obj.dataset_id))
+        ).one_or_none()
+        if dataset is None:
+            raise HTTPException(404, "Could not find dataset for tile")
+        if dataset.default_storage is not None:
+            storage_location = storage_location.apply_defaults(dataset.default_storage)
 
-    new_location = storage_location.model_dump(mode="json")
-    make_current = new_location.get("is_current", True)
-    new_location["is_current"] = make_current
-    if not new_location.get("date_added"):
-        new_location["date_added"] = datetime.now(timezone.utc).isoformat()
+    if not storage_location.complete and config.default_storage is not None:
+        storage_location = storage_location.apply_defaults(config.default_storage)
 
-    existing_locations = list(acq_obj.storage_locations or [])
-    if make_current:
-        for loc in existing_locations:
-            if isinstance(loc, dict):
-                loc["is_current"] = False
-    existing_locations.append(new_location)
+    storage_location = storage_client_manager.finalize(storage_location)
 
-    acq_obj.storage_locations = existing_locations
-    session.add(acq_obj)
+    if tile_obj.image is not None and storage_location != tile_obj.image:
+        raise HTTPException(400, "Delete the existing image for the tile before uploading a new one.")
+
+    response = await storage_client_manager.put_url(storage_location)
+
+    if storage_location != tile_obj.image:
+        tile_obj.image = response.dump_file_object()
+        tile_obj.updated_at = datetime.now(timezone.utc)
+        session.add(tile_obj)
+        await session.commit()
+
+    return response
+
+
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", response_model=FileObjectResponse)
+async def image_get_url(
+    acquisition_id: str,
+    tile_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
+):
+    """Generate a presigned GET URL for a tile in an acquisition."""
+    tile = TileResponse.model_validate(await get_tile_from_acquisition(acquisition_id, tile_id, session))
+    if tile.image is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' has no image")
+    return await storage_client_manager.get_url(FileObject.model_validate(tile.image), expiration)
+
+
+@acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/{tile_id}/image", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tile_image(
+    acquisition_id: str,
+    tile_id: str,
+    session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
+):
+    """Delete the image associated with a specific tile in an acquisition."""
+    acquisition = await session.scalars(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    acq_obj = acquisition.one_or_none()
+    if acq_obj is None:
+        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
+    tile_obj = tile.one_or_none()
+    if tile_obj is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    if tile_obj.image is None:
+        raise HTTPException(404, f"Tile ID '{tile_id}' has no image to delete")
+
+    storage_location = FileObject.model_validate(tile_obj.image)
+
+    await storage_client_manager.delete(storage_location)
+
+    tile_obj.image = None
+    tile_obj.updated_at = datetime.now(timezone.utc)
+    session.add(tile_obj)
     await session.commit()
-    await session.refresh(acq_obj)
-    return acq_obj
-
-
-@acquisition_api.get(
-    "/acquisitions/{acquisition_id}/current-storage",
-    response_model=StorageLocation | None,
-)
-async def get_current_storage_location(
-    acquisition_id: str,
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Get the current storage location for an acquisition."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.first()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    return _current_storage_location(acq_obj.storage_locations)
-
-
-@acquisition_api.get(
-    "/acquisitions/{acquisition_id}/minimap-uri",
-    response_model=dict[str, str | None],
-)
-async def get_minimap_uri(
-    acquisition_id: str,
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Get the calculated URI for the acquisition's minimap image."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.first()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    current_location = _current_storage_location(acq_obj.storage_locations)
-    base_path = current_location.get("base_path") if current_location else None
-    return {"minimap_uri": f"{base_path}/minimap.png" if base_path else None}
 
 
 @acquisition_api.get("/acquisitions/{acquisition_id}/tile-count", response_model=dict[str, int])
@@ -1051,6 +1276,15 @@ async def _lock_acquisition_for_tile_delete(session: AsyncSession, acquisition_i
     return acq_obj
 
 
+async def _reject_tiles_with_images(session: AsyncSession, *where) -> None:
+    """Refuse when any tile matched by where still has an image."""
+    count = await session.scalar(
+        select(func.count()).select_from(TileSQLModel).where(*where).where(TileSQLModel.image.isnot(None))
+    )
+    if count:
+        raise HTTPException(409, f"{count} of these tiles still have images; delete their images first")
+
+
 @acquisition_api.delete("/acquisitions/{acquisition_id}/tiles/bulk", response_model=TileBulkDeleteResult)
 async def delete_tiles_from_acquisition_bulk(
     acquisition_id: str,
@@ -1063,6 +1297,7 @@ async def delete_tiles_from_acquisition_bulk(
     """
     acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
     requested = list(dict.fromkeys(tile_ids))
+    await _reject_tiles_with_images(session, *_where_tiles(acq_obj, requested))
     result = await session.execute(
         delete(TileSQLModel)
         .where(*_where_tiles(acq_obj, requested))
@@ -1084,12 +1319,9 @@ async def delete_tiles_from_acquisition_all(
 ):
     """Delete all tiles belonging to the specified acquisition. 409 if the acquisition is complete."""
     acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
-    result = await session.execute(
-        delete(TileSQLModel).where(
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-        )
-    )
+    where = (TileSQLModel.dataset_id == acq_obj.dataset_id, TileSQLModel.run_id == acq_obj.run_id)
+    await _reject_tiles_with_images(session, *where)
+    result = await session.execute(delete(TileSQLModel).where(*where))
     await session.commit()
     return TileDeleteAllResult(deleted=result.rowcount)
 
@@ -1109,6 +1341,8 @@ async def delete_tile_from_acquisition(
     tile_obj = tile.first()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
+    if tile_obj.image is not None:
+        raise HTTPException(409, f"Delete the image of tile '{tile_id}' before the tile")
     await session.delete(tile_obj)
     await session.commit()
     return None

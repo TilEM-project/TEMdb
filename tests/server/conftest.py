@@ -46,7 +46,7 @@ async def fresh_database_url(postgres_container):
 
 
 @pytest.fixture(scope="function")
-async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db) -> AsyncClient:
+async def async_client(app: FastAPI, test_db_manager: DatabaseManager, init_db, storage_client_manager) -> AsyncClient:
     app.dependency_overrides[get_db_manager] = lambda: test_db_manager
     try:
         async with AsyncClient(base_url="http://test", transport=ASGITransport(app=app)) as client:
@@ -345,7 +345,12 @@ async def test_tile(
             max_value=255,
             mean_value=128,
             std_value=25,
-            image_path="/path/to/test/image.tif",
+            image={
+                "protocol": "s3",
+                "server": "http://localhost:9000",
+                "bucket": "tiles",
+                "key": "test/image.tif",
+            },
             created_at=datetime.now(timezone.utc),
         ),
     )
