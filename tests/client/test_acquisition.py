@@ -6,12 +6,31 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from temdb.client.resources.acquisition import AcquisitionResource
+from temdb.client.resources.acquisition import (
+    AcquisitionResource,
+    DeletedImagePage,
+    DeletedImages,
+    ImagePageMetadata,
+    ImageURLPage,
+    ImageURLs,
+)
 from temdb.models import AcquisitionCreate, AcquisitionUpdate, FileObjectRequest, FileObjectResponse
 
 API = "http://test/api/v2"
 NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
 MICROSCOPE_ID = "TEM-01"
+
+
+def _page_metadata(**fields) -> dict:
+    return {
+        "returned_count": 1,
+        "limit": 100,
+        "current_cursor": None,
+        "next_cursor": None,
+        "has_more": False,
+        "errors": {},
+        **fields,
+    }
 
 
 def _resource():
@@ -237,10 +256,7 @@ async def test_tile_get_image_url(image_resource, expiration):
 @pytest.mark.parametrize("tile_ids", [None, ["tile"]])
 async def test_tile_bulk_image_urls_use_json_body_and_return_mapping(image_resource, operation, tile_ids):
     resource, request = image_resource
-    request.return_value = {
-        "urls": {"tile": _image_response()},
-        "metadata": {"has_more": False, "errors": {}},
-    }
+    request.return_value = {"urls": {"tile": _image_response()}, "metadata": _page_metadata()}
     method = getattr(resource, f"{operation}_image_urls")
 
     result = await method("ACQ001", tile_ids=tile_ids, expiration=300)
@@ -251,22 +267,19 @@ async def test_tile_bulk_image_urls_use_json_body_and_return_mapping(image_resou
         json=tile_ids,
         params={"limit": 100, "expiration": 300},
     )
-    assert result == {
-        "urls": {"tile": FileObjectResponse.model_validate(_image_response())},
-        "metadata": {"has_more": False, "errors": {}},
-    }
+    assert result == ImageURLPage(
+        urls={"tile": FileObjectResponse.model_validate(_image_response())},
+        metadata=ImagePageMetadata(**_page_metadata()),
+    )
 
 
 async def test_all_put_image_urls_follow_pages(image_resource):
     resource, request = image_resource
     response = {
         "urls": {"tile-1": _image_response()},
-        "metadata": {"has_more": True, "next_cursor": "0,0,0", "errors": {"tile-1": "retry"}},
+        "metadata": _page_metadata(has_more=True, next_cursor="0,0,0", errors={"tile-1": "retry"}),
     }
-    last_response = {
-        "urls": {"tile-2": _image_response()},
-        "metadata": {"has_more": False, "next_cursor": None, "errors": {}},
-    }
+    last_response = {"urls": {"tile-2": _image_response()}, "metadata": _page_metadata()}
     request.side_effect = [response, last_response]
 
     result = await resource.all_put_image_urls("ACQ001", page_limit=1)
@@ -282,25 +295,22 @@ async def test_all_put_image_urls_follow_pages(image_resource):
         "json": None,
         "params": {"cursor": "0,0,0", "limit": 1},
     }
-    assert result == {
-        "urls": {
+    assert result == ImageURLs(
+        urls={
             "tile-1": FileObjectResponse.model_validate(_image_response()),
             "tile-2": FileObjectResponse.model_validate(_image_response()),
         },
-        "errors": {"tile-1": "retry"},
-    }
+        errors={"tile-1": "retry"},
+    )
 
 
 async def test_all_get_image_urls_follows_pages_and_aggregates_errors(image_resource):
     resource, request = image_resource
     response = {
         "urls": {"tile-1": _image_response()},
-        "metadata": {"has_more": True, "next_cursor": "0,0,0", "errors": {"tile-1": "unavailable"}},
+        "metadata": _page_metadata(has_more=True, next_cursor="0,0,0", errors={"tile-1": "unavailable"}),
     }
-    last_response = {
-        "urls": {"tile-2": _image_response()},
-        "metadata": {"has_more": False, "next_cursor": None, "errors": {"tile-2": "missing"}},
-    }
+    last_response = {"urls": {"tile-2": _image_response()}, "metadata": _page_metadata(errors={"tile-2": "missing"})}
     request.side_effect = [response, last_response]
     tile_ids = ["tile-1", "tile-2"]
 
@@ -312,13 +322,13 @@ async def test_all_get_image_urls_follows_pages_and_aggregates_errors(image_reso
         {"json": tile_ids, "params": {"limit": 1, "expiration": 300}},
         {"json": tile_ids, "params": {"cursor": "0,0,0", "limit": 1, "expiration": 300}},
     ]
-    assert result == {
-        "urls": {
+    assert result == ImageURLs(
+        urls={
             "tile-1": FileObjectResponse.model_validate(_image_response()),
             "tile-2": FileObjectResponse.model_validate(_image_response()),
         },
-        "errors": {"tile-1": "unavailable", "tile-2": "missing"},
-    }
+        errors={"tile-1": "unavailable", "tile-2": "missing"},
+    )
 
 
 @pytest.mark.parametrize("upload_fails", [False, True])
@@ -382,7 +392,7 @@ async def test_tile_delete_image(image_resource):
 @pytest.mark.parametrize("tile_ids", [None, ["tile"]])
 async def test_tile_delete_images_awaits_request_and_returns_response(image_resource, tile_ids):
     resource, request = image_resource
-    request.return_value = {"deleted_images": ["tile"], "metadata": {"has_more": False}}
+    request.return_value = {"deleted_images": ["tile"], "metadata": _page_metadata()}
 
     result = await resource.delete_images("ACQ001", tile_ids=tile_ids)
 
@@ -392,7 +402,7 @@ async def test_tile_delete_images_awaits_request_and_returns_response(image_reso
         json=tile_ids,
         params={"limit": 100},
     )
-    assert result == {"deleted_images": ["tile"], "metadata": {"has_more": False}}
+    assert result == DeletedImagePage(deleted_images=["tile"], metadata=ImagePageMetadata(**_page_metadata()))
 
 
 async def test_delete_all_images_follows_pages(image_resource):
@@ -400,9 +410,9 @@ async def test_delete_all_images_follows_pages(image_resource):
     request.side_effect = [
         {
             "deleted_images": ["tile-1"],
-            "metadata": {"has_more": True, "next_cursor": "0,0,0", "errors": {"tile-1": "retry"}},
+            "metadata": _page_metadata(has_more=True, next_cursor="0,0,0", errors={"tile-1": "retry"}),
         },
-        {"deleted_images": ["tile-2"], "metadata": {"has_more": False, "errors": {}}},
+        {"deleted_images": ["tile-2"], "metadata": _page_metadata()},
     ]
 
     result = await resource.delete_all_images("ACQ001", page_limit=1)
@@ -411,4 +421,4 @@ async def test_delete_all_images_follows_pages(image_resource):
         {"limit": 1},
         {"cursor": "0,0,0", "limit": 1},
     ]
-    assert result == {"deleted": ["tile-1", "tile-2"], "errors": {"tile-1": "retry"}}
+    assert result == DeletedImages(deleted=["tile-1", "tile-2"], errors={"tile-1": "retry"})

@@ -4,6 +4,7 @@ import pytest
 import requests
 from minio.error import S3Error
 
+from temdb.client.resources.acquisition import DeletedImages
 from temdb.models import FileObjectRequest
 from tests.integration.client.records import tile_payload
 
@@ -63,15 +64,15 @@ async def test_acquisition_put_image(client, tile_image, minio_s3, tmp_path):
 
 async def test_acquisition_put_image_urls(client, tile_image):
     result = await client.acquisition.put_image_urls("A1", [tile_image.tile_id], expiration=300)
-    assert set(result["urls"]) == {tile_image.tile_id}
-    assert requests.put(result["urls"][tile_image.tile_id].url, data=b"bulk upload").status_code == 200
+    assert set(result.urls) == {tile_image.tile_id}
+    assert requests.put(result.urls[tile_image.tile_id].url, data=b"bulk upload").status_code == 200
 
 
 async def test_acquisition_all_put_image_urls(client, tile_image):
     result = await client.acquisition.all_put_image_urls("A1", [tile_image.tile_id], expiration=300)
-    assert set(result["urls"]) == {tile_image.tile_id}
-    assert result["errors"] == {}
-    assert requests.put(result["urls"][tile_image.tile_id].url, data=b"bulk upload").status_code == 200
+    assert set(result.urls) == {tile_image.tile_id}
+    assert result.errors == {}
+    assert requests.put(result.urls[tile_image.tile_id].url, data=b"bulk upload").status_code == 200
 
 
 async def test_acquisition_get_image_url(client, tile_image):
@@ -99,15 +100,15 @@ async def test_acquisition_open_image(client, tile_image, size):
 
 async def test_acquisition_get_image_urls(client, tile_image):
     result = await client.acquisition.get_image_urls("A1", [tile_image.tile_id], expiration=300)
-    assert set(result["urls"]) == {tile_image.tile_id}
-    assert requests.get(result["urls"][tile_image.tile_id].url).content == CONTENTS
+    assert set(result.urls) == {tile_image.tile_id}
+    assert requests.get(result.urls[tile_image.tile_id].url).content == CONTENTS
 
 
 async def test_acquisition_all_get_image_urls(client, tile_image):
     result = await client.acquisition.all_get_image_urls("A1", [tile_image.tile_id], expiration=300)
-    assert set(result["urls"]) == {tile_image.tile_id}
-    assert result["errors"] == {}
-    assert requests.get(result["urls"][tile_image.tile_id].url).content == CONTENTS
+    assert set(result.urls) == {tile_image.tile_id}
+    assert result.errors == {}
+    assert requests.get(result.urls[tile_image.tile_id].url).content == CONTENTS
 
 
 async def test_acquisition_delete_image(client, tile_image, minio_s3):
@@ -119,7 +120,7 @@ async def test_acquisition_delete_image(client, tile_image, minio_s3):
 
 async def test_acquisition_delete_images(client, tile_image, minio_s3):
     result = await client.acquisition.delete_images("A1", [tile_image.tile_id])
-    assert result["deleted_images"] == [tile_image.tile_id]
+    assert result.deleted_images == [tile_image.tile_id]
     assert (await client.acquisition.get_tile("A1", tile_image.tile_id)).image is None
     assert_object_missing(minio_s3)
     await client.acquisition.delete_tile("A1", tile_image.tile_id)
@@ -127,7 +128,7 @@ async def test_acquisition_delete_images(client, tile_image, minio_s3):
 
 async def test_acquisition_delete_all_images(client, tile_image, minio_s3):
     result = await client.acquisition.delete_all_images("A1")
-    assert result == {"deleted": [tile_image.tile_id], "errors": {}}
+    assert result == DeletedImages(deleted=[tile_image.tile_id], errors={})
     assert (await client.acquisition.get_tile("A1", tile_image.tile_id)).image is None
     assert_object_missing(minio_s3)
     await client.acquisition.delete_tile("A1", tile_image.tile_id)
