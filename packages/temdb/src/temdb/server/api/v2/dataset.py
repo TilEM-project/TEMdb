@@ -17,14 +17,6 @@ from ..utils import drop_null_keys, merge_extra
 dataset_api = APIRouter(tags=["Datasets"])
 
 
-def _to_json_compatible(value):
-    if value is None:
-        return None
-    if hasattr(value, "model_dump"):
-        value = value.model_dump(mode="json")
-    return jsonable_encoder(value)
-
-
 async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
     try:
         key = uuid.UUID(dataset_id)
@@ -66,7 +58,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
         parent_dataset_id=data.parent_dataset_id,
         size_class=size_class,
         estimated_tile_count=data.estimated_tile_count,
-        default_storage=_to_json_compatible(data.default_storage),
+        default_storage=jsonable_encoder(data.default_storage),
         metadata_json=data.metadata_json,
         created_at=data.created_at or datetime.now(timezone.utc),
         extra=drop_null_keys(data.extra),
@@ -147,7 +139,7 @@ async def update_dataset(
             case "status":
                 pass
             case "default_storage":
-                ds.default_storage = _to_json_compatible(value)
+                ds.default_storage = jsonable_encoder(value)
             case _:
                 setattr(ds, field, value)
     if status_changed:

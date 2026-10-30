@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,14 +13,6 @@ from ..utils import drop_null_keys, merge_extra
 specimen_api = APIRouter(
     tags=["Specimens"],
 )
-
-
-def _to_json_compatible(value):
-    if value is None:
-        return None
-    if hasattr(value, "model_dump"):
-        value = value.model_dump(mode="json")
-    return jsonable_encoder(value)
 
 
 @specimen_api.get("/specimens", response_model=list[SpecimenResponse])

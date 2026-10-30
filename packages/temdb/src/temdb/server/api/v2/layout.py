@@ -22,14 +22,6 @@ substrate_layout_api = APIRouter(
 )
 
 
-def _to_json_compatible(value):
-    if value is None:
-        return None
-    if hasattr(value, "model_dump"):
-        value = value.model_dump(mode="json")
-    return jsonable_encoder(value)
-
-
 @substrate_layout_api.get("/layouts", response_model=list[SubstrateLayoutResponse])
 async def list_layouts(
     media_type: SubstrateType | None = Query(
@@ -66,8 +58,8 @@ async def create_layout(
     new_layout = SubstrateLayoutSQLModel(
         layout_id=layout_data.layout_id,
         name=layout_data.name,
-        fiducials=_to_json_compatible(layout_data.fiducials),
-        apertures=_to_json_compatible(layout_data.apertures),
+        fiducials=jsonable_encoder(layout_data.fiducials),
+        apertures=jsonable_encoder(layout_data.apertures),
         media_type=layout_data.media_type.value,
         created_at=layout_data.created_at or datetime.now(timezone.utc),
         extra=drop_null_keys(layout_data.extra),
@@ -114,7 +106,7 @@ async def update_layout(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     extra_changes = update_data.pop("extra", None)
     if "fiducials" in update_data:
-        layout_obj.fiducials = _to_json_compatible(update_data.pop("fiducials"))
+        layout_obj.fiducials = jsonable_encoder(update_data.pop("fiducials"))
     if "apertures" in update_data:
         in_use = await session.scalar(
             select(SubstrateSQLModel.media_id).where(SubstrateSQLModel.substrate_layout_id == layout_id).limit(1)
@@ -124,7 +116,7 @@ async def update_layout(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Layout '{layout_id}' is used by substrate '{in_use}'; its apertures cannot change",
             )
-        layout_obj.apertures = _to_json_compatible(update_data.pop("apertures"))
+        layout_obj.apertures = jsonable_encoder(update_data.pop("apertures"))
     if "media_type" in update_data:
         layout_obj.media_type = update_data.pop("media_type").value
     for field, value in update_data.items():

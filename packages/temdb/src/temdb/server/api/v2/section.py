@@ -37,14 +37,6 @@ section_api = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-def _to_json_compatible(value):
-    if value is None:
-        return None
-    if hasattr(value, "model_dump"):
-        value = value.model_dump(mode="json")
-    return jsonable_encoder(value)
-
-
 def check_aperture_index(aperture_index: int | None, aperture_count: int, media_id: str) -> None:
     """Refuse an aperture index the substrate's layout does not have."""
     if aperture_index is not None and aperture_index >= aperture_count:
@@ -218,7 +210,7 @@ def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> Se
         block_id=cut_session.block_id,
         specimen_id=cut_session.specimen_id,
         media_id=data.media_id,
-        optical_image=_to_json_compatible(data.optical_image) if data.optical_image is not None else None,
+        optical_image=jsonable_encoder(data.optical_image),
         aperture_index=data.aperture_index,
         position=dump_position(data.position),
         condition=data.condition,
