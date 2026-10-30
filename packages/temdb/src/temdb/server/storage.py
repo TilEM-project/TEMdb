@@ -38,7 +38,7 @@ class S3StorageClient(StorageClient):
             logger.error("Failed to create S3 client: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to create S3 client: {str(e)}",
+                detail="Failed to create S3 client",
             )
 
     def close(self) -> None:
@@ -59,7 +59,7 @@ class S3StorageClient(StorageClient):
             logger.error("Failed to generate presigned URL for GET: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to generate presigned URL for GET: {str(e)}",
+                detail="Failed to generate presigned URL for GET",
             )
         return FileObjectResponse(
             url=presigned_url,
@@ -81,7 +81,7 @@ class S3StorageClient(StorageClient):
             logger.error("Failed to generate presigned URL for PUT: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to generate presigned URL for PUT: {str(e)}",
+                detail="Failed to generate presigned URL for PUT",
             )
         return FileObjectResponse(
             url=presigned_url,
@@ -99,7 +99,7 @@ class S3StorageClient(StorageClient):
             logger.error("Failed to delete object from S3: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to delete object from S3: {str(e)}",
+                detail="Failed to delete object from S3",
             )
 
 

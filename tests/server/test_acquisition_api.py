@@ -1965,7 +1965,7 @@ async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisitio
     assert metadata["returned_count"] == 2
     assert len(metadata["errors"])
     assert tile_ids[0] in metadata["errors"]
-    assert "Unable to locate credentials" in metadata["errors"][tile_ids[0]]
+    assert "Unable to locate credentials" not in metadata["errors"][tile_ids[0]]
     assert "Unable to locate credentials" in caplog.text
 
 
@@ -1985,7 +1985,7 @@ async def test_bulk_delete_missing_credentials_skips_tile(async_client, test_acq
     assert metadata["returned_count"] == 2
     assert len(metadata["errors"])
     assert tile_ids[0] in metadata["errors"]
-    assert "Unable to locate credentials" in metadata["errors"][tile_ids[0]]
+    assert "Unable to locate credentials" not in metadata["errors"][tile_ids[0]]
     assert "Unable to locate credentials" in caplog.text
 
 

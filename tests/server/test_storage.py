@@ -60,7 +60,7 @@ async def test_s3_errors_become_http_errors(storage_client_manager, s3, location
         await getattr(storage_client_manager, operation)(argument)
 
     assert error.value.status_code == 500
-    assert "storage denied" in error.value.detail
+    assert "storage denied" not in error.value.detail
     assert "storage denied" in caplog.text
 
 
