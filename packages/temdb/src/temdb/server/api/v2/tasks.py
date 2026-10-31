@@ -277,32 +277,9 @@ async def get_task(
     task_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    statement = (
-        select(
-            AcquisitionTaskSQLModel,
-            SpecimenSQLModel.id,
-            BlockSQLModel.id,
-            ROISQLModel.id,
-        )
-        .select_from(AcquisitionTaskSQLModel)
-        .outerjoin(
-            SpecimenSQLModel,
-            SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-        )
-        .outerjoin(
-            BlockSQLModel,
-            and_(
-                BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-            ),
-        )
-        .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-        .where(AcquisitionTaskSQLModel.task_id == task_id)
-    )
-    row = (await session.execute(statement)).first()
-    if row is None:
+    task = await session.scalar(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    if task is None:
         raise HTTPException(status_code=404, detail=f"Acquisition task ID '{task_id}' not found.")
-    task, _specimen_ref, _block_ref, _roi_ref = row
     runs = (
         (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)))
         .scalars()
@@ -317,33 +294,9 @@ async def update_task(
     updated_fields: AcquisitionTaskUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
-    row = (
-        await session.execute(
-            select(
-                AcquisitionTaskSQLModel,
-                SpecimenSQLModel.id,
-                BlockSQLModel.id,
-                ROISQLModel.id,
-            )
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                    BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-                ),
-            )
-            .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
-        )
-    ).first()
-    if row is None:
+    task_obj = await session.scalar(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    if task_obj is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    task_obj, _specimen_ref, _block_ref, _roi_ref = row
     update_data = updated_fields.model_dump(
         mode="json",
         exclude_unset=True,
@@ -481,31 +434,7 @@ async def create_tasks_batch(
     created_ids = [new_task.id for new_task in new_tasks]
 
     created_rows = (
-        await session.execute(
-            select(
-                AcquisitionTaskSQLModel,
-                SpecimenSQLModel.id,
-                BlockSQLModel.id,
-                ROISQLModel.id,
-            )
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                    BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-                ),
-            )
-            .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-            .where(AcquisitionTaskSQLModel.id.in_(created_ids))
-        )
+        await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.id.in_(created_ids)))
     ).all()
-    created_map = {
-        task.id: _task_response(task, derive_task_state([]))
-        for task, _specimen_ref, _block_ref, _roi_ref in created_rows
-    }
+    created_map = {task.id: _task_response(task, derive_task_state([])) for task in created_rows}
     return [created_map[internal_id] for internal_id in created_ids if internal_id in created_map]

@@ -299,20 +299,11 @@ async def create_acquisition(
         )
         if lens_correction.first() is None:
             raise HTTPException(404, f"Lens correction '{acq_data.lc_id}' not found.")
-    task_row = (
-        await session.execute(
-            select(AcquisitionTaskSQLModel, SpecimenSQLModel.id)
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
-        )
-    ).first()
-    if task_row is None:
+    task_obj = await session.scalar(
+        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
+    )
+    if task_obj is None:
         raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
-    task_obj, _specimen_ref = task_row
     roi_obj = None
     if acq_data.roi_id is not None:
         roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
@@ -385,33 +376,11 @@ async def get_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve a specific acquisition by its human-readable ID."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    acq_obj = await session.scalar(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
     return acq_obj
 
 
@@ -422,33 +391,11 @@ async def update_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific acquisition."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    acq_obj = await session.scalar(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
     update_data = updated_fields.model_dump(
         exclude_unset=True,
     )
@@ -589,33 +536,11 @@ async def add_tiles_to_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Add multiple tiles to an acquisition."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    acq_obj = await session.scalar(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, specimen_ref, roi_ref, task_ref = row
     if acq_obj.dataset_id is None:
         raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
     keys = [(tile.raster_position.row, tile.raster_position.col, tile.retake) for tile in tiles]
@@ -1365,9 +1290,6 @@ async def get_acquisition_with_full_metadata(
                 BlockSQLModel,
                 SpecimenSQLModel,
                 SubstrateSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
             )
             .select_from(AcquisitionSQLModel)
             .outerjoin(
@@ -1415,9 +1337,6 @@ async def get_acquisition_with_full_metadata(
         block_obj,
         specimen_obj,
         substrate_obj,
-        _specimen_ref,
-        _roi_ref,
-        _task_ref,
     ) = row
     return AcquisitionFullMetadata(
         acquisition=AcquisitionResponse.model_validate(acq_obj),
