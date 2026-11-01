@@ -118,7 +118,7 @@ async def lifespan(app: FastAPI):
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     app.state.storage_client_manager = StorageClientManager()
-    await db_manager.initialize()
+    await db_manager.initialize(create_schema=False)
     try:
         yield
     finally:

@@ -71,7 +71,7 @@ def upgrade() -> None:
     rename_rois(renames)
     create_roi_id_foreign_keys()
 
-    op.drop_constraint("fk_rois_specimen_id_blocks", "rois", type_="foreignkey")
+    op.drop_constraint("fk_rois_block", "rois", type_="foreignkey")
     op.drop_index("ix_rois_specimen_block", table_name="rois")
     for column in ("specimen_id", "block_id", "hierarchy_level", "section_number"):
         op.drop_column("rois", column)
