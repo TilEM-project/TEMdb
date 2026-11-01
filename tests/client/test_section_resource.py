@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import io
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
@@ -91,12 +93,13 @@ def _file_object_response(**overrides):
         "key": "sections/SEC001.png",
         "url": "http://minio.example.com/section-images/sections/SEC001.png?signature=test",
         "expiration": 600,
+        "hash": base64.b64encode(hashlib.sha256(b"downloaded section image").digest()).decode("ascii"),
         **overrides,
     }
 
 
 @pytest.mark.asyncio
-async def test_put_image_url_posts_optional_storage_location_and_returns_model():
+async def test_put_image_url_posts_storage_location_and_returns_model():
     resource, request = _resource()
     request.return_value = _file_object_response()
     location = FileObjectRequest(
@@ -105,9 +108,10 @@ async def test_put_image_url_posts_optional_storage_location_and_returns_model()
         bucket="section-images",
         key="/sections/SEC001.png",
         expiration=600,
+        hash=_file_object_response()["hash"],
     )
 
-    result = await resource.put_image_url("SEC001", location)
+    result = await resource.put_image_url("SEC001", **location.model_dump(exclude_unset=True))
 
     request.assert_awaited_once_with(
         "POST",
@@ -118,6 +122,7 @@ async def test_put_image_url_posts_optional_storage_location_and_returns_model()
             "bucket": "section-images",
             "key": "/sections/SEC001.png",
             "expiration": 600,
+            "hash": location.hash,
         },
     )
     assert result.key == "sections/SEC001.png"
@@ -125,13 +130,13 @@ async def test_put_image_url_posts_optional_storage_location_and_returns_model()
 
 
 @pytest.mark.asyncio
-async def test_put_image_url_without_location_posts_none():
+async def test_put_image_url_accepts_checksum_only():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    await resource.put_image_url("SEC001")
+    await resource.put_image_url("SEC001", hash=_file_object_response()["hash"])
 
-    request.assert_awaited_once_with("POST", SECTION_URL, json=None)
+    request.assert_awaited_once_with("POST", SECTION_URL, json={"hash": _file_object_response()["hash"]})
 
 
 @pytest.mark.asyncio
@@ -152,7 +157,10 @@ async def test_put_image_uploads_bytes_to_presigned_url(monkeypatch):
     contents = io.BytesIO(b"section image")
     assert await resource.put_image("SEC001", contents) is file_object
 
-    put_image_url.assert_awaited_once_with("SEC001", storage_location=None)
+    put_image_url.assert_awaited_once()
+    assert put_image_url.await_args.kwargs["hash"] == base64.b64encode(
+        hashlib.sha256(b"section image").digest()
+    ).decode("ascii")
     assert uploaded == [b"section image"]
     assert not contents.closed
     assert client.is_closed
@@ -169,7 +177,7 @@ async def test_put_image_propagates_upload_failure(monkeypatch):
     with pytest.raises(httpx.HTTPStatusError):
         await resource.put_image("SEC001", io.BytesIO(b"image"))
 
-    put_image_url.assert_awaited_once_with("SEC001", storage_location=None)
+    put_image_url.assert_awaited_once()
 
 
 @pytest.mark.asyncio

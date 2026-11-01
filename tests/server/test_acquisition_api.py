@@ -1,11 +1,14 @@
 import asyncio
-import io
+import base64
+import hashlib
 import json
 import re
 import time
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
+import boto3
 import httpx
 import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -19,6 +22,10 @@ from temdb.server.sqlmodels.tile import TileSQLModel, format_tile_id
 
 TEST_MAX_BATCH_SIZE = 10
 config.max_batch_size = TEST_MAX_BATCH_SIZE
+
+
+def _checksum(contents: bytes) -> str:
+    return base64.b64encode(hashlib.sha256(contents).digest()).decode("ascii")
 
 
 def _tile_payload(raster_index: int) -> dict:
@@ -1564,7 +1571,8 @@ async def _store_tile_image(test_db_manager, minio_s3, tile_id):
         "bucket": minio_s3["bucket"],
         "key": f"tiles/{tile_id}.tif",
     }
-    minio_s3["client"].put_object(image["bucket"], image["key"], io.BytesIO(contents), length=len(contents))
+    with closing(boto3.client("s3", endpoint_url=minio_s3["server"])) as storage:
+        storage.put_object(Bucket=image["bucket"], Key=image["key"], Body=contents, ChecksumSHA256=_checksum(contents))
     async with test_db_manager.async_session_factory() as session:
         await session.execute(update(TileSQLModel).where(_image_tile_condition(tile_id)).values(image=image))
         await session.commit()
@@ -1590,6 +1598,7 @@ async def test_tile_image_upload_roundtrip(async_client, test_db_manager, test_a
         "bucket": minio_s3["bucket"],
         "key": f"/tiles/{tile_id}.tif",
         "expiration": 600,
+        "hash": _checksum(b"new tile image"),
     }
 
     response = await async_client.post(path, json=location)
@@ -1599,7 +1608,9 @@ async def test_tile_image_upload_roundtrip(async_client, test_db_manager, test_a
     assert presigned["key"] == f"tiles/{tile_id}.tif"
     assert presigned["expiration"] == 600
     async with httpx.AsyncClient() as storage:
-        uploaded = await storage.put(presigned["url"], content=b"new tile image")
+        uploaded = await storage.put(
+            presigned["url"], content=b"new tile image", headers={"x-amz-checksum-sha256": presigned["hash"]}
+        )
     assert uploaded.status_code == 200, uploaded.text
     tile_response = await async_client.get(path.removesuffix("/image"))
     assert tile_response.status_code == 200, tile_response.text
@@ -1667,7 +1678,9 @@ async def test_tile_image_rejects_another_acquisitions_tile(
     tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
     path = f"/api/v2/acquisitions/{second_acquisition.acquisition_id}/tiles/{tile_id}/image"
 
-    response = await async_client.request(method, path, json={"key": "/tile.tif"} if method == "POST" else None)
+    response = await async_client.request(
+        method, path, json={"key": "/tile.tif", "hash": _checksum(b"image")} if method == "POST" else None
+    )
 
     assert response.status_code == 404, response.text
 
@@ -1680,7 +1693,9 @@ async def test_tile_image_missing_metadata_returns_error(
     await _set_tiles_image_to_sql_null(test_db_manager, [tile_id])
     path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
 
-    response = await async_client.request(method, path)
+    response = await async_client.request(
+        method, path, json={"hash": _checksum(b"image")} if method == "POST" else None
+    )
 
     assert response.status_code == (400 if method == "POST" else 404), response.text
 
@@ -1706,7 +1721,12 @@ async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
     expected = tile_ids[:1] if select_subset else tile_ids[:2]
     path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
 
-    response = await async_client.request(method, path, json=selected, params={"expiration": 300})
+    request_body = (
+        {tile_id: _checksum(b"replacement tile image") for tile_id in selected or tile_ids}
+        if method == "POST"
+        else selected
+    )
+    response = await async_client.request(method, path, json=request_body, params={"expiration": 300})
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -1740,7 +1760,11 @@ async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
             assert {key: result[tile_id][key] for key in images[tile_id]} == images[tile_id]
             async with httpx.AsyncClient() as storage:
                 if method == "POST":
-                    transfer = await storage.put(result[tile_id]["url"], content=b"replacement tile image")
+                    transfer = await storage.put(
+                        result[tile_id]["url"],
+                        content=b"replacement tile image",
+                        headers={"x-amz-checksum-sha256": result[tile_id]["hash"]},
+                    )
                 else:
                     transfer = await storage.get(result[tile_id]["url"])
                     assert transfer.content == b"stored tile image"
@@ -1789,6 +1813,7 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
             raise ClientError({"Error": {"Code": "AccessDenied", "Message": "delete denied"}}, "DeleteObject")
 
     for server, client in clients.items():
+        client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
         client.generate_presigned_url.side_effect = lambda operation, Params, ExpiresIn, server=server: presign(
             server, operation, Params, ExpiresIn
         )
@@ -1801,7 +1826,7 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
     response = await async_client.request(
         method,
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
-        json=selected,
+        json={tile_id: _checksum(b"image") for tile_id in requested} if method == "POST" else selected,
         params={"expiration": 300},
     )
 
@@ -1865,7 +1890,12 @@ async def test_bulk_tile_images_cursor_pagination(async_client, test_db_manager,
     seen = []
     has_more = []
     for page_index in range(len(tile_ids)):
-        response = await async_client.request(method, path, params=params)
+        response = await async_client.request(
+            method,
+            path,
+            params=params,
+            json={tile_id: _checksum(b"image") for tile_id in tile_ids} if method == "POST" else None,
+        )
         assert response.status_code == 200, response.text
         body = response.json()
         metadata = body["metadata"]
@@ -1885,6 +1915,7 @@ async def test_bulk_tile_images_reject_malformed_cursor(async_client, test_acqui
         method,
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
         params={"cursor": "not,a,cursor"},
+        json={} if method == "POST" else None,
     )
 
     assert response.status_code == 422
@@ -1951,10 +1982,13 @@ async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisitio
     tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
     client = Mock()
     client.generate_presigned_url.side_effect = [NoCredentialsError(), "https://signed", "https://signed"]
+    client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
 
     response = await async_client.request(
-        method, f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
+        method,
+        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
+        json={tile_id: _checksum(b"image") for tile_id in tile_ids} if method == "POST" else None,
     )
 
     assert response.status_code == 200, response.text
@@ -2014,6 +2048,7 @@ async def test_presign_keeps_server_responsive(async_client, test_acquisition, m
     tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1 if single else 4)
     client = Mock()
     client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(1.0 if single else 0.5) or "https://signed"
+    client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
     base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
     path = f"{base}/{tile_ids[0]}/image" if single else f"{base}/images"
@@ -2024,7 +2059,12 @@ async def test_presign_keeps_server_responsive(async_client, test_acquisition, m
         await async_client.get("/health")
         return time.perf_counter() - due
 
-    response, waited = await asyncio.gather(async_client.request(method, path), health_wait())
+    body = (
+        ({"hash": _checksum(b"image")} if single else {tile_id: _checksum(b"image") for tile_id in tile_ids})
+        if method == "POST"
+        else None
+    )
+    response, waited = await asyncio.gather(async_client.request(method, path, json=body), health_wait())
 
     assert response.status_code == 200, response.text
     assert waited < 0.3
@@ -2039,7 +2079,13 @@ async def test_concurrent_uploads_keep_one_location(async_client, test_db_manage
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
     path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}/image"
     bodies = [
-        {"protocol": "s3", "server": "http://storage.example.com", "bucket": "images", "key": f"/{name}.tif"}
+        {
+            "protocol": "s3",
+            "server": "http://storage.example.com",
+            "bucket": "images",
+            "key": f"/{name}.tif",
+            "hash": _checksum(b"image"),
+        }
         for name in ("first", "second")
     ]
 

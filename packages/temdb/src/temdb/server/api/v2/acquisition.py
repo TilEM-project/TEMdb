@@ -814,14 +814,11 @@ async def image_put_urls(
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
     cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
     limit: int = Query(100, ge=1, le=1000),
-    tile_ids: list[str] | None = Body(None),
+    image_hashes: dict[str, str] = Body(..., description="A mapping of tile ids to hashes"),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
-    """Generate presigned PUT URLs for tiles in an acquisition.
-
-    The tile_id list is optional; if omitted, all tiles in the acquisition are returned.
-    """
+    """Generate presigned PUT URLs for tiles in an acquisition."""
     acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
@@ -841,8 +838,7 @@ async def image_put_urls(
             after = ()
         if len(after) != 3:
             raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
-    if tile_ids is not None:
-        tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
+    tile_query = tile_query.where(*_where_tiles(acq_obj, image_hashes.keys()))
     key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
     if after is not None:
         tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
@@ -859,8 +855,10 @@ async def image_put_urls(
         if tile.image is None:
             continue
         tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
-        storage_location = FileObjectRequest.from_file_object(tile.image)
-        storage_location.expiration = expiration
+        hash = image_hashes.get(tile_id)
+        if hash is None:
+            raise HTTPException(500, f"Tile '{tile_id}' has no hash in the request body")
+        storage_location = FileObjectRequest.from_file_object(tile.image, hash, expiration)
         storage_client_manager.finalize(storage_location)
         try:
             url_data = await storage_client_manager.put_url(storage_location)
@@ -1053,14 +1051,11 @@ async def get_tile_from_acquisition(
 async def image_put_url(
     acquisition_id: str,
     tile_id: str,
-    storage_location: FileObjectRequest | None = Body(None, description="Storage location for the tile image"),
+    storage_location: FileObjectRequest = Body(..., description="Storage location for the tile image"),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
-    """Generate a presigned PUT URL for a tile in an acquisition.
-
-    The storage_location is optional; if omitted, the existing location is used.
-    """
+    """Generate a presigned PUT URL for a tile in an acquisition."""
     acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )
@@ -1071,10 +1066,8 @@ async def image_put_url(
     tile_obj = tile.one_or_none()
     if tile_obj is None:
         raise HTTPException(404, f"Tile ID '{tile_id}' not found in acquisition '{acquisition_id}'")
-    if storage_location is None and tile_obj.image is None:
-        raise HTTPException(400, "No storage location provided and tile has no existing image")
-    if storage_location is None:
-        storage_location = FileObjectRequest.from_file_object(tile_obj.image)
+    if not storage_location.complete and tile_obj.image is not None:
+        storage_location = storage_client_manager.apply_file_object(storage_location, tile_obj.image)
     if not storage_location.complete:
         dataset = (
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == acq_obj.dataset_id))

@@ -33,12 +33,13 @@ class FileObjectRequest(FileObject):
     )
     server: str | None = Field(None, description="Server address or None for protocol default.")
     bucket: str | None = Field(None, description="Bucket where the file is stored, or None to use the default.")
-    key: str = Field(
-        ..., description="Key to the file within the bucket. Use a leading slash to ignore the default key prefix."
+    key: str | None = Field(
+        None, description="Key to the file within the bucket. Use a leading slash to ignore the default key prefix."
     )
     expiration: int | None = Field(
         None, description="Expiration time in seconds for the presigned URL, or None to use the default."
     )
+    hash: str = Field(..., description="Base64-encoded SHA-256 checksum of the file content.")
 
     @model_validator(mode="after")
     def validate_location(self) -> "FileObjectRequest":
@@ -46,6 +47,8 @@ class FileObjectRequest(FileObject):
             raise ValueError("If server is specified, protocol must also be specified.")
         if self.protocol is not None and self.bucket is None:
             raise ValueError("If protocol is specified, bucket must also be specified.")
+        if self.bucket is not None and self.key is None:
+            raise ValueError("If bucket is specified, key must also be specified.")
         if self.bucket is not None and not self.key.startswith("/"):
             raise ValueError(
                 "If bucket is specified, key must start with a leading slash to ignore the default key prefix."
@@ -62,19 +65,23 @@ class FileObjectRequest(FileObject):
                 self.server = default.server
             if self.bucket is None:
                 self.bucket = default.bucket
-            if not self.key.startswith("/") and default.key_prefix is not None:
+            if self.key is not None and not self.key.startswith("/") and default.key_prefix is not None:
                 self.key = f"/{default.key_prefix.strip('/')}/{self.key}"
             if self.expiration is None:
                 self.expiration = default.expiration
         return self
 
     @classmethod
-    def from_file_object(cls, file_object: FileObject | dict[str, Any]) -> "FileObjectRequest":
+    def from_file_object(
+        cls, file_object: FileObject | dict[str, Any], hash: str, expiration: int | None = None
+    ) -> "FileObjectRequest":
         """Populate the request from a FileObject or dict."""
         if isinstance(file_object, FileObject):
             file_object = file_object.model_dump()
         location = {key: file_object[key] for key in FileObject.model_fields}
         location["key"] = f"/{location['key'].lstrip('/')}"
+        location["hash"] = hash
+        location["expiration"] = expiration
         return cls.model_validate(location)
 
     @property
@@ -85,6 +92,7 @@ class FileObjectRequest(FileObject):
 
 class FileObjectResponse(FileObject):
     url: str = Field(..., description="Presigned URL to upload or download the file.")
+    hash: str = Field(..., description="Base64-encoded SHA-256 checksum of the file content.")
     expiration: int = Field(..., description="Expiration time in seconds for the presigned URL.")
 
     def to_file_object(self) -> FileObject:

@@ -208,6 +208,7 @@ def _image_response():
         "key": "tiles/tile.tif",
         "url": "http://minio.example.com/tiles/tiles/tile.tif?signature=test",
         "expiration": 600,
+        "hash": "NkgbPSzPw8i9a9riOQPPJD6rAp7tO/VRf4kHIUqoLtM=",
     }
 
 
@@ -222,17 +223,18 @@ async def test_tile_put_image_url_uses_api_put_route(image_resource, with_locati
             bucket="tiles",
             key="/tiles/tile.tif",
             expiration=600,
+            hash=_image_response()["hash"],
         )
         if with_location
-        else None
+        else FileObjectRequest(hash=_image_response()["hash"])
     )
 
-    result = await resource.put_image_url("ACQ001", "tile", location)
+    result = await resource.put_image_url("ACQ001", "tile", **location.model_dump(exclude_unset=True))
 
     request.assert_awaited_once_with(
         "POST",
         "acquisitions/ACQ001/tiles/tile/image",
-        json=location.model_dump(exclude_unset=True) if location else None,
+        json=location.model_dump(exclude_unset=True),
     )
     assert result == FileObjectResponse.model_validate(_image_response())
 
@@ -259,12 +261,14 @@ async def test_tile_bulk_image_urls_use_json_body_and_return_mapping(image_resou
     request.return_value = {"urls": {"tile": _image_response()}, "metadata": _page_metadata()}
     method = getattr(resource, f"{operation}_image_urls")
 
-    result = await method("ACQ001", tile_ids=tile_ids, expiration=300)
+    body = {tile: _image_response()["hash"] for tile in tile_ids or []} if operation == "put" else tile_ids
+    kwargs = {"image_hashes" if operation == "put" else "tile_ids": body}
+    result = await method("ACQ001", **kwargs, expiration=300)
 
     request.assert_awaited_once_with(
         "POST" if operation == "put" else "GET",
         "acquisitions/ACQ001/tiles/images",
-        json=tile_ids,
+        json=body,
         params={"limit": 100, "expiration": 300},
     )
     assert result == ImageURLPage(
@@ -282,17 +286,18 @@ async def test_all_put_image_urls_follow_pages(image_resource):
     last_response = {"urls": {"tile-2": _image_response()}, "metadata": _page_metadata()}
     request.side_effect = [response, last_response]
 
-    result = await resource.all_put_image_urls("ACQ001", page_limit=1)
+    hashes = {"tile-1": _image_response()["hash"], "tile-2": _image_response()["hash"]}
+    result = await resource.all_put_image_urls("ACQ001", image_hashes=hashes, page_limit=1)
 
     endpoint = "acquisitions/ACQ001/tiles/images"
     assert request.await_args_list[0].args[:2] == ("POST", endpoint)
     assert request.await_args_list[0].kwargs == {
-        "json": None,
+        "json": hashes,
         "params": {"limit": 1},
     }
     assert request.await_args_list[1].args[:2] == ("POST", endpoint)
     assert request.await_args_list[1].kwargs == {
-        "json": None,
+        "json": hashes,
         "params": {"cursor": "0,0,0", "limit": 1},
     }
     assert result == ImageURLs(
@@ -353,7 +358,9 @@ async def test_tile_put_image_uploads_and_propagates_errors(image_resource, monk
     else:
         assert await resource.put_image("ACQ001", "tile", contents) is file_object
 
-    resource.put_image_url.assert_awaited_once_with("ACQ001", "tile", None)
+    resource.put_image_url.assert_awaited_once()
+    assert resource.put_image_url.await_args.args[:2] == ("ACQ001", "tile")
+    assert resource.put_image_url.await_args.kwargs["hash"] == _image_response()["hash"]
     assert uploaded == [b"tile image"]
     assert client.is_closed
     assert not contents.closed

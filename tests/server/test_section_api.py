@@ -1,7 +1,11 @@
 import asyncio
+import base64
+import hashlib
 import io
+from contextlib import closing
 from datetime import datetime, timezone
 
+import boto3
 import httpx
 import pytest
 from httpx import AsyncClient
@@ -594,12 +598,14 @@ async def test_put_section_image_url_uploads_to_minio(
     minio_s3,
 ):
     path = f"/api/v2/sections/{test_section.section_id}/image"
+    contents = b"image bytes written through the presigned URL"
     location = {
         "protocol": "s3",
         "server": minio_s3["server"],
         "bucket": minio_s3["bucket"],
         "key": f"/sections/{test_section.section_id}.png",
         "expiration": 900,
+        "hash": base64.b64encode(hashlib.sha256(contents).digest()).decode("ascii"),
     }
 
     response = await async_client.post(path, json=location)
@@ -611,9 +617,10 @@ async def test_put_section_image_url_uploads_to_minio(
     assert presigned["key"] == f"sections/{test_section.section_id}.png"
     assert presigned["expiration"] == 900
 
-    contents = b"image bytes written through the presigned URL"
     async with httpx.AsyncClient() as s3_client:
-        upload_response = await s3_client.put(presigned["url"], content=contents)
+        upload_response = await s3_client.put(
+            presigned["url"], content=contents, headers={"x-amz-checksum-sha256": presigned["hash"]}
+        )
     assert upload_response.status_code == 200
 
     uploaded = minio_s3["client"].get_object(
@@ -637,13 +644,14 @@ async def test_get_section_image_url_downloads_from_minio(
 ):
     key = f"sections/{test_section.section_id}.png"
     contents = b"image bytes retrieved through the presigned URL"
-    minio_s3["client"].put_object(
-        minio_s3["bucket"],
-        key,
-        io.BytesIO(contents),
-        length=len(contents),
-        content_type="image/png",
-    )
+    with closing(boto3.client("s3", endpoint_url=minio_s3["server"])) as storage:
+        storage.put_object(
+            Bucket=minio_s3["bucket"],
+            Key=key,
+            Body=contents,
+            ContentType="image/png",
+            ChecksumSHA256=base64.b64encode(hashlib.sha256(contents).digest()).decode("ascii"),
+        )
     image = {
         "protocol": "s3",
         "server": minio_s3["server"],

@@ -453,7 +453,7 @@ async def list_sections_by_media(
 @section_api.post("/sections/{section_id}/image", response_model=FileObjectResponse)
 async def image_put_url(
     section_id: str,
-    storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
+    storage_location: FileObjectRequest = Body(..., description="Storage location details for the image"),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager=Depends(get_storage_client_manager),
 ):
@@ -471,13 +471,8 @@ async def image_put_url(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Section '{section_id}' not found",
         )
-    if storage_location is None and section_obj.optical_image is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Storage location must be provided.",
-        )
-    if storage_location is None:
-        storage_location = FileObjectRequest.from_file_object(section_obj.optical_image)
+    if not storage_location.complete and section_obj.optical_image is not None:
+        storage_location = storage_client_manager.apply_file_object(storage_location, section_obj.optical_image)
     if not storage_location.complete:
         block_default = await session.scalar(
             select(BlockSQLModel.default_storage).where(

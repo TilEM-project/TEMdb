@@ -10,10 +10,11 @@ from temdb.models import (
     SectionQuality,
     SectionResponse,
     SectionUpdate,
+    StorageProtocol,
 )
 
 from .base import BaseResource, accepts_keywords
-from .image import ImageReader, ImageWriter, open_image, put_image
+from .image import BufferedImageWriter, ImageReader, ImageWriter, image_request, open_image, put_image
 
 
 class SectionResource(BaseResource):
@@ -76,12 +77,10 @@ class SectionResource(BaseResource):
         return SectionResponse.model_validate(response_data)
 
     @accepts_keywords(FileObjectRequest)
-    async def put_image_url(
-        self, section_id: str, storage_location: FileObjectRequest | None = None
-    ) -> FileObjectResponse:
-        """Get a presigned URL for uploading an image for a specific section."""
+    async def put_image_url(self, section_id: str, storage_location: FileObjectRequest) -> FileObjectResponse:
+        """Get an upload URL for a specific section."""
         endpoint = f"sections/{section_id}/image"
-        payload = storage_location.model_dump(exclude_unset=True) if storage_location else None
+        payload = storage_location.model_dump(exclude_unset=True)
         response_data = await self._post(endpoint, data=payload)
         return FileObjectResponse.model_validate(response_data)
 
@@ -89,15 +88,22 @@ class SectionResource(BaseResource):
         self,
         section_id: str,
         image_data: BinaryIO,
-        storage_location: FileObjectRequest | None = None,
+        *,
+        protocol: StorageProtocol | str | None = None,
+        server: str | None = None,
+        bucket: str | None = None,
+        key: str | None = None,
+        hash: str | None = None,
         **kwargs: Any,
     ) -> FileObjectResponse:
         """Upload an open binary file directly and return its storage metadata."""
-        location = (
-            await self.put_image_url(section_id, **kwargs)
-            if storage_location is None and kwargs
-            else await self.put_image_url(section_id, storage_location=storage_location, **kwargs)
-        )
+        options = {
+            name: value
+            for name, value in {"protocol": protocol, "server": server, "bucket": bucket, "key": key}.items()
+            if value is not None
+        }
+        request = await image_request(image_data, hash=hash, **options, **kwargs)
+        location = await self.put_image_url(section_id, **request.model_dump(exclude_unset=True))
         return await put_image(location, image_data, self._file_client)
 
     @overload
@@ -105,10 +111,15 @@ class SectionResource(BaseResource):
         self,
         section_id: str,
         mode: Literal["rb"] = "rb",
-        storage_location: FileObjectRequest | None = None,
-        expiration: int | None = None,
         *,
+        protocol: StorageProtocol | str | None = None,
+        server: str | None = None,
+        bucket: str | None = None,
+        key: str | None = None,
+        expiration: int | None = None,
         size: int | None = None,
+        hash: str | None = None,
+        **kwargs: Any,
     ) -> AbstractAsyncContextManager[ImageReader]: ...
 
     @overload
@@ -116,31 +127,54 @@ class SectionResource(BaseResource):
         self,
         section_id: str,
         mode: Literal["wb"],
-        storage_location: FileObjectRequest | None = None,
-        expiration: int | None = None,
         *,
+        protocol: StorageProtocol | str | None = None,
+        server: str | None = None,
+        bucket: str | None = None,
+        key: str | None = None,
+        expiration: int | None = None,
         size: int,
-    ) -> AbstractAsyncContextManager[ImageWriter]: ...
+        hash: str | None = None,
+        **kwargs: Any,
+    ) -> AbstractAsyncContextManager[ImageWriter | BufferedImageWriter]: ...
 
     def open_image(
         self,
         section_id: str,
         mode: str = "rb",
-        storage_location: FileObjectRequest | None = None,
-        expiration: int | None = None,
         *,
+        protocol: StorageProtocol | str | None = None,
+        server: str | None = None,
+        bucket: str | None = None,
+        key: str | None = None,
+        expiration: int | None = None,
         size: int | None = None,
-    ) -> AbstractAsyncContextManager[ImageReader | ImageWriter]:
-        """Open an async binary stream; 'wb' requires the total byte size."""
+        hash: str | None = None,
+        **kwargs: Any,
+    ) -> AbstractAsyncContextManager[ImageReader | ImageWriter | BufferedImageWriter]:
+        """Open an async stream with keyword storage options.
+
+        Writing requires size. Supplying hash streams directly; omitting it inefficiently buffers the entire
+        image in BytesIO, hashes it, and uploads on successful context exit. Reads use the server's checksum.
+        Storage options select the upload location; reads use the stored location.
+        """
+        options = {
+            name: value
+            for name, value in {"protocol": protocol, "server": server, "bucket": bucket, "key": key}.items()
+            if value is not None
+        }
         return open_image(
             lambda: (
-                self.put_image_url(section_id, storage_location)
+                self.put_image_url(section_id, hash=hash, expiration=expiration, **options, **kwargs)
                 if mode == "wb"
                 else self.get_image_url(section_id, expiration)
             ),
             mode,
             size,
             self._file_client,
+            upload=(lambda file: self.put_image(section_id, file, expiration=expiration, **options, **kwargs))
+            if mode == "wb" and hash is None
+            else None,
         )
 
     async def get_image_url(self, section_id: str, expiration: int | None = None) -> FileObjectResponse:
