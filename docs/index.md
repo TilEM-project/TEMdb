@@ -40,7 +40,7 @@ TEMdb models the typical flow of a sample through the Sectioning and Imaging pip
     * [Preparation Workflow Diagram](./schema_Preparation_erd.md)
     * [Imaging Workflow Diagram](./schema_Imaging_erd.md)
 * **Models:** Detailed descriptions of each data model (schema) can be found in the "Models" section of the navigation.
-* **Guides:** [Data Configuration](data_config.md) for storage credentials, and [Using URIs](using_uri_class.md) to upload and download referenced files.
+* **Guides:** [Working with Images](images.md) to upload and download section and tile images.
 * **API Reference:** [Every endpoint and schema](api.md), rendered from the committed `openapi.json`.
 
 ## Getting Started (Local Development)
