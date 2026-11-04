@@ -336,21 +336,20 @@ async def get_task_acquisitions(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
-    joined_rows = (
-        await session.execute(
-            select(AcquisitionTaskSQLModel.id, AcquisitionSQLModel)
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                AcquisitionSQLModel,
-                AcquisitionSQLModel.acquisition_task_id == AcquisitionTaskSQLModel.task_id,
-            )
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
+    if (
+        await session.scalar(select(AcquisitionTaskSQLModel.id).where(AcquisitionTaskSQLModel.task_id == task_id))
+        is None
+    ):
+        raise HTTPException(404, f"Task ID '{task_id}' not found")
+    return (
+        await session.scalars(
+            select(AcquisitionSQLModel)
+            .where(AcquisitionSQLModel.acquisition_task_id == task_id)
+            .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
+            .offset(skip)
+            .limit(limit)
         )
     ).all()
-    if not joined_rows:
-        raise HTTPException(404, f"Task ID '{task_id}' not found")
-    acquisitions = [row[1] for row in joined_rows if row[1] is not None]
-    return acquisitions[skip : skip + limit]
 
 
 @acquisition_task_api.post(
