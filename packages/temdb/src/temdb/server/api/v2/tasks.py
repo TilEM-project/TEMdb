@@ -374,7 +374,9 @@ async def supersede_task(
     at the old task_id (uq(task_id) survives — the FK is unaffected).
     """
     old_task = (
-        await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+        await session.scalars(
+            select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id).with_for_update()
+        )
     ).one_or_none()
     if old_task is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
