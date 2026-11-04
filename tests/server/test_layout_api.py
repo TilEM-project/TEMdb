@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -134,3 +135,22 @@ async def test_layout_media_type_and_fiducials_can_change_once_a_substrate_uses_
     assert response.status_code == 200
     assert response.json()["media_type"] == "grid_disc"
     assert response.json()["fiducials"][0]["centroid"] == [1.0, 2.0]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_substrate_matches_layout(async_client: AsyncClient, init_db):
+    aperture = {"shape_type": "circle", "shape_params": {"diameter": 1.0}, "centroid": [0.0, 0.0]}
+    for i in range(10):
+        layout_id = f"RACE_LAYOUT_{i}"
+        payload = {**_layout_payload(layout_id), "apertures": [aperture] * 3}
+        created = await async_client.post("/api/v2/layouts", json=payload)
+        assert created.status_code == 201, created.text
+        await asyncio.gather(
+            async_client.patch(f"/api/v2/layouts/{layout_id}", json={"apertures": [aperture]}),
+            async_client.post(
+                "/api/v2/substrates", json={"media_id": f"RACE_SUB_{i}", "substrate_layout_id": layout_id}
+            ),
+        )
+        layout = (await async_client.get(f"/api/v2/layouts/{layout_id}")).json()
+        substrate = (await async_client.get(f"/api/v2/substrates/RACE_SUB_{i}")).json()
+        assert len(substrate["aperture_status"]) == len(layout["apertures"]), i

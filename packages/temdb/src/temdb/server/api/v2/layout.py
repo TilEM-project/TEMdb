@@ -92,10 +92,9 @@ async def update_layout(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific substrate identified by layout_id."""
-    layout = await session.scalars(
-        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id)
+    layout_obj = await session.scalar(
+        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id).with_for_update()
     )
-    layout_obj = layout.one_or_none()
     if layout_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

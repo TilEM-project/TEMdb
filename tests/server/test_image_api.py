@@ -326,3 +326,22 @@ async def test_upload_empty_key_is_400(async_client, test_db_manager, image_targ
     assert response.status_code == 400, response.text
     image_s3[0].generate_presigned_url.assert_not_called()
     assert (await _image_state(test_db_manager, image_target))[0] is None
+
+
+async def test_tile_image_delete_complete_is_409(async_client, test_db_manager, image_s3, test_acquisition, test_tile):
+    target = {
+        "model": TileSQLModel,
+        "condition": and_(TileSQLModel.dataset_id == test_tile.dataset_id, TileSQLModel.run_id == test_tile.run_id),
+        "field": "image",
+    }
+    await _set_image(test_db_manager, target, _location())
+    acquisition_path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}"
+    done = await async_client.patch(acquisition_path, json={"status": "complete"})
+    assert done.status_code == 200, done.text
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+
+    response = await async_client.delete(f"{acquisition_path}/tiles/{tile_id}/image")
+
+    assert response.status_code == 409, response.text
+    image_s3[0].delete_object.assert_not_called()
+    assert (await _image_state(test_db_manager, target))[0] is not None

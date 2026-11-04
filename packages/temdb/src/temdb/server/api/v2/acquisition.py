@@ -1051,12 +1051,7 @@ async def delete_tile_image(
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Delete the image associated with a specific tile in an acquisition."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.one_or_none()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
     tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
     tile_obj = tile.one_or_none()
     if tile_obj is None:

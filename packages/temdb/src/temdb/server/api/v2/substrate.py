@@ -61,7 +61,9 @@ async def create_substrate(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Substrate with media_id '{substrate_data.media_id}' already exists.",
         )
-    layout = await session.get(SubstrateLayoutSQLModel, substrate_data.substrate_layout_id)
+    layout = await session.get(
+        SubstrateLayoutSQLModel, substrate_data.substrate_layout_id, with_for_update={"read": True}
+    )
     if layout is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,7 +126,9 @@ async def update_substrate(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     extra_changes = update_data.pop("extra", None)
     if "substrate_layout_id" in update_data:
-        layout = await session.get(SubstrateLayoutSQLModel, update_data["substrate_layout_id"])
+        layout = await session.get(
+            SubstrateLayoutSQLModel, update_data["substrate_layout_id"], with_for_update={"read": True}
+        )
         if layout is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
