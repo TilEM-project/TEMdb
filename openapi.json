@@ -155,7 +155,7 @@
           "replaces_acquisition_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -1405,7 +1405,7 @@
           "replaces_acquisition_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
