@@ -132,6 +132,11 @@ async def update_dataset(
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
     extra_changes = data.pop("extra", None)
+    if ds.tile_hash_modulus is not None and data.get("size_class", ds.size_class) != ds.size_class:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Dataset '{dataset_id}' already has tile partitions for size_class '{ds.size_class}'",
+        )
     now = datetime.now(timezone.utc)
     status_changed = "status" in data and data["status"] != ds.status
     for field, value in data.items():
