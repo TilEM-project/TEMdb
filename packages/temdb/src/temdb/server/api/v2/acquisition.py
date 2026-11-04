@@ -1,6 +1,7 @@
 import logging
 import math
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -540,7 +541,7 @@ async def add_tiles_to_acquisition(
     if acq_obj.dataset_id is None:
         raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
     keys = [(tile.raster_position.row, tile.raster_position.col, tile.retake) for tile in tiles]
-    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    repeated = sorted(key for key, count in Counter(keys).items() if count > 1)
     if repeated:
         raise HTTPException(422, f"Tiles (row, col, retake) {repeated} appear more than once in the request")
     await _ensure_dataset_accepts_tiles(session, acq_obj.dataset_id)
