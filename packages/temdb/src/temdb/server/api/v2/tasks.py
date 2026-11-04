@@ -418,10 +418,4 @@ async def create_tasks_batch(
     await session.commit()
     for new_task in new_tasks:
         await session.refresh(new_task)
-    created_ids = [new_task.id for new_task in new_tasks]
-
-    created_rows = (
-        await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.id.in_(created_ids)))
-    ).all()
-    created_map = {task.id: _task_response(task, derive_task_state([])) for task in created_rows}
-    return [created_map[internal_id] for internal_id in created_ids if internal_id in created_map]
+    return [_task_response(new_task, derive_task_state([])) for new_task in new_tasks]
