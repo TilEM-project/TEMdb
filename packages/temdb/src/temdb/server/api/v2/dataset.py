@@ -12,9 +12,9 @@ from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
-dataset_api = APIRouter(tags=["Datasets"])
+dataset_api = APIRouter(tags=["Datasets"], responses=error_responses)
 
 
 async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
@@ -30,9 +30,6 @@ async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:
 
 @dataset_api.post("/datasets", status_code=status.HTTP_201_CREATED, response_model=DatasetResponse)
 async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(get_async_session)):
-    existing = (await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.name == data.name))).one_or_none()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Dataset name '{data.name}' already exists")
     if data.parent_dataset_id is not None:
         parent = (
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == data.parent_dataset_id))
@@ -132,6 +129,11 @@ async def update_dataset(
     if not data:
         raise HTTPException(status_code=400, detail="No update data provided")
     extra_changes = data.pop("extra", None)
+    if ds.tile_hash_modulus is not None and data.get("size_class", ds.size_class) != ds.size_class:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Dataset '{dataset_id}' already has tile partitions for size_class '{ds.size_class}'",
+        )
     now = datetime.now(timezone.utc)
     status_changed = "status" in data and data["status"] != ds.status
     for field, value in data.items():

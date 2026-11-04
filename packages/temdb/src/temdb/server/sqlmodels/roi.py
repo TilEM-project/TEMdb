@@ -41,4 +41,4 @@ class ROISQLModel(TimestampMixin, ModelDumpMixin, Base):
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("datasets.dataset_id"), nullable=True
     )
-    roi_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    roi_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)

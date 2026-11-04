@@ -16,10 +16,11 @@ from temdb.models import (
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SectionSQLModel, SubstrateLayoutSQLModel, SubstrateSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 substrate_api = APIRouter(
     tags=["Substrates"],
+    responses=error_responses,
 )
 
 
@@ -53,15 +54,9 @@ async def create_substrate(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new substrate."""
-    existing_substrate = await session.scalars(
-        select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == substrate_data.media_id)
+    layout = await session.get(
+        SubstrateLayoutSQLModel, substrate_data.substrate_layout_id, with_for_update={"read": True}
     )
-    if existing_substrate.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Substrate with media_id '{substrate_data.media_id}' already exists.",
-        )
-    layout = await session.get(SubstrateLayoutSQLModel, substrate_data.substrate_layout_id)
     if layout is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,7 +119,9 @@ async def update_substrate(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     extra_changes = update_data.pop("extra", None)
     if "substrate_layout_id" in update_data:
-        layout = await session.get(SubstrateLayoutSQLModel, update_data["substrate_layout_id"])
+        layout = await session.get(
+            SubstrateLayoutSQLModel, update_data["substrate_layout_id"], with_for_update={"read": True}
+        )
         if layout is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -8,7 +8,6 @@ from temdb.models import StorageDefault
 class BaseConfig(BaseSettings):
     app_name: str = "TEMDB"
     database_url: str | None = None
-    max_batch_size: int = 5000
     default_storage: StorageDefault | None = None
     model_config = SettingsConfigDict(
         case_sensitive=False,

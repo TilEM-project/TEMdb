@@ -10,9 +10,9 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
-lens_correction_api = APIRouter(tags=["Lens Corrections"])
+lens_correction_api = APIRouter(tags=["Lens Corrections"], responses=error_responses)
 
 
 async def _get_by_id(session: AsyncSession, lc_id: str) -> LensCorrectionSQLModel:
@@ -37,8 +37,6 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
     ).one_or_none()
     if microscope is None:
         raise HTTPException(status_code=404, detail=f"Microscope '{data.microscope_id}' not found")
-    if data.lc_id is not None and await session.get(LensCorrectionSQLModel, data.lc_id) is not None:
-        raise HTTPException(status_code=409, detail=f"Lens correction '{data.lc_id}' already exists")
     lc = LensCorrectionSQLModel(
         lc_id=data.lc_id if data.lc_id is not None else uuid7(),
         microscope_id=data.microscope_id,

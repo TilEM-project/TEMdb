@@ -9,10 +9,11 @@ from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSession
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 block_api = APIRouter(
     tags=["Blocks"],
+    responses=error_responses,
 )
 
 
@@ -75,17 +76,6 @@ async def create_block(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{block_data.specimen_id}' not found",
-        )
-    existing_block = await session.scalars(
-        select(BlockSQLModel).where(
-            BlockSQLModel.block_id == block_data.block_id,
-            BlockSQLModel.specimen_id == block_data.specimen_id,
-        )
-    )
-    if existing_block.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(f"Block with ID '{block_data.block_id}' already exists for specimen '{block_data.specimen_id}'"),
         )
     new_block = BlockSQLModel(
         block_id=block_data.block_id,

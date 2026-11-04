@@ -13,4 +13,4 @@ class SpecimenSQLModel(TimestampMixin, ModelDumpMixin, Base):
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
     specimen_id: Mapped[str] = mapped_column(String, index=True, unique=True)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
-    functional_imaging_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    functional_imaging_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)

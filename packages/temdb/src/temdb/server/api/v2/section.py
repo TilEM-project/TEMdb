@@ -28,10 +28,11 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 section_api = APIRouter(
     tags=["Sections"],
+    responses=error_responses,
 )
 
 logger = logging.getLogger(__name__)
@@ -381,12 +382,10 @@ async def update_section(
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
     extra_changes = update_data.pop("extra", None)
-    metrics = update_data.pop("section_metrics", None)
-    if metrics is not None:
-        section_obj.section_metrics = jsonable_encoder(metrics)
-    run_parameters = update_data.pop("run_parameters", None)
-    if run_parameters is not None:
-        section_obj.run_parameters = jsonable_encoder(run_parameters)
+    if "section_metrics" in update_data:
+        section_obj.section_metrics = jsonable_encoder(update_data.pop("section_metrics"))
+    if "run_parameters" in update_data:
+        section_obj.run_parameters = jsonable_encoder(update_data.pop("run_parameters"))
     optical_image = update_data.pop("optical_image", None)
     if optical_image is not None:
         section_obj.optical_image = jsonable_encoder(optical_image)

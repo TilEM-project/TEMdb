@@ -13,6 +13,6 @@ class SubstrateLayoutSQLModel(TimestampMixin, ModelDumpMixin, Base):
 
     layout_id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
-    fiducials: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
-    apertures: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    fiducials: Mapped[list[Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    apertures: Mapped[list[Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     media_type: Mapped[str] = mapped_column(String)

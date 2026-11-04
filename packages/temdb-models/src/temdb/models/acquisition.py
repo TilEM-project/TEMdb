@@ -70,7 +70,7 @@ class AcquisitionBase(TEMDBRecord):
     storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
     montage_set_name: str | None = Field(None, description="Name of montage set")
     sub_region: dict[str, int] | None = Field(None, description="Sub region of acquisition")
-    replaces_acquisition_id: int | None = Field(None, description="ID of acquisition this acquisition replaces")
+    replaces_acquisition_id: str | None = Field(None, description="ID of acquisition this acquisition replaces")
 
 
 class AcquisitionCreate(AcquisitionBase):

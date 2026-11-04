@@ -7,12 +7,6 @@ from typing import Any, cast
 
 import httpx
 from pydantic_core import to_jsonable_python
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from .exceptions import TEMdbClientError, TEMdbContractError, TEMdbNotFoundError, TEMdbServerError
 from .resources.acquisition import AcquisitionResource
@@ -127,11 +121,6 @@ class TEMdbClient:
     def substrate_layout(self) -> SubstrateLayoutResource:
         return self._substrate_layout
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(httpx.RequestError),
-    )
     async def _async_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | list[Any]:
         self.logger.debug(f"Async Request: {method} {endpoint}")
         try:

@@ -12,7 +12,6 @@ from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -37,36 +36,6 @@ class BaseError(Exception):
         self.error_code = error_code or self.__class__.__name__.upper()
         self.context = context
         super().__init__(detail)
-
-
-class ResourceInUseError(BaseError):
-    """Raised when trying to delete a resource that's still linked."""
-
-    def __init__(self, resource_type: str, resource_id: str, context: dict | None = None):
-        detail = (
-            f"{resource_type} '{resource_id}' cannot be deleted because "
-            "it is still in use or linked by other resources."
-        )
-        super().__init__(
-            detail,
-            status_code=status.HTTP_409_CONFLICT,
-            error_code="RESOURCE_IN_USE",
-            context=context,
-        )
-
-
-async def validation_exception_handler(request: Request, exc: ValidationError):
-    """Handles Pydantic ValidationErrors (returns 422 Unprocessable Entity)."""
-    error_content = APIErrorResponse(
-        detail="Request validation failed. Please check the input data.",
-        error_code="VALIDATION_ERROR",
-        context={"errors": jsonable_encoder(exc.errors())},
-    )
-    logger.warning(f"ValidationError on {request.url}: {exc.errors()}")
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        content=error_content.model_dump(exclude_none=True),
-    )
 
 
 async def business_logic_exception_handler(request: Request, exc: BaseError):
@@ -166,7 +135,6 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 
 def register_exception_handlers(app):
     """Registers all defined exception handlers with the FastAPI app."""
-    app.add_exception_handler(ValidationError, validation_exception_handler)
     app.add_exception_handler(BaseError, business_logic_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 

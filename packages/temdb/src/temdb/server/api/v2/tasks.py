@@ -23,10 +23,11 @@ from temdb.server.sqlmodels import (
     SpecimenSQLModel,
 )
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
+    responses=error_responses,
 )
 
 
@@ -260,11 +261,6 @@ async def create_task(
 ):
     """Create a new acquisition task (a plan; its state derives from runs)."""
     await _validate_lineage(session, task_data)
-    existing = await session.scalars(
-        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
-    )
-    if existing.one_or_none() is not None:
-        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     new_task = _task_from_create(task_data)
     session.add(new_task)
     await session.commit()
@@ -277,32 +273,9 @@ async def get_task(
     task_id: str,
     session: AsyncSession = Depends(get_async_session),
 ):
-    statement = (
-        select(
-            AcquisitionTaskSQLModel,
-            SpecimenSQLModel.id,
-            BlockSQLModel.id,
-            ROISQLModel.id,
-        )
-        .select_from(AcquisitionTaskSQLModel)
-        .outerjoin(
-            SpecimenSQLModel,
-            SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-        )
-        .outerjoin(
-            BlockSQLModel,
-            and_(
-                BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-            ),
-        )
-        .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-        .where(AcquisitionTaskSQLModel.task_id == task_id)
-    )
-    row = (await session.execute(statement)).first()
-    if row is None:
+    task = await session.scalar(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    if task is None:
         raise HTTPException(status_code=404, detail=f"Acquisition task ID '{task_id}' not found.")
-    task, _specimen_ref, _block_ref, _roi_ref = row
     runs = (
         (await session.execute(select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)))
         .scalars()
@@ -317,33 +290,9 @@ async def update_task(
     updated_fields: AcquisitionTaskUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
-    row = (
-        await session.execute(
-            select(
-                AcquisitionTaskSQLModel,
-                SpecimenSQLModel.id,
-                BlockSQLModel.id,
-                ROISQLModel.id,
-            )
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                    BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-                ),
-            )
-            .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
-        )
-    ).first()
-    if row is None:
+    task_obj = await session.scalar(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    if task_obj is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    task_obj, _specimen_ref, _block_ref, _roi_ref = row
     update_data = updated_fields.model_dump(
         mode="json",
         exclude_unset=True,
@@ -388,21 +337,20 @@ async def get_task_acquisitions(
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
-    joined_rows = (
-        await session.execute(
-            select(AcquisitionTaskSQLModel.id, AcquisitionSQLModel)
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                AcquisitionSQLModel,
-                AcquisitionSQLModel.acquisition_task_id == AcquisitionTaskSQLModel.task_id,
-            )
-            .where(AcquisitionTaskSQLModel.task_id == task_id)
+    if (
+        await session.scalar(select(AcquisitionTaskSQLModel.id).where(AcquisitionTaskSQLModel.task_id == task_id))
+        is None
+    ):
+        raise HTTPException(404, f"Task ID '{task_id}' not found")
+    return (
+        await session.scalars(
+            select(AcquisitionSQLModel)
+            .where(AcquisitionSQLModel.acquisition_task_id == task_id)
+            .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
+            .offset(skip)
+            .limit(limit)
         )
     ).all()
-    if not joined_rows:
-        raise HTTPException(404, f"Task ID '{task_id}' not found")
-    acquisitions = [row[1] for row in joined_rows if row[1] is not None]
-    return acquisitions[skip : skip + limit]
 
 
 @acquisition_task_api.post(
@@ -421,17 +369,14 @@ async def supersede_task(
     at the old task_id (uq(task_id) survives — the FK is unaffected).
     """
     old_task = (
-        await session.scalars(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+        await session.scalars(
+            select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id).with_for_update()
+        )
     ).one_or_none()
     if old_task is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     if old_task.superseded_by is not None:
         raise HTTPException(409, f"Task '{task_id}' is already superseded by '{old_task.superseded_by}'")
-    existing = await session.scalars(
-        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
-    )
-    if existing.one_or_none() is not None:
-        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     await _validate_lineage(session, task_data)
     new_task = _task_from_create(task_data)
     session.add(new_task)
@@ -462,11 +407,6 @@ async def create_tasks_batch(
         if task_data.task_id in processed_ids:
             raise HTTPException(400, f"Duplicate task ID '{task_data.task_id}' in batch.")
         processed_ids.add(task_data.task_id)
-        existing = await session.scalars(
-            select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
-        )
-        if existing.one_or_none() is not None:
-            raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists.")
 
     group_id = uuid7() if group else None
     new_tasks = []
@@ -478,34 +418,4 @@ async def create_tasks_batch(
     await session.commit()
     for new_task in new_tasks:
         await session.refresh(new_task)
-    created_ids = [new_task.id for new_task in new_tasks]
-
-    created_rows = (
-        await session.execute(
-            select(
-                AcquisitionTaskSQLModel,
-                SpecimenSQLModel.id,
-                BlockSQLModel.id,
-                ROISQLModel.id,
-            )
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .outerjoin(
-                BlockSQLModel,
-                and_(
-                    BlockSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-                    BlockSQLModel.block_id == AcquisitionTaskSQLModel.block_id,
-                ),
-            )
-            .outerjoin(ROISQLModel, ROISQLModel.roi_id == AcquisitionTaskSQLModel.roi_id)
-            .where(AcquisitionTaskSQLModel.id.in_(created_ids))
-        )
-    ).all()
-    created_map = {
-        task.id: _task_response(task, derive_task_state([]))
-        for task, _specimen_ref, _block_ref, _roi_ref in created_rows
-    }
-    return [created_map[internal_id] for internal_id in created_ids if internal_id in created_map]
+    return [_task_response(new_task, derive_task_state([])) for new_task in new_tasks]

@@ -208,7 +208,7 @@ async def test_lc_create_duplicate_lc_id_409(async_client: AsyncClient):
     duplicate = await async_client.post("/api/v2/lens-corrections", json=payload)
 
     assert duplicate.status_code == 409
-    assert duplicate.json()["error_code"] == "CONFLICT"
+    assert duplicate.json()["error_code"] == "UNIQUE_VIOLATION"
     assert payload["lc_id"] in duplicate.json()["detail"]
 
 

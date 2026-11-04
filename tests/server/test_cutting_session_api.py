@@ -60,6 +60,61 @@ async def test_create_cutting_session(async_client: AsyncClient, test_specimen, 
     assert response_data["specimen_id"] == test_specimen.specimen_id
 
 
+async def test_shared_block_is_ambiguous(async_client: AsyncClient, test_block):
+    await async_client.post("/api/v2/specimens", json={"specimen_id": "OTHER_SPECIMEN"})
+    created = await async_client.post(
+        "/api/v2/blocks", json={"specimen_id": "OTHER_SPECIMEN", "block_id": test_block.block_id}
+    )
+    assert created.status_code == 201, created.text
+    response = await async_client.post(
+        "/api/v2/cutting-sessions",
+        json={
+            "cutting_session_id": "CUT_SHARED_BLOCK",
+            "start_time": datetime.now(timezone.utc).isoformat(),
+            "operator": "Test Operator",
+            "sectioning_device": "Test Device",
+            "media_type": "tape",
+            "block_id": test_block.block_id,
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert (await async_client.get("/api/v2/cutting-sessions", params={"block_id": test_block.block_id})).json() == []
+
+
+async def test_specimen_id_picks_shared_block(async_client: AsyncClient, test_block):
+    await async_client.post("/api/v2/specimens", json={"specimen_id": "OTHER_SPECIMEN"})
+    await async_client.post("/api/v2/blocks", json={"specimen_id": "OTHER_SPECIMEN", "block_id": test_block.block_id})
+    response = await async_client.post(
+        "/api/v2/cutting-sessions",
+        json={
+            "cutting_session_id": "CUT_OTHER_SPECIMEN",
+            "start_time": datetime.now(timezone.utc).isoformat(),
+            "sectioning_device": "Test Device",
+            "media_type": "tape",
+            "block_id": test_block.block_id,
+            "specimen_id": "OTHER_SPECIMEN",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["specimen_id"] == "OTHER_SPECIMEN"
+
+
+async def test_block_on_other_specimen_not_found(async_client: AsyncClient, test_specimen, test_block):
+    await async_client.post("/api/v2/specimens", json={"specimen_id": "OTHER_SPECIMEN"})
+    response = await async_client.post(
+        "/api/v2/cutting-sessions",
+        json={
+            "cutting_session_id": "CUT_WRONG_SPECIMEN",
+            "start_time": datetime.now(timezone.utc).isoformat(),
+            "sectioning_device": "Test Device",
+            "media_type": "tape",
+            "block_id": test_block.block_id,
+            "specimen_id": "OTHER_SPECIMEN",
+        },
+    )
+    assert response.status_code == 404, response.text
+
+
 @pytest.mark.asyncio
 async def test_get_cutting_session(async_client: AsyncClient, test_specimen, test_block, test_cutting_session):
     """Test retrieving a specific cutting session by human-readable IDs."""
