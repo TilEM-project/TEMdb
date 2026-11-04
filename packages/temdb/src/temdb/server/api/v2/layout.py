@@ -47,14 +47,6 @@ async def create_layout(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new substrate."""
-    existing_layout = await session.scalars(
-        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_data.layout_id)
-    )
-    if existing_layout.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Substrate layout with layout_id '{layout_data.layout_id}' already exists.",
-        )
     new_layout = SubstrateLayoutSQLModel(
         layout_id=layout_data.layout_id,
         name=layout_data.name,

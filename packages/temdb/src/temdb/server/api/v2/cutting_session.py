@@ -84,16 +84,6 @@ async def create_cutting_session(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new cutting session."""
-    existing = await session.scalars(
-        select(CuttingSessionSQLModel).where(
-            CuttingSessionSQLModel.cutting_session_id == session_data.cutting_session_id
-        )
-    )
-    if existing.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cutting Session with ID '{session_data.cutting_session_id}' already exists",
-        )
     block_query = select(BlockSQLModel).where(BlockSQLModel.block_id == session_data.block_id)
     if session_data.specimen_id is not None:
         block_query = block_query.where(BlockSQLModel.specimen_id == session_data.specimen_id)

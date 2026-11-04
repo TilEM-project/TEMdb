@@ -260,11 +260,6 @@ async def create_task(
 ):
     """Create a new acquisition task (a plan; its state derives from runs)."""
     await _validate_lineage(session, task_data)
-    existing = await session.scalars(
-        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
-    )
-    if existing.one_or_none() is not None:
-        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     new_task = _task_from_create(task_data)
     session.add(new_task)
     await session.commit()
@@ -382,11 +377,6 @@ async def supersede_task(
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     if old_task.superseded_by is not None:
         raise HTTPException(409, f"Task '{task_id}' is already superseded by '{old_task.superseded_by}'")
-    existing = await session.scalars(
-        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
-    )
-    if existing.one_or_none() is not None:
-        raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists")
     await _validate_lineage(session, task_data)
     new_task = _task_from_create(task_data)
     session.add(new_task)
@@ -417,11 +407,6 @@ async def create_tasks_batch(
         if task_data.task_id in processed_ids:
             raise HTTPException(400, f"Duplicate task ID '{task_data.task_id}' in batch.")
         processed_ids.add(task_data.task_id)
-        existing = await session.scalars(
-            select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_data.task_id)
-        )
-        if existing.one_or_none() is not None:
-            raise HTTPException(409, f"Task ID '{task_data.task_id}' already exists.")
 
     group_id = uuid7() if group else None
     new_tasks = []

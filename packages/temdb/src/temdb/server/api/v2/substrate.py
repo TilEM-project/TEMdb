@@ -53,14 +53,6 @@ async def create_substrate(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new substrate."""
-    existing_substrate = await session.scalars(
-        select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == substrate_data.media_id)
-    )
-    if existing_substrate.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Substrate with media_id '{substrate_data.media_id}' already exists.",
-        )
     layout = await session.get(
         SubstrateLayoutSQLModel, substrate_data.substrate_layout_id, with_for_update={"read": True}
     )

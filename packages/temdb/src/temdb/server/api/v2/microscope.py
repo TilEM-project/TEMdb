@@ -22,11 +22,6 @@ async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQL
 
 @microscope_api.post("/microscopes", status_code=status.HTTP_201_CREATED, response_model=MicroscopeResponse)
 async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depends(get_async_session)):
-    existing = (
-        await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id))
-    ).one_or_none()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Microscope '{data.microscope_id}' already exists")
     scope = MicroscopeSQLModel(
         microscope_id=data.microscope_id,
         microscope_type=data.microscope_type,

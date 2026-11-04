@@ -283,11 +283,6 @@ async def create_acquisition(
             422,
             "roi_id is required for kind='montage' acquisitions; only lens_correction runs may omit lineage.",
         )
-    existing = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
-    )
-    if existing.first() is not None:
-        raise HTTPException(409, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
     microscope = await session.scalars(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )

@@ -78,15 +78,6 @@ async def create_specimen(
     specimen_data: SpecimenCreate,
     session: AsyncSession = Depends(get_async_session),
 ):
-    existing_specimen = await session.scalars(
-        select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_data.specimen_id)
-    )
-    if existing_specimen.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Specimen with ID '{specimen_data.specimen_id}' already exists",
-        )
-
     specimen = SpecimenSQLModel(
         specimen_id=specimen_data.specimen_id,
         description=specimen_data.description,

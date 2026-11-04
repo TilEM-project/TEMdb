@@ -76,17 +76,6 @@ async def create_block(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{block_data.specimen_id}' not found",
         )
-    existing_block = await session.scalars(
-        select(BlockSQLModel).where(
-            BlockSQLModel.block_id == block_data.block_id,
-            BlockSQLModel.specimen_id == block_data.specimen_id,
-        )
-    )
-    if existing_block.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(f"Block with ID '{block_data.block_id}' already exists for specimen '{block_data.specimen_id}'"),
-        )
     new_block = BlockSQLModel(
         block_id=block_data.block_id,
         specimen_id=block_data.specimen_id,
