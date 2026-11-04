@@ -63,9 +63,9 @@ class TileSQLModel(ModelDumpMixin, TimestampMixin, Base):
     std_value: Mapped[float | None] = mapped_column(REAL, nullable=True)
 
     image: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
-    matcher: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    matcher: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     supertile_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    supertile_raster_position: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    supertile_raster_position: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     # Base gives every table an extra column; tiles have none.
     extra = None

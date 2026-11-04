@@ -73,7 +73,7 @@ class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     )
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     acquisition_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    calibration_info: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    calibration_info: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     status: Mapped[str | None] = mapped_column(String, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     qc_state: Mapped[str] = mapped_column(String, server_default=text("'pending'"))
@@ -94,9 +94,9 @@ class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
         default=lambda: datetime.now(timezone.utc),
     )
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    storage_locations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    storage_locations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     montage_set_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    sub_region: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    sub_region: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     replaces_acquisition_id: Mapped[str | None] = mapped_column(
         ForeignKey("acquisitions.acquisition_id"), nullable=True
     )

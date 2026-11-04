@@ -23,10 +23,10 @@ class LensCorrectionSQLModel(ModelDumpMixin, TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source_run_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     source_dataset_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
-    shared_transform: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    shared_transform: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     correction_x_uri: Mapped[str | None] = mapped_column(String, nullable=True)
     correction_y_uri: Mapped[str | None] = mapped_column(String, nullable=True)
-    solver_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    solver_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     __table_args__ = (
         Index("ix_lens_corrections_microscope_mag", "microscope_id", "magnification", desc("started_at")),

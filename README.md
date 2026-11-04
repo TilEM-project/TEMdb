@@ -209,6 +209,30 @@ await client.block.update("S1", "B1", extra={"batch": 8, "foo": None})  # extra 
 
 `extra` is a staging area, and ideally not a permanent storage for shared data. When a key becomes something services depend on, it should be promoted to a column. Then a migration copies the key into the new column and removes it from `extra`, and clients switch to the field.
 
+### Empty JSON fields
+
+A JSON field with no value reads back as `None`. Passing `None` is not the same as leaving a field out:
+
+```python
+section = await client.section.create(
+    cutting_session_id="CS1",
+    media_id="M1",
+    aperture_index=1,
+    timestamp=datetime.now(timezone.utc),
+    position={"x": 1.0, "y": 2.0},
+)
+section.optical_image  # None, because it was not passed
+
+await client.section.update(section.section_id, condition="ok")                 # position is kept
+await client.section.update(section.section_id, condition="ok", position=None)  # position is cleared
+```
+
+- **Create**: both leave the field empty.
+- **Update**: leaving a field out keeps it, and `None` clears it. Section updates ignore `None` for `optical_image`.
+- `{}` and `[]` are values, not empty fields.
+
+In SQL, find empty fields with `IS NULL`.
+
 ### All writers go through the API
 
 Services must not write to Postgres directly — this includes tilem-ingest when it deploys against TEMdb. `updated_at` and the status-axis stamp columns (`qc_state_updated_at` / `qc_state_updated_by`, `transfer_state_updated_at` / `transfer_state_updated_by`) are maintained by the ORM, not by database triggers. Any future direct-SQL writer must set them explicitly or they will silently go stale.
