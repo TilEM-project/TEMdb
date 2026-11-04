@@ -65,10 +65,10 @@ from temdb.models import SpecimenCreate, TileCreate, AcquisitionCreate
 Python SDK with an async client for the TEMdb API.
 
 ```python
-from temdb.client import AsyncTEMdbClient
+from temdb.client import TEMdbClient
 from temdb.models import TileCreate
 
-async with AsyncTEMdbClient("https://temdb.example.com") as client:
+async with TEMdbClient("https://temdb.example.com") as client:
     specimens = await client.specimen.list()
     await client.acquisition.add_tiles_bulk("ACQ001", [TileCreate(...)])
 ```
@@ -221,14 +221,14 @@ section = await client.section.create(
     timestamp=datetime.now(timezone.utc),
     position={"x": 1.0, "y": 2.0},
 )
-section.optical_image  # None, because it was not passed
+section.optical_images  # None, because it was not passed
 
 await client.section.update(section.section_id, condition="ok")                 # position is kept
 await client.section.update(section.section_id, condition="ok", position=None)  # position is cleared
 ```
 
 - **Create**: both leave the field empty.
-- **Update**: leaving a field out keeps it, and `None` clears it. Section updates ignore `None` for `optical_image`.
+- **Update**: leaving a field out keeps it, and `None` clears it. A section's `optical_images` are the exception: delete a stored image through its image route.
 - `{}` and `[]` are values, not empty fields.
 
 In SQL, find empty fields with `IS NULL`.

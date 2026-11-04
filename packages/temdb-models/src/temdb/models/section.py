@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
 from .base import TEMDBModel, TEMDBRecord
-from .enums import SECTION_CONDITIONS, SectionQuality
+from .enums import SECTION_CONDITIONS, SectionImage, SectionQuality
 from .file_storage import FileObject
 
 
@@ -64,14 +64,21 @@ class SectionPosition(TEMDBModel):
     y: float = Field(..., description="Y position in mm, in layout coordinates")
 
 
+class SectionImages(TEMDBModel):
+    post_pickup_image: FileObject | None = Field(None, description="Image taken after the section is picked up")
+    post_dropoff_image: FileObject | None = Field(None, description="Image taken after the section is dropped off")
+    qc_image: FileObject | None = Field(None, description="Quality control image")
+
+
+if {image.value for image in SectionImage} != set(SectionImages.model_fields):
+    raise TypeError("SectionImage and SectionImages must name the same images")
+
+
 class SectionBase(TEMDBRecord):
     """Base section fields."""
 
     timestamp: datetime | None = Field(None, description="Timestamp of section creation/cutting")
-    optical_image: FileObject | None = Field(
-        None,
-        description="Optical image collected before imaging",
-    )
+    optical_images: SectionImages | None = Field(None, description="Optical images collected before imaging")
     cut_count: int | None = Field(
         None, ge=0, description="Cut counter reported by the sectioning device; not unique, it can restart"
     )

@@ -156,7 +156,7 @@ erDiagram
         string block_id
         string specimen_id
         string media_id
-        object optical_image
+        object optical_images
         int aperture_index
         object position
         string condition

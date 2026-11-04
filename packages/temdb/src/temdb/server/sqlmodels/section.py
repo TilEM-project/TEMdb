@@ -50,7 +50,7 @@ class SectionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     block_id: Mapped[str] = mapped_column(String)
     specimen_id: Mapped[str] = mapped_column(String)
     media_id: Mapped[str] = mapped_column(ForeignKey("substrates.media_id"), index=True)
-    optical_image: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    optical_images: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     aperture_index: Mapped[int | None] = mapped_column(nullable=True)
     position: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     condition: Mapped[str] = mapped_column(String, server_default=text("'ok'"))

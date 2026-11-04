@@ -4854,16 +4854,16 @@
             "title": "Media Id",
             "type": "string"
           },
-          "optical_image": {
+          "optical_images": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FileObject"
+                "$ref": "#/components/schemas/SectionImages"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optical image collected before imaging"
+            "description": "Optical images collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -4911,6 +4911,55 @@
           "media_id"
         ],
         "title": "SectionCreate",
+        "type": "object"
+      },
+      "SectionImage": {
+        "enum": [
+          "post_pickup_image",
+          "post_dropoff_image",
+          "qc_image"
+        ],
+        "title": "SectionImage",
+        "type": "string"
+      },
+      "SectionImages": {
+        "additionalProperties": false,
+        "properties": {
+          "post_dropoff_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Image taken after the section is dropped off"
+          },
+          "post_pickup_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Image taken after the section is picked up"
+          },
+          "qc_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileObject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quality control image"
+          }
+        },
+        "title": "SectionImages",
         "type": "object"
       },
       "SectionMetric": {
@@ -5199,16 +5248,16 @@
             "title": "Media Id",
             "type": "string"
           },
-          "optical_image": {
+          "optical_images": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FileObject"
+                "$ref": "#/components/schemas/SectionImages"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optical image collected before imaging"
+            "description": "Optical images collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -5358,16 +5407,16 @@
             "description": "Free-form fields outside the schema; an update merges keys and null removes one",
             "title": "Extra"
           },
-          "optical_image": {
+          "optical_images": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FileObject"
+                "$ref": "#/components/schemas/SectionImages"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optical image collected before imaging"
+            "description": "Optical images collected before imaging"
           },
           "position": {
             "anyOf": [
@@ -15954,10 +16003,10 @@
         ]
       }
     },
-    "/api/v2/sections/{section_id}/image": {
+    "/api/v2/sections/{section_id}/images/{name}": {
       "delete": {
-        "description": "Delete the image associated with a specific section.",
-        "operationId": "delete_image_api_v2_sections__section_id__image_delete",
+        "description": "Delete one image of a section.",
+        "operationId": "delete_image_api_v2_sections__section_id__images__name__delete",
         "parameters": [
           {
             "in": "path",
@@ -15966,6 +16015,14 @@
             "schema": {
               "title": "Section Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SectionImage"
             }
           }
         ],
@@ -16020,8 +16077,8 @@
         ]
       },
       "get": {
-        "description": "Generate a pre-signed URL for downloading an image for a specific section.",
-        "operationId": "image_get_url_api_v2_sections__section_id__image_get",
+        "description": "Generate a pre-signed URL for downloading one image of a section.",
+        "operationId": "image_get_url_api_v2_sections__section_id__images__name__get",
         "parameters": [
           {
             "in": "path",
@@ -16030,6 +16087,14 @@
             "schema": {
               "title": "Section Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SectionImage"
             }
           },
           {
@@ -16103,8 +16168,8 @@
         ]
       },
       "post": {
-        "description": "Generate a pre-signed URL for uploading an image for a specific section.",
-        "operationId": "image_put_url_api_v2_sections__section_id__image_post",
+        "description": "Generate a pre-signed URL for uploading one image of a section.",
+        "operationId": "image_put_url_api_v2_sections__section_id__images__name__post",
         "parameters": [
           {
             "in": "path",
@@ -16113,6 +16178,14 @@
             "schema": {
               "title": "Section Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SectionImage"
             }
           }
         ],
