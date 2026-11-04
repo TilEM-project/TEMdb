@@ -9,10 +9,11 @@ from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSession
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 block_api = APIRouter(
     tags=["Blocks"],
+    responses=error_responses,
 )
 
 

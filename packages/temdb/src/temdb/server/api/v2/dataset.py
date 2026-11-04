@@ -12,9 +12,9 @@ from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
-dataset_api = APIRouter(tags=["Datasets"])
+dataset_api = APIRouter(tags=["Datasets"], responses=error_responses)
 
 
 async def _get_by_id(session: AsyncSession, dataset_id: str) -> DatasetSQLModel:

@@ -10,9 +10,9 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
-lens_correction_api = APIRouter(tags=["Lens Corrections"])
+lens_correction_api = APIRouter(tags=["Lens Corrections"], responses=error_responses)
 
 
 async def _get_by_id(session: AsyncSession, lc_id: str) -> LensCorrectionSQLModel:

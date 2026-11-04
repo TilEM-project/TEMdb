@@ -28,10 +28,11 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 section_api = APIRouter(
     tags=["Sections"],
+    responses=error_responses,
 )
 
 logger = logging.getLogger(__name__)

@@ -15,10 +15,11 @@ from temdb.models import (
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SubstrateLayoutSQLModel, SubstrateSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 substrate_layout_api = APIRouter(
     tags=["Layouts"],
+    responses=error_responses,
 )
 
 

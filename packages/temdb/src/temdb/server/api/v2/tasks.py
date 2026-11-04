@@ -23,10 +23,11 @@ from temdb.server.sqlmodels import (
     SpecimenSQLModel,
 )
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 acquisition_task_api = APIRouter(
     tags=["Acquisition Tasks"],
+    responses=error_responses,
 )
 
 

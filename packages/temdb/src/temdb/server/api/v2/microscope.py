@@ -8,9 +8,9 @@ from temdb.models import MicroscopeCreate, MicroscopeResponse, MicroscopeUpdate
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import MicroscopeSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
-microscope_api = APIRouter(tags=["Microscopes"])
+microscope_api = APIRouter(tags=["Microscopes"], responses=error_responses)
 
 
 async def _get_by_id(session: AsyncSession, microscope_id: str) -> MicroscopeSQLModel:

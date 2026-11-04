@@ -3,6 +3,10 @@ from typing import Any
 from sqlalchemy import Text, literal
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
+from temdb.models import APIErrorResponse
+
+error_responses = {400: {"model": APIErrorResponse}, 404: {"model": APIErrorResponse}, 409: {"model": APIErrorResponse}}
+
 
 def drop_null_keys(extra: dict[str, Any] | None) -> dict[str, Any]:
     """Return a copy without the keys set to None: {"a": 1, "b": None} becomes {"a": 1}, and None becomes {}."""

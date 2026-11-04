@@ -8,10 +8,11 @@ from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, Specim
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 specimen_api = APIRouter(
     tags=["Specimens"],
+    responses=error_responses,
 )
 
 

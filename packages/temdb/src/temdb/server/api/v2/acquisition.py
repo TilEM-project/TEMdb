@@ -53,10 +53,11 @@ from temdb.server.sqlmodels.tile import format_tile_id, parse_tile_id
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 from temdb.server.storage import StorageClientManager
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
+    responses=error_responses,
 )
 
 logger = logging.getLogger(__name__)

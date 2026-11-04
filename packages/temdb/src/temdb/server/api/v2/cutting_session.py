@@ -9,10 +9,11 @@ from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSe
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SectionSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 cutting_session_api = APIRouter(
     tags=["Cutting Sessions"],
+    responses=error_responses,
 )
 
 
