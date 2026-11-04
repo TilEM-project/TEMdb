@@ -19,6 +19,12 @@ class MatchPosition(str, Enum):
     BOTTOM = "bottom"
 
 
+class SectionImage(str, Enum):
+    POST_PICKUP = "post_pickup_image"
+    POST_DROPOFF = "post_dropoff_image"
+    QC = "qc_image"
+
+
 class StorageProtocol(str, Enum):
     S3 = "s3"
     GCS = "gcs"

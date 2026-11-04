@@ -13,6 +13,7 @@ from temdb.models import (
     FileObjectRequest,
     FileObjectResponse,
     SectionCreate,
+    SectionImage,
     SectionQuality,
     SectionResponse,
     SectionUpdate,
@@ -28,7 +29,7 @@ from temdb.server.sqlmodels import (
     SubstrateSQLModel,
 )
 
-from ..utils import drop_null_keys, error_responses, merge_extra
+from ..utils import check_image_update, drop_null_keys, error_responses, merge_extra
 
 section_api = APIRouter(
     tags=["Sections"],
@@ -202,6 +203,28 @@ async def get_section(
     return await section_or_404(session, section_id)
 
 
+async def _section_for_update(session: AsyncSession, section_id: str) -> SectionSQLModel:
+    """The section locked for this transaction, or a 404."""
+    section_obj = await session.scalar(
+        select(SectionSQLModel).where(SectionSQLModel.section_id == section_id).with_for_update()
+    )
+    if section_obj is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Section '{section_id}' not found")
+    return section_obj
+
+
+def _images_after_update(section_obj: SectionSQLModel, sent: dict | None) -> dict:
+    """The section's images with an update's images added, refusing one that clears or replaces a stored image."""
+    owner = f"section '{section_obj.section_id}'"
+    if sent is None:
+        check_image_update(section_obj.optical_images, None, owner)
+    images = dict(section_obj.optical_images or {})
+    for name, image in jsonable_encoder(sent).items():
+        check_image_update(images.get(name), image, f"{name} of {owner}")
+        images[name] = image
+    return images
+
+
 def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> SectionSQLModel:
     """The section a create asks for, without its number and section_id, which are assigned when it is new."""
     return SectionSQLModel(
@@ -211,7 +234,9 @@ def _section_row(data: SectionCreate, cut_session: CuttingSessionSQLModel) -> Se
         block_id=cut_session.block_id,
         specimen_id=cut_session.specimen_id,
         media_id=data.media_id,
-        optical_image=jsonable_encoder(data.optical_image),
+        optical_images=(
+            data.optical_images.model_dump(mode="json", exclude_none=True) or None if data.optical_images else None
+        ),
         aperture_index=data.aperture_index,
         position=dump_position(data.position),
         condition=data.condition,
@@ -237,7 +262,7 @@ async def _stored_at_placement(session: AsyncSession, row: SectionSQLModel) -> S
     compared = (
         "cutting_session_id",
         "cut_count",
-        "optical_image",
+        "optical_images",
         "position",
         "section_metrics",
         "run_parameters",
@@ -386,9 +411,8 @@ async def update_section(
         section_obj.section_metrics = jsonable_encoder(update_data.pop("section_metrics"))
     if "run_parameters" in update_data:
         section_obj.run_parameters = jsonable_encoder(update_data.pop("run_parameters"))
-    optical_image = update_data.pop("optical_image", None)
-    if optical_image is not None:
-        section_obj.optical_image = jsonable_encoder(optical_image)
+    if "optical_images" in update_data:
+        section_obj.optical_images = _images_after_update(section_obj, update_data.pop("optical_images"))
     if "aperture_index" in update_data and update_data["aperture_index"] != section_obj.aperture_index:
         rois = (await session.scalars(select(ROISQLModel.roi_id).where(ROISQLModel.section_id == section_id))).all()
         if rois:
@@ -422,10 +446,10 @@ async def delete_section(
 ):
     """Delete a section by its section_id."""
     section_obj = await section_or_404(session, section_id)
-    if section_obj.optical_image is not None:
+    if section_obj.optical_images is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Delete the image of section '{section_id}' before the section.",
+            detail=f"Delete the images of section '{section_id}' before the section.",
         )
     await session.delete(section_obj)
     await session.commit()
@@ -449,34 +473,24 @@ async def list_sections_by_media(
     return sections.all()
 
 
-@section_api.post("/sections/{section_id}/image", response_model=FileObjectResponse)
+@section_api.post("/sections/{section_id}/images/{name}", response_model=FileObjectResponse)
 async def image_put_url(
     section_id: str,
+    name: SectionImage,
     storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager=Depends(get_storage_client_manager),
 ):
-    """Generate a pre-signed URL for uploading an image for a specific section."""
-    section = await session.scalars(
-        select(SectionSQLModel)
-        .where(
-            SectionSQLModel.section_id == section_id,
-        )
-        .with_for_update()
-    )
-    section_obj = section.one_or_none()
-    if section_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found",
-        )
-    if storage_location is None and section_obj.optical_image is None:
+    """Generate a pre-signed URL for uploading one image of a section."""
+    section_obj = await _section_for_update(session, section_id)
+    stored = (section_obj.optical_images or {}).get(name.value)
+    if storage_location is None and stored is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Storage location must be provided.",
         )
     if storage_location is None:
-        storage_location = FileObjectRequest.from_file_object(section_obj.optical_image)
+        storage_location = FileObjectRequest.from_file_object(stored)
     if not storage_location.complete:
         block_default = await session.scalar(
             select(BlockSQLModel.default_storage).where(
@@ -492,16 +506,16 @@ async def image_put_url(
 
     storage_client_manager.finalize(storage_location)
 
-    if section_obj.optical_image is not None and storage_location != section_obj.optical_image:
+    if stored is not None and storage_location != stored:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Delete the existing image for section '{section_id}' before uploading a new one.",
+            detail=f"Delete the existing {name.value} of section '{section_id}' before uploading a new one.",
         )
 
     response = await storage_client_manager.put_url(storage_location)
 
-    if storage_location != section_obj.optical_image:
-        section_obj.optical_image = response.dump_file_object()
+    if storage_location != stored:
+        section_obj.optical_images = {**(section_obj.optical_images or {}), name.value: response.dump_file_object()}
         section_obj.updated_at = datetime.now(timezone.utc)
         session.add(section_obj)
         await session.commit()
@@ -509,67 +523,45 @@ async def image_put_url(
     return response
 
 
-@section_api.get("/sections/{section_id}/image", response_model=FileObjectResponse)
+@section_api.get("/sections/{section_id}/images/{name}", response_model=FileObjectResponse)
 async def image_get_url(
     section_id: str,
+    name: SectionImage,
     expiration: int = Query(3600, description="Expiration time in seconds for the presigned URL"),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager=Depends(get_storage_client_manager),
 ):
-    """Generate a pre-signed URL for downloading an image for a specific section."""
-    section = await session.scalars(
-        select(SectionSQLModel).where(
-            SectionSQLModel.section_id == section_id,
-        )
-    )
-    section_obj = section.one_or_none()
-    if section_obj is None:
+    """Generate a pre-signed URL for downloading one image of a section."""
+    section_obj = await section_or_404(session, section_id)
+    stored = (section_obj.optical_images or {}).get(name.value)
+    if stored is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found",
+            detail=f"No {name.value} found for section '{section_id}'",
         )
-    if section_obj.optical_image is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No image found for section '{section_id}'",
-        )
-
-    storage_location = FileObject.model_validate(section_obj.optical_image)
-
-    return await storage_client_manager.get_url(storage_location, expiration)
+    return await storage_client_manager.get_url(FileObject.model_validate(stored), expiration)
 
 
-@section_api.delete("/sections/{section_id}/image", status_code=status.HTTP_204_NO_CONTENT)
+@section_api.delete("/sections/{section_id}/images/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_image(
     section_id: str,
+    name: SectionImage,
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager=Depends(get_storage_client_manager),
 ):
-    """Delete the image associated with a specific section."""
-    section = await session.scalars(
-        select(SectionSQLModel)
-        .where(
-            SectionSQLModel.section_id == section_id,
-        )
-        .with_for_update()
-    )
-    section_obj = section.one_or_none()
-    if section_obj is None:
+    """Delete one image of a section."""
+    section_obj = await _section_for_update(session, section_id)
+    images = dict(section_obj.optical_images or {})
+    stored = images.pop(name.value, None)
+    if stored is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Section '{section_id}' not found",
-        )
-    if section_obj.optical_image is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No image found for section '{section_id}'",
+            detail=f"No {name.value} found for section '{section_id}'",
         )
 
-    storage_location = FileObject.model_validate(section_obj.optical_image)
+    await storage_client_manager.delete(FileObject.model_validate(stored))
 
-    await storage_client_manager.delete(storage_location)
-
-    section_obj.optical_image = None
+    section_obj.optical_images = images or None
     section_obj.updated_at = datetime.now(timezone.utc)
     session.add(section_obj)
     await session.commit()

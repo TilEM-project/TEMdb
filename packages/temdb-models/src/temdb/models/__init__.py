@@ -38,6 +38,7 @@ from temdb.models.enums import (
     TRANSFER_STATES,
     AcquisitionStatusFilter,
     ApertureStatus,
+    SectionImage,
     SectionQuality,
     ShapeType,
     StorageProtocol,
@@ -90,6 +91,7 @@ from temdb.models.roi import (
 from temdb.models.section import (
     SectionBase,
     SectionCreate,
+    SectionImages,
     SectioningRunParameters,
     SectionMetric,
     SectionMetrics,
@@ -184,6 +186,8 @@ __all__ = [
     # Section
     "SectionBase",
     "SectionCreate",
+    "SectionImage",
+    "SectionImages",
     "SectionUpdate",
     "SectionResponse",
     "SectionMetric",

@@ -54,6 +54,6 @@ async def test_section_create_stores_sql_null(
     )
     assert response.status_code == 201, response.text
 
-    columns = ["optical_image", "position", "section_metrics", "run_parameters"]
+    columns = ["optical_images", "position", "section_metrics", "run_parameters"]
     counts = await _sql_nulls(test_db_manager, "sections", columns)
     assert counts == {**dict.fromkeys(columns, 1), "total": 1}

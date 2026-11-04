@@ -18,7 +18,6 @@ def _specimen_payload(**extra) -> dict:
         "id": 1,
         "specimen_id": "SPEC001",
         "description": "test specimen",
-        "specimen_images": ["s3://bucket/specimen.png"],
         **extra,
     }
 
