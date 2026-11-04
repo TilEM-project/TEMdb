@@ -2105,6 +2105,18 @@
             "title": "Sectioning Device",
             "type": "string"
           },
+          "specimen_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Specimen of the block; required when the block_id is shared",
+            "title": "Specimen Id"
+          },
           "start_time": {
             "description": "Time when cutting session started",
             "format": "date-time",

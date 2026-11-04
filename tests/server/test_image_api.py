@@ -328,7 +328,7 @@ async def test_upload_empty_key_is_400(async_client, test_db_manager, image_targ
     assert (await _image_state(test_db_manager, image_target))[0] is None
 
 
-async def test_tile_image_delete_complete_is_409(async_client, test_db_manager, image_s3, test_acquisition, test_tile):
+async def test_complete_run_keeps_tile_image(async_client, test_db_manager, image_s3, test_acquisition, test_tile):
     target = {
         "model": TileSQLModel,
         "condition": and_(TileSQLModel.dataset_id == test_tile.dataset_id, TileSQLModel.run_id == test_tile.run_id),

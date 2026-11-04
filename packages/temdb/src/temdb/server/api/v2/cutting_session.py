@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSessionUpdate, SectionResponse
@@ -93,9 +94,16 @@ async def create_cutting_session(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cutting Session with ID '{session_data.cutting_session_id}' already exists",
         )
-    block_obj = (
-        await session.execute(select(BlockSQLModel).where(BlockSQLModel.block_id == session_data.block_id))
-    ).scalar_one_or_none()
+    block_query = select(BlockSQLModel).where(BlockSQLModel.block_id == session_data.block_id)
+    if session_data.specimen_id is not None:
+        block_query = block_query.where(BlockSQLModel.specimen_id == session_data.specimen_id)
+    try:
+        block_obj = (await session.scalars(block_query)).one_or_none()
+    except MultipleResultsFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Block ID '{session_data.block_id}' belongs to more than one specimen; pass specimen_id",
+        ) from exc
     if block_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
