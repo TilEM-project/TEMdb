@@ -4,11 +4,11 @@ version = "3.0.0"
 description = "TEMdb - Metadata database server"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.13",
     "pydantic-settings>=2.14",
-    "sqlalchemy[asyncio]>=2.1.0b2",
+    "sqlalchemy[asyncio]>=2.1.8,<2.2",
     "asyncpg>=0.31",
     "alembic>=1.18",
     "uuid-utils>=0.16",
