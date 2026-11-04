@@ -713,7 +713,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -1969,7 +1969,6 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "temdb-models" },
-    { name = "tenacity" },
 ]
 
 [package.metadata]
@@ -1977,7 +1976,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "temdb-models", editable = "packages/temdb-models" },
-    { name = "tenacity", specifier = ">=9.1" },
 ]
 
 [[package]]
@@ -2040,15 +2038,6 @@ docs = [
     { name = "mkdocs", specifier = ">=1.6,<2" },
     { name = "mkdocs-material", specifier = ">=9.5" },
     { name = "mkdocs-swagger-ui-tag", specifier = ">=0.6" },
-]
-
-[[package]]
-name = "tenacity"
-version = "9.1.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
 ]
 
 [[package]]
