@@ -1,5 +1,5 @@
 [tool.bumpversion]
-current_version = "3.0.0"
+current_version = "4.0.0rc0"
 parse = '''(?x)
     ^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)
     (?:(?P<pre_l>rc)(?P<pre_n>\d+))?$

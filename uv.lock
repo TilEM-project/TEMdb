@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1751,7 +1751,7 @@ wheels = [
 
 [[package]]
 name = "temdb"
-version = "3.0.0"
+version = "4.0.0rc0"
 source = { editable = "packages/temdb" }
 dependencies = [
     { name = "alembic" },
@@ -1782,7 +1782,7 @@ requires-dist = [
 
 [[package]]
 name = "temdb-client"
-version = "3.0.0"
+version = "4.0.0rc0"
 source = { editable = "packages/temdb-client" }
 dependencies = [
     { name = "httpx" },
@@ -1799,7 +1799,7 @@ requires-dist = [
 
 [[package]]
 name = "temdb-models"
-version = "3.0.0"
+version = "4.0.0rc0"
 source = { editable = "packages/temdb-models" }
 dependencies = [
     { name = "pydantic" },
@@ -1810,7 +1810,7 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.13" }]
 
 [[package]]
 name = "temdb-workspace"
-version = "3.0.0"
+version = "4.0.0rc0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

@@ -7140,7 +7140,7 @@
     },
     "info": {
       "title": "TEMDB",
-      "version": "3.0.0"
+      "version": "4.0.0rc0"
     },
     "openapi": "3.1.0",
     "paths": {
@@ -17574,5 +17574,5 @@
       }
     }
   },
-  "version": "3.0.0"
+  "version": "4.0.0rc0"
 }

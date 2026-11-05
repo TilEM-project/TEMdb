@@ -1,6 +1,6 @@
 [project]
 name = "temdb-client"
-version = "3.0.0"
+version = "4.0.0rc0"
 description = "Python client SDK for TEMdb API"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -8,7 +8,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.13",
     "httpx>=0.28",
-    "temdb-models==3.0.0",
+    "temdb-models==4.0.0rc0",
 ]
 
 [build-system]
