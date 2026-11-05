@@ -173,7 +173,7 @@ Releases are managed via GitHub Actions. To release a new version:
 2. Select bump type (patch/minor/major)
 3. Click **Run workflow**
 
-This runs tests, bumps versions in all packages, creates a git tag, and publishes `temdb-models` and `temdb-client` to PyPI.
+This runs tests, bumps versions in all packages, updates `uv.lock` and the recorded API contract, creates a git tag, publishes `temdb-models`, `temdb` and `temdb-client` to PyPI, and creates a GitHub release.
 
 For a release candidate, set **version** to the exact version, for example `4.0.0rc0`. Choose **next_rc** to go on to `4.0.0rc1`, and set **version** to `4.0.0` for the final release. Write versions as PyPI does, with no dash.
 
