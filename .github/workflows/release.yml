@@ -11,6 +11,11 @@ on:
           - patch
           - minor
           - major
+          - next_rc
+      version:
+        description: "Version to release. If set, the bump type is ignored"
+        required: false
+        type: string
 
 jobs:
   test:
@@ -69,7 +74,17 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
-        run: uv run bump-my-version bump ${{ inputs.bump }}
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            uv run bump-my-version bump --new-version "$VERSION"
+          elif [ "$BUMP" = "next_rc" ]; then
+            uv run bump-my-version bump pre_n
+          else
+            uv run bump-my-version bump "$BUMP"
+          fi
 
       - name: Push changes
         run: git push origin main --tags

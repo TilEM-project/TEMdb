@@ -175,6 +175,10 @@ Releases are managed via GitHub Actions. To release a new version:
 
 This runs tests, bumps versions in all packages, creates a git tag, and publishes `temdb-models` and `temdb-client` to PyPI.
 
+For a release candidate, set **version** to the exact version, for example `4.0.0rc0`. Choose **next_rc** to go on to `4.0.0rc1`, and set **version** to `4.0.0` for the final release. Write versions as PyPI does, with no dash.
+
+Installers skip release candidates unless asked, so pin the version to install one: `uv pip install temdb-client==4.0.0rc0`.
+
 ## Architecture
 
 ```
