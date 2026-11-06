@@ -60,14 +60,8 @@
             "type": "string"
           },
           "calibration_info": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Calibration"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/Calibration",
+            "description": "Calibration and placement of the tile grid"
           },
           "created_at": {
             "anyOf": [
@@ -238,7 +232,8 @@
           "acquisition_id",
           "montage_id",
           "acquisition_task_id",
-          "microscope_id"
+          "microscope_id",
+          "calibration_info"
         ],
         "title": "AcquisitionCreate",
         "type": "object"
@@ -514,7 +509,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Calibration and placement of the tile grid"
           },
           "created_at": {
             "anyOf": [
@@ -767,17 +763,6 @@
             ],
             "description": "Sub region of acquisition",
             "title": "Sub Region"
-          },
-          "tile_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tile Count"
           },
           "tilt_angle_deg": {
             "anyOf": [
@@ -1456,18 +1441,6 @@
             "description": "Sub region of acquisition",
             "title": "Sub Region"
           },
-          "tile_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Rollup: total tiles",
-            "title": "Tile Count"
-          },
           "tilt_angle_deg": {
             "anyOf": [
               {
@@ -1882,6 +1855,16 @@
             "description": "Aperture centroid in stage coordinates in nm",
             "title": "Aperture Centroid"
           },
+          "flip_x": {
+            "description": "Whether the tile grid is mirrored in stage x",
+            "title": "Flip X",
+            "type": "boolean"
+          },
+          "flip_y": {
+            "description": "Whether the tile grid is mirrored in stage y",
+            "title": "Flip Y",
+            "type": "boolean"
+          },
           "lens_model": {
             "anyOf": [
               {
@@ -1902,11 +1885,20 @@
             "description": "Rotation angle in degrees",
             "title": "Rotation Angle",
             "type": "number"
+          },
+          "stage_position_unit": {
+            "const": "nm",
+            "description": "Unit of the tiles' stage positions",
+            "title": "Stage Position Unit",
+            "type": "string"
           }
         },
         "required": [
           "pixel_size",
-          "rotation_angle"
+          "rotation_angle",
+          "flip_x",
+          "flip_y",
+          "stage_position_unit"
         ],
         "title": "Calibration",
         "type": "object"

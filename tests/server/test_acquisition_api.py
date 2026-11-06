@@ -170,6 +170,13 @@ async def test_create_acquisition(
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": test_acquisition_task.task_id,
         "microscope_id": test_microscope.microscope_id,
+        "calibration_info": {
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         "hardware_settings": {
             "camera_model": "Test Camera Create",
             "camera_serial": "CR12345",
@@ -215,6 +222,13 @@ async def test_create_acquisition_invalid_parent(
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": invalid_task_id,
         "microscope_id": test_microscope.microscope_id,
+        "calibration_info": {
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         "hardware_settings": {
             "camera_model": "c",
             "camera_serial": "1",
@@ -293,6 +307,13 @@ async def test_acquisition_extra_fields_round_trip(
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
             "microscope_id": test_microscope.microscope_id,
+            "calibration_info": {
+                "pixel_size": 4.0,
+                "rotation_angle": 0.0,
+                "flip_x": False,
+                "flip_y": True,
+                "stage_position_unit": "nm",
+            },
             "hardware_settings": {
                 "camera_model": "Test Camera Extra",
                 "camera_serial": "EX12345",
@@ -346,6 +367,13 @@ async def test_delete_acquisition(async_client: AsyncClient, test_roi, test_acqu
         "roi_id": test_roi.roi_id,
         "acquisition_task_id": test_acquisition_task.task_id,
         "microscope_id": test_microscope.microscope_id,
+        "calibration_info": {
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         "hardware_settings": {
             "camera_model": "c",
             "camera_serial": "1",
@@ -925,6 +953,13 @@ async def test_create_acquisition_with_dataset_then_add_and_read_tile(
             "acquisition_task_id": test_acquisition_task.task_id,
             "microscope_id": test_microscope.microscope_id,
             "dataset_id": ds["dataset_id"],
+            "calibration_info": {
+                "pixel_size": 4.0,
+                "rotation_angle": 0.0,
+                "flip_x": False,
+                "flip_y": True,
+                "stage_position_unit": "nm",
+            },
             "hardware_settings": {
                 "camera_model": "C",
                 "camera_serial": "X",

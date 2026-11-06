@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, field_validator
 from pydantic_core import PydanticCustomError
@@ -28,6 +28,9 @@ class LensCorrectionModel(TEMDBModel):
 class Calibration(TEMDBModel):
     pixel_size: float = Field(..., description="Pixel size in nm")
     rotation_angle: float = Field(..., description="Rotation angle in degrees")
+    flip_x: bool = Field(..., description="Whether the tile grid is mirrored in stage x")
+    flip_y: bool = Field(..., description="Whether the tile grid is mirrored in stage y")
+    stage_position_unit: Literal["nm"] = Field(..., description="Unit of the tiles' stage positions")
     lens_model: LensCorrectionModel | None = Field(None, description="Lens correction model")
     aperture_centroid: list[float] | None = Field(None, description="Aperture centroid in stage coordinates in nm")
 
@@ -65,7 +68,6 @@ class StorageLocationCreate(TEMDBModel):
 class AcquisitionBase(TEMDBRecord):
     hardware_settings: HardwareParams = Field(None, description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(None, description="Acquisition settings of acquisition")
-    calibration_info: Calibration | None = None
     tilt_angle_deg: float | None = Field(None, description="Tilt angle of acquisition in degrees")
     storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
     montage_set_name: str | None = Field(None, description="Name of montage set")
@@ -84,6 +86,7 @@ class AcquisitionCreate(AcquisitionBase):
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
+    calibration_info: Calibration = Field(..., description="Calibration and placement of the tile grid")
     start_time: datetime | None = Field(None, description="Start time of acquisition (defaults to now if not provided)")
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
@@ -103,7 +106,6 @@ class AcquisitionUpdate(AcquisitionBase):
     qc_state: str | None = Field(None, description="QC axis state")
     transfer_state: str | None = Field(None, description="Transfer axis state")
     updated_by: str | None = Field(None, description="Actor stamped on qc_state/transfer_state changes")
-    tile_count: int | None = Field(None, description="Rollup: total tiles")
     avg_focus_score: float | None = Field(None, description="Rollup: mean tile focus score")
     failed_tile_count: int | None = Field(None, description="Rollup: failed tiles")
     median_match_quality: float | None = Field(None, description="Rollup: median tile match quality")
@@ -146,6 +148,7 @@ class AcquisitionResponse(AcquisitionBase):
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
+    calibration_info: Calibration | None = Field(None, description="Calibration and placement of the tile grid")
     replaces_acquisition_id: str | None = Field(
         None, description="Business ID (acquisition_id) of acquisition this acquisition replaces"
     )
@@ -157,7 +160,6 @@ class AcquisitionResponse(AcquisitionBase):
     transfer_state: str = Field(..., description="Transfer axis state")
     transfer_state_updated_at: datetime | None = None
     transfer_state_updated_by: str | None = None
-    tile_count: int | None = None
     avg_focus_score: float | None = None
     failed_tile_count: int | None = None
     median_match_quality: float | None = None

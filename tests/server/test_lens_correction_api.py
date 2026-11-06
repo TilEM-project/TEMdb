@@ -4,6 +4,13 @@ import pytest
 from httpx import AsyncClient
 
 MINIMAL_ACQ_PAYLOAD = {
+    "calibration_info": {
+        "pixel_size": 4.0,
+        "rotation_angle": 0.0,
+        "flip_x": False,
+        "flip_y": True,
+        "stage_position_unit": "nm",
+    },
     "hardware_settings": {
         "camera_model": "Test Camera",
         "camera_serial": "12345",

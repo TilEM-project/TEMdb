@@ -66,6 +66,9 @@ class TestCalibration:
         cal = Calibration(
             pixel_size=4.0,
             rotation_angle=0.5,
+            flip_x=False,
+            flip_y=True,
+            stage_position_unit="nm",
         )
         assert cal.pixel_size == 4.0
         assert cal.rotation_angle == 0.5
@@ -122,6 +125,13 @@ def _acquisition_params() -> AcquisitionParams:
 class TestAcquisitionCreate:
     def test_valid_acquisition_create(self):
         acq = AcquisitionCreate(
+            calibration_info={
+                "pixel_size": 4.0,
+                "rotation_angle": 0.0,
+                "flip_x": False,
+                "flip_y": True,
+                "stage_position_unit": "nm",
+            },
             acquisition_id="ACQ001",
             montage_id="MONTAGE001",
             roi_id="ROI001",
@@ -143,6 +153,13 @@ class TestAcquisitionCreate:
     def test_microscope_id_required(self):
         with pytest.raises(ValidationError):
             AcquisitionCreate(
+                calibration_info={
+                    "pixel_size": 4.0,
+                    "rotation_angle": 0.0,
+                    "flip_x": False,
+                    "flip_y": True,
+                    "stage_position_unit": "nm",
+                },
                 acquisition_id="ACQ001",
                 montage_id="MONTAGE001",
                 roi_id="ROI001",
@@ -154,6 +171,13 @@ class TestAcquisitionCreate:
     def test_invalid_kind_rejected(self):
         with pytest.raises(ValidationError):
             AcquisitionCreate(
+                calibration_info={
+                    "pixel_size": 4.0,
+                    "rotation_angle": 0.0,
+                    "flip_x": False,
+                    "flip_y": True,
+                    "stage_position_unit": "nm",
+                },
                 acquisition_id="ACQ001",
                 montage_id="MONTAGE001",
                 roi_id="ROI001",
@@ -166,6 +190,13 @@ class TestAcquisitionCreate:
 
     def test_lens_correction_kind_without_lineage(self):
         acq = AcquisitionCreate(
+            calibration_info={
+                "pixel_size": 4.0,
+                "rotation_angle": 0.0,
+                "flip_x": False,
+                "flip_y": True,
+                "stage_position_unit": "nm",
+            },
             acquisition_id="ACQ001",
             montage_id="MONTAGE001",
             acquisition_task_id="TASK001",
@@ -208,13 +239,11 @@ class TestAcquisitionUpdate:
             qc_state="qc_pass",
             transfer_state="in_progress",
             updated_by="qc-service",
-            tile_count=10,
             avg_focus_score=0.9,
         )
         assert update.qc_state == "qc_pass"
         assert update.transfer_state == "in_progress"
         assert update.updated_by == "qc-service"
-        assert update.tile_count == 10
 
 
 class TestAcquisitionResponse:

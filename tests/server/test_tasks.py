@@ -159,6 +159,13 @@ async def test_imageable_work_fetch(
         "roi_id": test_acquisition_task.roi_id,
         "acquisition_task_id": task_id,
         "microscope_id": test_microscope.microscope_id,
+        "calibration_info": {
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         "hardware_settings": _HARDWARE_SETTINGS,
         "acquisition_settings": _ACQUISITION_SETTINGS,
     }
@@ -189,6 +196,13 @@ async def test_imageable_blocked_by_complete_run_pending_qc(
         "roi_id": test_acquisition_task.roi_id,
         "acquisition_task_id": task_id,
         "microscope_id": test_microscope.microscope_id,
+        "calibration_info": {
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         "hardware_settings": _HARDWARE_SETTINGS,
         "acquisition_settings": _ACQUISITION_SETTINGS,
     }

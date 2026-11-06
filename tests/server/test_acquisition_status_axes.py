@@ -6,6 +6,13 @@ from httpx import AsyncClient
 MINIMAL_ACQ_PAYLOAD = {
     "acquisition_id": "ACQ_AXES_001",
     "montage_id": "MONTAGE_AXES_001",
+    "calibration_info": {
+        "pixel_size": 4.0,
+        "rotation_angle": 0.0,
+        "flip_x": False,
+        "flip_y": True,
+        "stage_position_unit": "nm",
+    },
     "hardware_settings": {
         "camera_model": "Test Camera",
         "camera_serial": "12345",
@@ -195,7 +202,6 @@ async def test_rollups_settable_via_patch(async_client: AsyncClient, test_acquis
     r = await async_client.patch(
         f"/api/v2/acquisitions/{test_acquisition.acquisition_id}",
         json={
-            "tile_count": 100,
             "avg_focus_score": 0.91,
             "failed_tile_count": 2,
             "median_match_quality": 0.88,
@@ -203,7 +209,6 @@ async def test_rollups_settable_via_patch(async_client: AsyncClient, test_acquis
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["tile_count"] == 100
     assert body["avg_focus_score"] == pytest.approx(0.91)
     assert body["failed_tile_count"] == 2
     assert body["median_match_quality"] == pytest.approx(0.88)

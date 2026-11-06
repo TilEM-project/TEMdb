@@ -236,6 +236,13 @@ async def test_inverted_bbox_is_422_without_dataset(
             "roi_id": test_roi.roi_id,
             "acquisition_task_id": test_acquisition_task.task_id,
             "microscope_id": test_microscope.microscope_id,
+            "calibration_info": {
+                "pixel_size": 4.0,
+                "rotation_angle": 0.0,
+                "flip_x": False,
+                "flip_y": True,
+                "stage_position_unit": "nm",
+            },
             "hardware_settings": {
                 "camera_model": "C",
                 "camera_serial": "X",

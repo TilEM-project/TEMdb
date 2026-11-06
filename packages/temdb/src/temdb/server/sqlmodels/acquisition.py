@@ -82,7 +82,6 @@ class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
     transfer_state: Mapped[str] = mapped_column(String, server_default=text("'not_started'"))
     transfer_state_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     transfer_state_updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
-    tile_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avg_focus_score: Mapped[float | None] = mapped_column(REAL, nullable=True)
     failed_tile_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     median_match_quality: Mapped[float | None] = mapped_column(REAL, nullable=True)

@@ -1,5 +1,9 @@
 # TEMdb
 
+[![temdb](https://img.shields.io/pypi/v/temdb?label=temdb)](https://pypi.org/p/temdb/)
+[![temdb-models](https://img.shields.io/pypi/v/temdb-models?label=temdb-models)](https://pypi.org/p/temdb-models/)
+[![temdb-client](https://img.shields.io/pypi/v/temdb-client?label=temdb-client)](https://pypi.org/p/temdb-client/)
+
 Metadata database for TEM sample sectioning and image acquisition.
 
 TEMdb tracks the complete TilEM imaging workflow—from specimen sectioning through final tile acquisition. It provides a REST API for managing metadata and a Python SDK for integration with acquisition software and analysis pipelines.

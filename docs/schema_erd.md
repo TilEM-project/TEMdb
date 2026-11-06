@@ -51,7 +51,6 @@ erDiagram
         string transfer_state
         datetime transfer_state_updated_at
         string transfer_state_updated_by
-        int tile_count
         float avg_focus_score
         int failed_tile_count
         float median_match_quality

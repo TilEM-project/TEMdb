@@ -17,6 +17,13 @@ def acquisition_payload(
     acquisition_id: str, roi_id: str, microscope_id: str, dataset_id: uuid.UUID
 ) -> AcquisitionCreate:
     return AcquisitionCreate(
+        calibration_info={
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         acquisition_id=acquisition_id,
         montage_id=f"MON-{acquisition_id}",
         acquisition_task_id="T1",

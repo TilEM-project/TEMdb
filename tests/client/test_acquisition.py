@@ -112,6 +112,13 @@ async def test_create_accepts_kwargs_via_decorator():
         montage_id="MONT002",
         acquisition_task_id="TASK002",
         microscope_id=MICROSCOPE_ID,
+        calibration_info={
+            "pixel_size": 4.0,
+            "rotation_angle": 0.0,
+            "flip_x": False,
+            "flip_y": True,
+            "stage_position_unit": "nm",
+        },
         hardware_settings=_hardware_settings(),
         acquisition_settings=_acquisition_settings(),
     )
@@ -126,6 +133,13 @@ async def test_create_rejects_model_plus_kwargs():
     with pytest.raises(TypeError):
         await res.create(
             AcquisitionCreate(
+                calibration_info={
+                    "pixel_size": 4.0,
+                    "rotation_angle": 0.0,
+                    "flip_x": False,
+                    "flip_y": True,
+                    "stage_position_unit": "nm",
+                },
                 acquisition_id="ACQ001",
                 montage_id="MONT001",
                 acquisition_task_id="TASK001",

@@ -16,7 +16,7 @@
 | `lc_id` | UUID | Lens correction applied to this run |
 | `hardware_settings` | object | Hardware settings of acquisition |
 | `acquisition_settings` | object | Acquisition settings of acquisition |
-| `calibration_info` | object |  |
+| `calibration_info` | object | Calibration and placement of the tile grid |
 | `status` | string | Terminal run status; null while in flight |
 | `error_message` | string | Failure detail for terminal status |
 | `qc_state` | string | QC axis state |
@@ -25,7 +25,6 @@
 | `transfer_state` | string | Transfer axis state |
 | `transfer_state_updated_at` | datetime |  |
 | `transfer_state_updated_by` | string |  |
-| `tile_count` | int |  |
 | `avg_focus_score` | float |  |
 | `failed_tile_count` | int |  |
 | `median_match_quality` | float |  |
