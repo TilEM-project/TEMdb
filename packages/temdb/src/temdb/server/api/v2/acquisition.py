@@ -1,6 +1,7 @@
 import logging
 import math
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -53,10 +54,11 @@ from temdb.server.sqlmodels.tile import format_tile_id, parse_tile_id
 from temdb.server.sqlmodels.tile_partition import ensure_tile_partition
 from temdb.server.storage import StorageClientManager
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 acquisition_api = APIRouter(
     tags=["Acquisitions"],
+    responses=error_responses,
 )
 
 logger = logging.getLogger(__name__)
@@ -283,11 +285,6 @@ async def create_acquisition(
             422,
             "roi_id is required for kind='montage' acquisitions; only lens_correction runs may omit lineage.",
         )
-    existing = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acq_data.acquisition_id)
-    )
-    if existing.first() is not None:
-        raise HTTPException(409, f"Acquisition ID '{acq_data.acquisition_id}' already exists.")
     microscope = await session.scalars(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )
@@ -299,20 +296,11 @@ async def create_acquisition(
         )
         if lens_correction.first() is None:
             raise HTTPException(404, f"Lens correction '{acq_data.lc_id}' not found.")
-    task_row = (
-        await session.execute(
-            select(AcquisitionTaskSQLModel, SpecimenSQLModel.id)
-            .select_from(AcquisitionTaskSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionTaskSQLModel.specimen_id,
-            )
-            .where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
-        )
-    ).first()
-    if task_row is None:
+    task_obj = await session.scalar(
+        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
+    )
+    if task_obj is None:
         raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
-    task_obj, _specimen_ref = task_row
     roi_obj = None
     if acq_data.roi_id is not None:
         roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
@@ -385,33 +373,11 @@ async def get_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve a specific acquisition by its human-readable ID."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    acq_obj = await session.scalar(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
     return acq_obj
 
 
@@ -422,33 +388,11 @@ async def update_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific acquisition."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    acq_obj = await session.scalar(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    if acq_obj is None:
         raise HTTPException(status_code=404, detail=f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, _specimen_ref, _roi_ref, _task_ref = row
     update_data = updated_fields.model_dump(
         exclude_unset=True,
     )
@@ -589,37 +533,15 @@ async def add_tiles_to_acquisition(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Add multiple tiles to an acquisition."""
-    row = (
-        await session.execute(
-            select(
-                AcquisitionSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
-            )
-            .select_from(AcquisitionSQLModel)
-            .outerjoin(
-                SpecimenSQLModel,
-                SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
-            )
-            .outerjoin(
-                ROISQLModel,
-                ROISQLModel.roi_id == AcquisitionSQLModel.roi_id,
-            )
-            .outerjoin(
-                AcquisitionTaskSQLModel,
-                AcquisitionTaskSQLModel.task_id == AcquisitionSQLModel.acquisition_task_id,
-            )
-            .where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-        )
-    ).first()
-    if row is None:
+    acq_obj = await session.scalar(
+        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
+    )
+    if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    acq_obj, specimen_ref, roi_ref, task_ref = row
     if acq_obj.dataset_id is None:
         raise HTTPException(409, f"Acquisition '{acquisition_id}' has no dataset_id; cannot store tiles")
     keys = [(tile.raster_position.row, tile.raster_position.col, tile.retake) for tile in tiles]
-    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    repeated = sorted(key for key, count in Counter(keys).items() if count > 1)
     if repeated:
         raise HTTPException(422, f"Tiles (row, col, retake) {repeated} appear more than once in the request")
     await _ensure_dataset_accepts_tiles(session, acq_obj.dataset_id)
@@ -1119,12 +1041,7 @@ async def delete_tile_image(
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
     """Delete the image associated with a specific tile in an acquisition."""
-    acquisition = await session.scalars(
-        select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
-    )
-    acq_obj = acquisition.one_or_none()
-    if acq_obj is None:
-        raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
+    acq_obj = await _lock_acquisition_for_tile_delete(session, acquisition_id)
     tile = await session.scalars(select(TileSQLModel).where(*_where_tile(acq_obj, tile_id)))
     tile_obj = tile.one_or_none()
     if tile_obj is None:
@@ -1358,9 +1275,6 @@ async def get_acquisition_with_full_metadata(
                 BlockSQLModel,
                 SpecimenSQLModel,
                 SubstrateSQLModel,
-                SpecimenSQLModel.id,
-                ROISQLModel.id,
-                AcquisitionTaskSQLModel.id,
             )
             .select_from(AcquisitionSQLModel)
             .outerjoin(
@@ -1408,9 +1322,6 @@ async def get_acquisition_with_full_metadata(
         block_obj,
         specimen_obj,
         substrate_obj,
-        _specimen_ref,
-        _roi_ref,
-        _task_ref,
     ) = row
     return AcquisitionFullMetadata(
         acquisition=AcquisitionResponse.model_validate(acq_obj),

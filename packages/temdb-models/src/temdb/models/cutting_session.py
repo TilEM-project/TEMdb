@@ -21,6 +21,7 @@ class CuttingSessionCreate(CuttingSessionBase):
 
     cutting_session_id: str = Field(..., description="Unique cutting session identifier")
     block_id: str = Field(..., description="ID of block cutting session is associated with")
+    specimen_id: str | None = Field(None, description="Specimen of the block; required when the block_id is shared")
     start_time: datetime = Field(..., description="Time when cutting session started")
     sectioning_device: str = Field(..., description="Device used for sectioning")
     media_type: str = Field(..., description="Type of substrate the sections are placed upon")

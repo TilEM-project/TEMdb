@@ -60,8 +60,7 @@ nav:
         - Preparation Workflow: schema_Preparation_erd.md
         - Imaging Workflow: schema_Imaging_erd.md
   - Guides:
-      - Data Configuration: data_config.md
-      - Using URIs: using_uri_class.md
+      - Working with Images: images.md
   - API Reference: api.md
   - Models: # Create a section for individual models
       - Specimen: models/Specimen.md

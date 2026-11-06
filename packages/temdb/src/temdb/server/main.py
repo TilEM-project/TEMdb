@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.engine import make_url
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from temdb.models import Contract
@@ -114,11 +115,12 @@ class DebugTracebackMiddleware:
 async def lifespan(app: FastAPI):
     database_url = app.state.database_url
 
-    logger.info(f"Connecting to SQL database: {database_url if database_url else 'disabled'}")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is not set")
+    logger.info(f"Connecting to SQL database: {make_url(database_url).render_as_string(hide_password=True)}")
     db_manager = DatabaseManager(database_url)
     app.state.db_manager = db_manager
     app.state.storage_client_manager = StorageClientManager()
-    await db_manager.initialize()
     try:
         yield
     finally:
@@ -127,6 +129,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app():
+    logging.basicConfig(level=logging.INFO)
     app = FastAPI(
         title=config.app_name,
         version=__version__,

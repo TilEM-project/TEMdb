@@ -34,10 +34,11 @@ def image_target(request, test_acquisition, test_tile, test_section, test_block,
     return {
         "model": SectionSQLModel,
         "condition": SectionSQLModel.id == test_section.id,
-        "field": "optical_image",
+        "field": "optical_images",
+        "image_name": "post_dropoff_image",
         "parent_model": BlockSQLModel,
         "parent_condition": BlockSQLModel.id == test_block.id,
-        "path": f"/api/v2/sections/{test_section.section_id}/image",
+        "path": f"/api/v2/sections/{test_section.section_id}/images/post_dropoff_image",
     }
 
 
@@ -54,14 +55,18 @@ def _location(**overrides):
 async def _set_image(manager, target, image):
     async with manager.async_session_factory() as session:
         row = await session.scalar(select(target["model"]).where(target["condition"]))
-        setattr(row, target["field"], image if image is not None else null())
+        name = target.get("image_name")
+        value = {name: image} if name and image is not None else image
+        setattr(row, target["field"], value if value is not None else null())
         await session.commit()
 
 
 async def _image_state(manager, target):
     async with manager.async_session_factory() as session:
         row = await session.scalar(select(target["model"]).where(target["condition"]))
-        return getattr(row, target["field"]), row.updated_at
+        value = getattr(row, target["field"])
+        name = target.get("image_name")
+        return (value or {}).get(name) if name else value, row.updated_at
 
 
 @pytest.fixture
@@ -317,7 +322,8 @@ async def test_section_upload_uses_own_specimen_block(async_client, test_db_mana
         await session.commit()
 
     response = await async_client.post(
-        f"/api/v2/sections/{test_section.section_id}/image", json={"key": "a.tif", "hash": "checksum"}
+        f"/api/v2/sections/{test_section.section_id}/images/post_dropoff_image",
+        json={"key": "a.tif", "hash": "checksum"},
     )
 
     assert response.status_code == 200, response.text
@@ -336,3 +342,22 @@ async def test_upload_empty_key_is_400(async_client, test_db_manager, image_targ
     assert response.status_code == 400, response.text
     image_s3[0].generate_presigned_url.assert_not_called()
     assert (await _image_state(test_db_manager, image_target))[0] is None
+
+
+async def test_complete_run_keeps_tile_image(async_client, test_db_manager, image_s3, test_acquisition, test_tile):
+    target = {
+        "model": TileSQLModel,
+        "condition": and_(TileSQLModel.dataset_id == test_tile.dataset_id, TileSQLModel.run_id == test_tile.run_id),
+        "field": "image",
+    }
+    await _set_image(test_db_manager, target, _location())
+    acquisition_path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}"
+    done = await async_client.patch(acquisition_path, json={"status": "complete"})
+    assert done.status_code == 200, done.text
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+
+    response = await async_client.delete(f"{acquisition_path}/tiles/{tile_id}/image")
+
+    assert response.status_code == 409, response.text
+    image_s3[0].delete_object.assert_not_called()
+    assert (await _image_state(test_db_manager, target))[0] is not None

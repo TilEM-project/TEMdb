@@ -1,20 +1,20 @@
 [project]
 name = "temdb"
-version = "3.0.0"
+version = "4.0.0rc0"
 description = "TEMdb - Metadata database server"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.13",
     "pydantic-settings>=2.14",
-    "sqlalchemy[asyncio]>=2.1.0b2",
+    "sqlalchemy[asyncio]>=2.1.8,<2.2",
     "asyncpg>=0.31",
     "alembic>=1.18",
     "uuid-utils>=0.16",
     "fastapi>=0.136",
     "uvicorn>=0.49",
-    "temdb-models==3.0.0",
+    "temdb-models==4.0.0rc0",
     "boto3>=1.43",
 ]
 

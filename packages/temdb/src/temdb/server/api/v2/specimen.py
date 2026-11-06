@@ -8,10 +8,11 @@ from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, Specim
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 specimen_api = APIRouter(
     tags=["Specimens"],
+    responses=error_responses,
 )
 
 
@@ -78,15 +79,6 @@ async def create_specimen(
     specimen_data: SpecimenCreate,
     session: AsyncSession = Depends(get_async_session),
 ):
-    existing_specimen = await session.scalars(
-        select(SpecimenSQLModel).where(SpecimenSQLModel.specimen_id == specimen_data.specimen_id)
-    )
-    if existing_specimen.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Specimen with ID '{specimen_data.specimen_id}' already exists",
-        )
-
     specimen = SpecimenSQLModel(
         specimen_id=specimen_data.specimen_id,
         description=specimen_data.description,

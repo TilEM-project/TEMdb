@@ -14,6 +14,6 @@ class BlockSQLModel(TimestampMixin, ModelDumpMixin, Base):
     id: Mapped[int] = mapped_column(Identity(always=True), primary_key=True)
     block_id: Mapped[str] = mapped_column(String)
     specimen_id: Mapped[str] = mapped_column(ForeignKey("specimens.specimen_id"))
-    microCT_info: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    default_storage: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    microCT_info: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    default_storage: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     description: Mapped[str | None] = mapped_column(String, nullable=True)

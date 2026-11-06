@@ -15,10 +15,11 @@ from temdb.models import (
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SubstrateLayoutSQLModel, SubstrateSQLModel
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 
 substrate_layout_api = APIRouter(
     tags=["Layouts"],
+    responses=error_responses,
 )
 
 
@@ -47,14 +48,6 @@ async def create_layout(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create a new substrate."""
-    existing_layout = await session.scalars(
-        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_data.layout_id)
-    )
-    if existing_layout.one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Substrate layout with layout_id '{layout_data.layout_id}' already exists.",
-        )
     new_layout = SubstrateLayoutSQLModel(
         layout_id=layout_data.layout_id,
         name=layout_data.name,
@@ -92,10 +85,9 @@ async def update_layout(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Update details of a specific substrate identified by layout_id."""
-    layout = await session.scalars(
-        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id)
+    layout_obj = await session.scalar(
+        select(SubstrateLayoutSQLModel).where(SubstrateLayoutSQLModel.layout_id == layout_id).with_for_update()
     )
-    layout_obj = layout.one_or_none()
     if layout_obj is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

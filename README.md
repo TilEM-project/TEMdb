@@ -65,10 +65,10 @@ from temdb.models import SpecimenCreate, TileCreate, AcquisitionCreate
 Python SDK with an async client for the TEMdb API.
 
 ```python
-from temdb.client import AsyncTEMdbClient
+from temdb.client import TEMdbClient
 from temdb.models import TileCreate
 
-async with AsyncTEMdbClient("https://temdb.example.com") as client:
+async with TEMdbClient("https://temdb.example.com") as client:
     specimens = await client.specimen.list()
     await client.acquisition.add_tiles_bulk("ACQ001", [TileCreate(...)])
 ```
@@ -112,7 +112,7 @@ Supplying a known checksum keeps writes streaming directly:
 
 ```python
 async with client.section.open_image(
-    "SEC001", "wb", hash=known_checksum, size=total_bytes, expiration=600
+    "SEC001", "post_dropoff_image", "wb", hash=known_checksum, size=total_bytes, expiration=600
 ) as image:
     await image.write(chunk)
 ```
@@ -213,7 +213,11 @@ Releases are managed via GitHub Actions. To release a new version:
 2. Select bump type (patch/minor/major)
 3. Click **Run workflow**
 
-This runs tests, bumps versions in all packages, creates a git tag, and publishes `temdb-models` and `temdb-client` to PyPI.
+This runs tests, bumps versions in all packages, updates `uv.lock` and the recorded API contract, creates a git tag, publishes `temdb-models`, `temdb` and `temdb-client` to PyPI, and creates a GitHub release.
+
+For a release candidate, set **version** to the exact version, for example `4.0.0rc0`. Choose **next_rc** to go on to `4.0.0rc1`, and set **version** to `4.0.0` for the final release. Write versions as PyPI does, with no dash.
+
+Installers skip release candidates unless asked, so pin the version to install one: `uv pip install temdb-client==4.0.0rc0`.
 
 ## Architecture
 
@@ -248,6 +252,30 @@ await client.block.update("S1", "B1", extra={"batch": 8, "foo": None})  # extra 
 - A key that names one of the record's fields (e.g. `extra={"description": ...}`) is rejected; set the field directly.
 
 `extra` is a staging area, and ideally not a permanent storage for shared data. When a key becomes something services depend on, it should be promoted to a column. Then a migration copies the key into the new column and removes it from `extra`, and clients switch to the field.
+
+### Empty JSON fields
+
+A JSON field with no value reads back as `None`. Passing `None` is not the same as leaving a field out:
+
+```python
+section = await client.section.create(
+    cutting_session_id="CS1",
+    media_id="M1",
+    aperture_index=1,
+    timestamp=datetime.now(timezone.utc),
+    position={"x": 1.0, "y": 2.0},
+)
+section.optical_images  # None, because it was not passed
+
+await client.section.update(section.section_id, condition="ok")                 # position is kept
+await client.section.update(section.section_id, condition="ok", position=None)  # position is cleared
+```
+
+- **Create**: both leave the field empty.
+- **Update**: leaving a field out keeps it, and `None` clears it. A section's `optical_images` are the exception: delete a stored image through its image route.
+- `{}` and `[]` are values, not empty fields.
+
+In SQL, find empty fields with `IS NULL`.
 
 ### All writers go through the API
 

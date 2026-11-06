@@ -259,7 +259,7 @@ async def test_partial_download_does_not_claim_integrity(location):
 def image_resource(request):
     api = AsyncMock()
     resource = request.param(api, "http://test/api/v2")
-    ids = ("SEC001",) if request.param is SectionResource else ("ACQ001", "tile")
+    ids = ("SEC001", "post_dropoff_image") if request.param is SectionResource else ("ACQ001", "tile")
     return resource, api, ids
 
 

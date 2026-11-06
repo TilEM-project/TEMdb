@@ -19,7 +19,7 @@ class DatasetSQLModel(TimestampMixin, ModelDumpMixin, Base):
     )
     name: Mapped[str] = mapped_column(String, index=True, unique=True)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
-    default_storage: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    default_storage: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     specimen_id: Mapped[str | None] = mapped_column(ForeignKey("specimens.specimen_id"), nullable=True)
     parent_dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("datasets.dataset_id"), nullable=True
@@ -32,4 +32,4 @@ class DatasetSQLModel(TimestampMixin, ModelDumpMixin, Base):
     # then frozen to resolve_modulus(size_class). Never user-set.
     tile_hash_modulus: Mapped[int | None] = mapped_column(Integer, nullable=True)
     estimated_tile_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)

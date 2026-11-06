@@ -12,7 +12,7 @@ from temdb.client.resources.section import SectionResource
 from temdb.models import FileObjectRequest, FileObjectResponse, SectionCreate, SectionUpdate
 from temdb.models.enums import StorageProtocol
 
-SECTION_URL = "sections/SEC001/image"
+SECTION_URL = "sections/SEC001/images/post_dropoff_image"
 
 API = "http://test/api/v2"
 NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
@@ -111,7 +111,7 @@ async def test_put_image_url_posts_storage_location_and_returns_model():
         hash=_file_object_response()["hash"],
     )
 
-    result = await resource.put_image_url("SEC001", **location.model_dump(exclude_unset=True))
+    result = await resource.put_image_url("SEC001", "post_dropoff_image", **location.model_dump(exclude_unset=True))
 
     request.assert_awaited_once_with(
         "POST",
@@ -134,7 +134,7 @@ async def test_put_image_url_accepts_checksum_only():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    await resource.put_image_url("SEC001", hash=_file_object_response()["hash"])
+    await resource.put_image_url("SEC001", "post_dropoff_image", hash=_file_object_response()["hash"])
 
     request.assert_awaited_once_with("POST", SECTION_URL, json={"hash": _file_object_response()["hash"]})
 
@@ -155,9 +155,10 @@ async def test_put_image_uploads_bytes_to_presigned_url(monkeypatch):
     monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
     contents = io.BytesIO(b"section image")
-    assert await resource.put_image("SEC001", contents) is file_object
+    assert await resource.put_image("SEC001", "post_dropoff_image", contents) is file_object
 
     put_image_url.assert_awaited_once()
+    assert put_image_url.await_args.args == ("SEC001", "post_dropoff_image")
     assert put_image_url.await_args.kwargs["hash"] == base64.b64encode(
         hashlib.sha256(b"section image").digest()
     ).decode("ascii")
@@ -175,9 +176,10 @@ async def test_put_image_propagates_upload_failure(monkeypatch):
     monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
     with pytest.raises(httpx.HTTPStatusError):
-        await resource.put_image("SEC001", io.BytesIO(b"image"))
+        await resource.put_image("SEC001", "post_dropoff_image", io.BytesIO(b"image"))
 
     put_image_url.assert_awaited_once()
+    assert put_image_url.await_args.args == ("SEC001", "post_dropoff_image")
 
 
 @pytest.mark.asyncio
@@ -185,7 +187,7 @@ async def test_get_image_url_adds_expiration_and_returns_model():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    result = await resource.get_image_url("SEC001", expiration=300)
+    result = await resource.get_image_url("SEC001", "post_dropoff_image", expiration=300)
 
     request.assert_awaited_once_with("GET", SECTION_URL, params={"expiration": 300})
     assert result.expiration == 600
@@ -196,7 +198,7 @@ async def test_get_image_url_omits_expiration_when_unspecified():
     resource, request = _resource()
     request.return_value = _file_object_response()
 
-    await resource.get_image_url("SEC001")
+    await resource.get_image_url("SEC001", "post_dropoff_image")
 
     request.assert_awaited_once_with("GET", SECTION_URL, params=None)
 
@@ -210,9 +212,9 @@ async def test_get_image_streams_presigned_response(monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response))
     monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
-    result = await resource.get_image("SEC001", expiration=300)
+    result = await resource.get_image("SEC001", "post_dropoff_image", expiration=300)
 
-    get_image_url.assert_awaited_once_with("SEC001", 300)
+    get_image_url.assert_awaited_once_with("SEC001", "post_dropoff_image", 300)
     assert str(response.request.url) == _file_object_response()["url"]
     assert result == b"downloaded section image"
     assert response.is_closed
@@ -227,7 +229,7 @@ async def test_get_image_closes_response_when_download_fails(monkeypatch):
     monkeypatch.setattr("temdb.client.resources.image.httpx.AsyncClient", lambda: client)
 
     with pytest.raises(httpx.HTTPStatusError):
-        await resource.get_image("SEC001")
+        await resource.get_image("SEC001", "post_dropoff_image")
 
     assert response.is_closed
 
@@ -236,7 +238,7 @@ async def test_get_image_closes_response_when_download_fails(monkeypatch):
 async def test_delete_image_awaits_delete_request():
     resource, request = _resource()
 
-    await resource.delete_image("SEC001")
+    await resource.delete_image("SEC001", "post_dropoff_image")
 
     request.assert_awaited_once_with("DELETE", SECTION_URL)
 
@@ -247,4 +249,4 @@ async def test_delete_image_propagates_request_failure():
     request.side_effect = requests.HTTPError("delete failed")
 
     with pytest.raises(requests.HTTPError, match="delete failed"):
-        await resource.delete_image("SEC001")
+        await resource.delete_image("SEC001", "post_dropoff_image")

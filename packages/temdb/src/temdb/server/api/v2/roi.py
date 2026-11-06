@@ -17,11 +17,12 @@ from temdb.server.sqlmodels import (
     SectionSQLModel,
 )
 
-from ..utils import drop_null_keys, merge_extra
+from ..utils import drop_null_keys, error_responses, merge_extra
 from .section import lock_substrate, section_or_404
 
 roi_api = APIRouter(
     tags=["ROIs"],
+    responses=error_responses,
 )
 
 logger = logging.getLogger(__name__)

@@ -17,9 +17,12 @@ from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import AcquisitionSQLModel, TileSQLModel
 from temdb.server.sqlmodels.tile import format_tile_id
 
+from ..utils import error_responses
+
 qc_api = APIRouter(
     prefix="/qc",
     tags=["Quality Control"],
+    responses=error_responses,
 )
 
 logger = logging.getLogger(__name__)

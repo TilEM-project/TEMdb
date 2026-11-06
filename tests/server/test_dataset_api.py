@@ -165,3 +165,13 @@ async def test_list_datasets_pages_through_created_at_ties(init_db, async_client
     ]
     expected = sorted(datasets, key=lambda dataset: dataset.dataset_id)
     assert [dataset["name"] for page in pages for dataset in page] == [dataset.name for dataset in expected]
+
+
+@pytest.mark.asyncio
+async def test_size_class_locked_once_partitioned(async_client, test_dataset, test_tile):
+    url = f"/api/v2/datasets/{test_dataset.dataset_id}"
+    assert (await async_client.get(url)).json()["tile_hash_modulus"] == 4
+    response = await async_client.patch(url, json={"size_class": "large"})
+    assert response.status_code == 409, response.text
+    assert (await async_client.get(url)).json()["size_class"] == "small"
+    assert (await async_client.patch(url, json={"size_class": "small"})).status_code == 200

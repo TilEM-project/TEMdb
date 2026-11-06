@@ -1,7 +1,20 @@
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import Text, literal
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+
+from temdb.models import APIErrorResponse
+
+error_responses = {400: {"model": APIErrorResponse}, 404: {"model": APIErrorResponse}, 409: {"model": APIErrorResponse}}
+
+
+def check_image_update(stored: dict[str, Any] | None, sent: dict[str, Any] | None, owner: str) -> None:
+    """Refuse an image update that would clear or replace the stored image of owner."""
+    if sent is None:
+        raise HTTPException(400, f"Delete the image of {owner} through its image route")
+    if stored is not None and stored != sent:
+        raise HTTPException(409, f"Delete the existing image of {owner} before setting a new one")
 
 
 def drop_null_keys(extra: dict[str, Any] | None) -> dict[str, Any]:

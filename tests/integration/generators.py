@@ -24,7 +24,6 @@ def generate_specimen(**kwargs) -> SpecimenSQLModel:
     defaults = {
         "specimen_id": f"SPEC_{fake.unique.word()}_{int(datetime.now(timezone.utc).timestamp())}",
         "description": fake.text(max_nb_chars=150),
-        "specimen_images": {},
         "created_at": datetime.now(timezone.utc),
         "functional_imaging_metadata": ({"source": fake.word()} if fake.boolean() else None),
     }
@@ -86,12 +85,14 @@ def generate_section(
         "cutting_session_id": cutting_session.cutting_session_id,
         "block_id": cutting_session.block_id,
         "specimen_id": cutting_session.specimen_id,
-        "optical_image": (
+        "optical_images": (
             {
-                "protocol": "s3",
-                "server": "https://s3.example.com",
-                "bucket": "integration-images",
-                "key": f"sections/{cutting_session.cutting_session_id}/{section_number}.png",
+                "post_dropoff_image": {
+                    "protocol": "s3",
+                    "server": "https://s3.example.com",
+                    "bucket": "integration-images",
+                    "key": f"sections/{cutting_session.cutting_session_id}/{section_number}.png",
+                }
             }
             if fake.boolean()
             else None

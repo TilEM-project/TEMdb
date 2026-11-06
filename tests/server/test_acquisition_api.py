@@ -16,12 +16,8 @@ from httpx import AsyncClient
 from minio.error import S3Error
 from sqlalchemy import and_, null, or_, select, update
 
-from temdb.server.config import config
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
 from temdb.server.sqlmodels.tile import TileSQLModel, format_tile_id
-
-TEST_MAX_BATCH_SIZE = 10
-config.max_batch_size = TEST_MAX_BATCH_SIZE
 
 
 def _checksum(contents: bytes) -> str:
@@ -457,7 +453,7 @@ async def test_add_tile_with_supertile_raster_position(async_client: AsyncClient
 @pytest.mark.asyncio
 async def test_add_tiles_to_acquisition_bulk(async_client: AsyncClient, test_acquisition):
     """Test adding multiple tiles in bulk."""
-    num_tiles = TEST_MAX_BATCH_SIZE + 5
+    num_tiles = 15
     tiles_data = []
     for i in range(num_tiles):
         tiles_data.append(

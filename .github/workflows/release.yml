@@ -11,6 +11,11 @@ on:
           - patch
           - minor
           - major
+          - next_rc
+      version:
+        description: "Version to release. If set, the bump type is ignored"
+        required: false
+        type: string
 
 jobs:
   test:
@@ -48,6 +53,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,10 +76,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
-        run: uv run bump-my-version bump ${{ inputs.bump }}
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            uv run bump-my-version bump --new-version "$VERSION"
+          elif [ "$BUMP" = "next_rc" ]; then
+            uv run bump-my-version bump pre_n
+          else
+            uv run bump-my-version bump "$BUMP"
+          fi
 
       - name: Push changes
         run: git push origin main --tags
+
+      - name: Read the new tag
+        id: tag
+        run: echo "tag=$(git describe --tags --exact-match)" >> "$GITHUB_OUTPUT"
 
   publish-models:
     runs-on: ubuntu-latest
@@ -185,3 +206,21 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/temdb-client/dist/
+
+  github-release:
+    runs-on: ubuntu-latest
+    needs: [release, publish-server, publish-client]
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          if [[ "$TAG" == *rc* ]]; then
+            gh release create "$TAG" --verify-tag --generate-notes --prerelease
+          else
+            gh release create "$TAG" --verify-tag --generate-notes
+          fi

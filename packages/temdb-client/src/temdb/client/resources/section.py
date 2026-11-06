@@ -7,6 +7,7 @@ from temdb.models import (
     FileObjectRequest,
     FileObjectResponse,
     SectionCreate,
+    SectionImage,
     SectionQuality,
     SectionResponse,
     SectionUpdate,
@@ -77,9 +78,11 @@ class SectionResource(BaseResource):
         return SectionResponse.model_validate(response_data)
 
     @accepts_keywords(FileObjectRequest)
-    async def put_image_url(self, section_id: str, storage_location: FileObjectRequest) -> FileObjectResponse:
-        """Get an upload URL for a specific section."""
-        endpoint = f"sections/{section_id}/image"
+    async def put_image_url(
+        self, section_id: str, name: SectionImage | str, storage_location: FileObjectRequest
+    ) -> FileObjectResponse:
+        """Get a presigned URL for uploading one image of a section."""
+        endpoint = f"sections/{section_id}/images/{SectionImage(name).value}"
         payload = storage_location.model_dump(exclude_unset=True)
         response_data = await self._post(endpoint, data=payload)
         return FileObjectResponse.model_validate(response_data)
@@ -87,6 +90,7 @@ class SectionResource(BaseResource):
     async def put_image(
         self,
         section_id: str,
+        name: SectionImage | str,
         image_data: BinaryIO,
         *,
         protocol: StorageProtocol | str | None = None,
@@ -98,18 +102,19 @@ class SectionResource(BaseResource):
     ) -> FileObjectResponse:
         """Upload an open binary file directly and return its storage metadata."""
         options = {
-            name: value
-            for name, value in {"protocol": protocol, "server": server, "bucket": bucket, "key": key}.items()
+            option: value
+            for option, value in {"protocol": protocol, "server": server, "bucket": bucket, "key": key}.items()
             if value is not None
         }
         request = await image_request(image_data, hash=hash, **options, **kwargs)
-        location = await self.put_image_url(section_id, **request.model_dump(exclude_unset=True))
+        location = await self.put_image_url(section_id, name, **request.model_dump(exclude_unset=True))
         return await put_image(location, image_data, self._file_client)
 
     @overload
     def open_image(
         self,
         section_id: str,
+        name: SectionImage | str,
         mode: Literal["rb"] = "rb",
         *,
         protocol: StorageProtocol | str | None = None,
@@ -126,6 +131,7 @@ class SectionResource(BaseResource):
     def open_image(
         self,
         section_id: str,
+        name: SectionImage | str,
         mode: Literal["wb"],
         *,
         protocol: StorageProtocol | str | None = None,
@@ -141,6 +147,7 @@ class SectionResource(BaseResource):
     def open_image(
         self,
         section_id: str,
+        name: SectionImage | str,
         mode: str = "rb",
         *,
         protocol: StorageProtocol | str | None = None,
@@ -159,38 +166,40 @@ class SectionResource(BaseResource):
         Storage options select the upload location; reads use the stored location.
         """
         options = {
-            name: value
-            for name, value in {"protocol": protocol, "server": server, "bucket": bucket, "key": key}.items()
+            option: value
+            for option, value in {"protocol": protocol, "server": server, "bucket": bucket, "key": key}.items()
             if value is not None
         }
         return open_image(
             lambda: (
-                self.put_image_url(section_id, hash=hash, expiration=expiration, **options, **kwargs)
+                self.put_image_url(section_id, name, hash=hash, expiration=expiration, **options, **kwargs)
                 if mode == "wb"
-                else self.get_image_url(section_id, expiration)
+                else self.get_image_url(section_id, name, expiration)
             ),
             mode,
             size,
             self._file_client,
-            upload=(lambda file: self.put_image(section_id, file, expiration=expiration, **options, **kwargs))
+            upload=(lambda file: self.put_image(section_id, name, file, expiration=expiration, **options, **kwargs))
             if mode == "wb" and hash is None
             else None,
         )
 
-    async def get_image_url(self, section_id: str, expiration: int | None = None) -> FileObjectResponse:
-        """Get a presigned URL for downloading an image for a specific section."""
-        endpoint = f"sections/{section_id}/image"
+    async def get_image_url(
+        self, section_id: str, name: SectionImage | str, expiration: int | None = None
+    ) -> FileObjectResponse:
+        """Get a presigned URL for downloading one image of a section."""
+        endpoint = f"sections/{section_id}/images/{SectionImage(name).value}"
         response_data = await self._get(endpoint, params={"expiration": expiration} if expiration else None)
         return FileObjectResponse.model_validate(response_data)
 
-    async def get_image(self, section_id: str, expiration: int | None = None) -> bytes:
-        """Download the entire section image into memory."""
-        async with self.open_image(section_id, expiration=expiration) as image:
+    async def get_image(self, section_id: str, name: SectionImage | str, expiration: int | None = None) -> bytes:
+        """Download one whole image of a section into memory."""
+        async with self.open_image(section_id, name, expiration=expiration) as image:
             return await image.read()
 
-    async def delete_image(self, section_id: str) -> None:
-        """Delete the image associated with a specific section."""
-        endpoint = f"sections/{section_id}/image"
+    async def delete_image(self, section_id: str, name: SectionImage | str) -> None:
+        """Delete one image of a section."""
+        endpoint = f"sections/{section_id}/images/{SectionImage(name).value}"
         await self._delete(endpoint)
 
     @accepts_keywords(SectionUpdate)
