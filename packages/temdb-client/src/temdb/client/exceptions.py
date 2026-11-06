@@ -30,6 +30,10 @@ class TEMdbContractError(TEMdbClientError):
     """Raised when the server's model version is incompatible with the client."""
 
 
+class TEMdbChecksumError(TEMdbClientError):
+    """Raised when downloaded image bytes do not match the expected SHA-256 checksum."""
+
+
 class TEMdbServerError(TEMdbError):
     """Base exception for TEMdb server errors."""
 

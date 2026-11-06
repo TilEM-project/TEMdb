@@ -2871,10 +2871,22 @@
             "description": "Expiration time in seconds for the presigned URL, or None to use the default.",
             "title": "Expiration"
           },
-          "key": {
-            "description": "Key to the file within the bucket. Use a leading slash to ignore the default key prefix.",
-            "title": "Key",
+          "hash": {
+            "description": "Base64-encoded SHA-256 checksum of the file content.",
+            "title": "Hash",
             "type": "string"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Key to the file within the bucket. Use a leading slash to ignore the default key prefix.",
+            "title": "Key"
           },
           "protocol": {
             "anyOf": [
@@ -2901,7 +2913,7 @@
           }
         },
         "required": [
-          "key"
+          "hash"
         ],
         "title": "FileObjectRequest",
         "type": "object"
@@ -2918,6 +2930,11 @@
             "description": "Expiration time in seconds for the presigned URL.",
             "title": "Expiration",
             "type": "integer"
+          },
+          "hash": {
+            "description": "Base64-encoded SHA-256 checksum of the file content.",
+            "title": "Hash",
+            "type": "string"
           },
           "key": {
             "description": "Key to the file within the bucket.",
@@ -2945,6 +2962,7 @@
           "bucket",
           "key",
           "url",
+          "hash",
           "expiration"
         ],
         "title": "FileObjectResponse",
@@ -9685,7 +9703,7 @@
         ]
       },
       "post": {
-        "description": "Generate presigned PUT URLs for tiles in an acquisition.\n\nThe tile_id list is optional; if omitted, all tiles in the acquisition are returned.",
+        "description": "Generate presigned PUT URLs for tiles in an acquisition.",
         "operationId": "image_put_urls_api_v2_acquisitions__acquisition_id__tiles_images_post",
         "parameters": [
           {
@@ -9751,21 +9769,16 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Tile Ids"
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "A mapping of tile ids to hashes",
+                "title": "Image Hashes",
+                "type": "object"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -10246,7 +10259,7 @@
         ]
       },
       "post": {
-        "description": "Generate a presigned PUT URL for a tile in an acquisition.\n\nThe storage_location is optional; if omitted, the existing location is used.",
+        "description": "Generate a presigned PUT URL for a tile in an acquisition.",
         "operationId": "image_put_url_api_v2_acquisitions__acquisition_id__tiles__tile_id__image_post",
         "parameters": [
           {
@@ -10272,19 +10285,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/FileObjectRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Storage location for the tile image",
-                "title": "Storage Location"
+                "$ref": "#/components/schemas/FileObjectRequest",
+                "description": "Storage location for the tile image"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -16193,19 +16199,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/FileObjectRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Storage location details for the image",
-                "title": "Storage Location"
+                "$ref": "#/components/schemas/FileObjectRequest",
+                "description": "Storage location details for the image"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
