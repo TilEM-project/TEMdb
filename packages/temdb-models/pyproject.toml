@@ -1,6 +1,6 @@
 [project]
 name = "temdb-models"
-version = "4.0.0rc0"
+version = "4.0.0rc1"
 description = "Shared Pydantic models for TEMdb"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]

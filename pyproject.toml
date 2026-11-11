@@ -1,6 +1,6 @@
 [project]
 name = "temdb-workspace"
-version = "4.0.0rc0"
+version = "4.0.0rc1"
 description = "TEMdb monorepo workspace"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
