@@ -27,16 +27,16 @@ def test_file_object_requires_storage_location():
 )
 def test_file_object_request_validates_partial_location(location, error):
     with pytest.raises(ValidationError, match=error):
-        FileObjectRequest(key="image.png", **location)
+        FileObjectRequest(key="image.png", hash="checksum", **location)
 
 
 def test_file_object_request_requires_leading_slash_for_explicit_bucket():
     with pytest.raises(ValidationError, match="key must start with a leading slash"):
-        FileObjectRequest(protocol="s3", bucket="images", key="section/image.png")
+        FileObjectRequest(protocol="s3", bucket="images", key="section/image.png", hash="checksum")
 
 
 def test_file_object_request_applies_storage_defaults():
-    request = FileObjectRequest(key="section/image.png", expiration=120)
+    request = FileObjectRequest(key="section/image.png", expiration=120, hash="checksum")
     defaults = StorageDefault(
         protocol="s3",
         server="http://s3.example.com",
@@ -62,6 +62,7 @@ def test_file_object_response_includes_presigned_url_and_expiration():
         key="section/image.png",
         url="http://s3.example.com/images/section/image.png?signature=example",
         expiration=600,
+        hash="checksum",
     )
 
     assert response.url.endswith("signature=example")
@@ -73,7 +74,7 @@ def test_file_object_response_includes_presigned_url_and_expiration():
 def test_request_from_stored_location_normalizes_key_without_mutating_source(as_dict, key):
     stored = FileObject(protocol="s3", server="https://storage.example.com", bucket="images", key=key)
     source = stored.model_dump() if as_dict else stored
-    request = FileObjectRequest.from_file_object(source)
+    request = FileObjectRequest.from_file_object(source, "checksum")
     assert request.key == "/image.png"
     assert request.expiration is None
     assert (source["key"] if as_dict else source.key) == key
@@ -82,7 +83,7 @@ def test_request_from_stored_location_normalizes_key_without_mutating_source(as_
 @pytest.mark.parametrize("expiration", [None, 600])
 def test_request_compares_stored_location_without_expiration(expiration):
     stored = FileObject(protocol="s3", server="https://storage.example.com", bucket="images", key="image.png")
-    request = FileObjectRequest.from_file_object(stored)
+    request = FileObjectRequest.from_file_object(stored, "checksum")
     request.key = stored.key
     request.expiration = expiration
     assert request == stored.model_dump()
@@ -93,7 +94,7 @@ def test_request_compares_stored_location_without_expiration(expiration):
 @pytest.mark.parametrize(("key", "expected"), [("image.png", "/block/image.png"), ("/image.png", "/image.png")])
 def test_key_prefix_applied_once(key, expected):
     """Only the first default's key_prefix goes on a relative key, and none goes on a key with a leading slash."""
-    request = FileObjectRequest(key=key)
+    request = FileObjectRequest(key=key, hash="checksum")
     request.apply_defaults(
         StorageDefault(key_prefix="block"), StorageDefault(protocol="s3", bucket="images", key_prefix="config")
     )
@@ -102,6 +103,13 @@ def test_key_prefix_applied_once(key, expected):
 
 def test_stored_key_reloads_without_prefix():
     stored = {"protocol": "s3", "server": "http://s3.example.com", "bucket": "images", "key": "proj/images/test.tif"}
-    request = FileObjectRequest.from_file_object(stored)
+    request = FileObjectRequest.from_file_object(stored, "checksum")
     request.apply_defaults(StorageDefault(key_prefix="proj"))
     assert request.key == "/proj/images/test.tif"
+
+
+def test_checksum_only_request_can_apply_defaults_without_key():
+    request = FileObjectRequest(hash="checksum")
+    request.apply_defaults(StorageDefault(protocol="s3", bucket="images", key_prefix="project"))
+    assert request.key is None
+    assert request.hash == "checksum"

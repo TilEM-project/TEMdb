@@ -84,6 +84,46 @@ await client.specimen.update("S1", description="new")  # sends only description
 Passing both a model and keywords raises `TypeError`; a misspelled field raises a pydantic `ValidationError`
 before any request is sent.
 
+#### Image transfers
+
+File uploads compute a base64-encoded SHA-256 checksum in bounded chunks, then stream from the file's current
+position, unless a `hash` is supplied. The file remains caller-owned. Supply a key for a new image; omit it to
+reuse an existing location. Storage options are passed as keywords, not as a `FileObjectRequest`:
+Both `put_image()` and `open_image()` accept `protocol`, `server`, `bucket`, and `key` explicitly.
+An explicit bucket requires an absolute key (starting with `/`). These options apply to uploads;
+downloads use the image's stored location.
+
+```python
+with open("image.tif", "rb") as image:
+    await client.acquisition.put_image("ACQ001", "M001_r000_c000", image, key="tiles/image.tif")
+
+image_bytes = await client.acquisition.get_image("ACQ001", "M001_r000_c000")
+```
+
+Section images use the same helpers on `client.section`, with only the section ID.
+Downloads verify the checksum at EOF and raise `temdb.client.TEMdbChecksumError` on mismatch.
+Partial reads through `open_image(..., "rb")` do not verify the entire file until EOF is reached.
+
+For low-level URLs, pass `hash` to `put_image_url()`, or `image_hashes={tile_id: checksum, ...}` to
+`put_image_urls()` / `all_put_image_urls()`. Upload requests must send `x-amz-checksum-sha256` with the returned
+`hash`. Checksums are base64-encoded SHA-256 digests, not hexadecimal strings.
+
+Supplying a known checksum keeps writes streaming directly:
+
+```python
+async with client.section.open_image(
+    "SEC001", "post_dropoff_image", "wb", hash=known_checksum, size=total_bytes, expiration=600
+) as image:
+    await image.write(chunk)
+```
+
+You can omit `hash` from `open_image(..., "wb", size=...)`; the client then buffers writes in `BytesIO`,
+computes the checksum, and uploads only when the context exits successfully.
+**Warning: this is inefficient for large images.** It keeps the entire image in memory and adds a full hashing
+pass before upload. Supply a known `hash` to avoid buffering, or use `put_image()` on an existing file to limit
+memory use. `put_image_url()` still requires a hash because it has no image content to compute one from.
+Existing S3 objects need a stored SHA-256 checksum to be downloaded through these endpoints.
+
 ### temdb (`packages/temdb/`)
 
 FastAPI server backed by PostgreSQL and SQLAlchemy. Provides:

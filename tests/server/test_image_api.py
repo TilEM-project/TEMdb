@@ -73,6 +73,7 @@ async def _image_state(manager, target):
 def image_s3(monkeypatch):
     client = Mock()
     client.generate_presigned_url.return_value = "https://storage.example.com/signed"
+    client.head_object.return_value = {"ChecksumSHA256": "checksum"}
     factory = Mock(return_value=client)
     monkeypatch.setattr("boto3.client", factory)
 
@@ -94,7 +95,8 @@ async def test_image_upload_location_combinations(
     image = _location()
     await _set_image(test_db_manager, image_target, image if existing else None)
     before = await _image_state(test_db_manager, image_target)
-    body = {**image, "key": "/" + image["key"], "expiration": 600} if supplied else None
+    body = {**image, "key": "/" + image["key"], "expiration": 600} if supplied else {}
+    body["hash"] = "checksum"
 
     response = await async_client.post(image_target["path"], json=body)
 
@@ -119,7 +121,9 @@ async def test_image_upload_rejects_changed_location_without_updating_metadata(
     await _set_image(test_db_manager, image_target, _location())
     before = await _image_state(test_db_manager, image_target)
 
-    response = await async_client.post(image_target["path"], json=_location(key="/other.tif", expiration=600))
+    response = await async_client.post(
+        image_target["path"], json=_location(key="/other.tif", expiration=600, hash="checksum")
+    )
 
     assert response.status_code == 400, response.text
     assert await _image_state(test_db_manager, image_target) == before
@@ -129,14 +133,14 @@ async def test_image_upload_rejects_changed_location_without_updating_metadata(
 @pytest.mark.parametrize("slashes", [1, 3])
 async def test_image_upload_strips_leading_slashes(async_client, test_db_manager, image_target, image_s3, slashes):
     await _set_image(test_db_manager, image_target, None)
-    body = _location(key="/" * slashes + "images/test.tif", expiration=600)
+    body = _location(key="/" * slashes + "images/test.tif", expiration=600, hash="checksum")
 
     response = await async_client.post(image_target["path"], json=body)
 
     assert response.status_code == 200, response.text
     assert response.json()["key"] == "images/test.tif"
     image_s3[0].generate_presigned_url.assert_called_once_with(
-        "put_object", Params={"Bucket": "images", "Key": "images/test.tif"}, ExpiresIn=600
+        "put_object", Params={"Bucket": "images", "Key": "images/test.tif", "ChecksumSHA256": "checksum"}, ExpiresIn=600
     )
     assert (await _image_state(test_db_manager, image_target))[0] == _location()
 
@@ -159,7 +163,7 @@ async def test_image_upload_resolves_parent_and_server_defaults(
         await session.commit()
     monkeypatch.setattr(config, "default_storage", server if source != "parent" else None)
 
-    response = await async_client.post(image_target["path"], json={"key": "images/test.tif"})
+    response = await async_client.post(image_target["path"], json={"key": "images/test.tif", "hash": "checksum"})
 
     assert response.status_code == 200, response.text
     expected = _location(
@@ -189,7 +193,7 @@ async def test_image_operation_rejects_gcs(async_client, test_db_manager, image_
     image = _location(protocol="gcs")
     await _set_image(test_db_manager, image_target, None if method == "POST" else image)
     before = await _image_state(test_db_manager, image_target)
-    body = {**image, "key": "/" + image["key"], "expiration": 600} if method == "POST" else None
+    body = {**image, "key": "/" + image["key"], "expiration": 600, "hash": "checksum"} if method == "POST" else None
 
     response = await async_client.request(method, image_target["path"], json=body)
 
@@ -208,7 +212,7 @@ async def test_image_storage_error_preserves_metadata(
     getattr(image_s3[0], operation).side_effect = ClientError(
         {"Error": {"Code": "AccessDenied", "Message": "storage denied"}}, operation
     )
-    body = _location(key="/images/test.tif", expiration=600) if method == "POST" else None
+    body = _location(key="/images/test.tif", expiration=600, hash="checksum") if method == "POST" else None
 
     response = await async_client.request(method, image_target["path"], json=body)
 
@@ -220,7 +224,11 @@ async def test_image_storage_error_preserves_metadata(
     else:
         image_s3[0].generate_presigned_url.assert_called_once_with(
             "put_object" if method == "POST" else "get_object",
-            Params={"Bucket": "images", "Key": "images/test.tif"},
+            Params={
+                "Bucket": "images",
+                "Key": "images/test.tif",
+                **({"ChecksumSHA256": "checksum"} if method == "POST" else {}),
+            },
             ExpiresIn=600 if method == "POST" else 3600,
         )
 
@@ -247,10 +255,10 @@ async def test_reupload_keeps_prefixed_key(async_client, test_db_manager, image_
         "default_storage",
         StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images", key_prefix="proj"),
     )
-    first = await async_client.post(image_target["path"], json={"key": "images/test.tif"})
+    first = await async_client.post(image_target["path"], json={"key": "images/test.tif", "hash": "checksum"})
     assert first.status_code == 200, first.text
 
-    response = await async_client.post(image_target["path"])
+    response = await async_client.post(image_target["path"], json={"hash": "checksum"})
 
     assert response.status_code == 200, response.text
     assert response.json()["key"] == "proj/images/test.tif"
@@ -276,7 +284,7 @@ async def test_key_prefix_skips_leading_slash(
         StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images", key_prefix="proj"),
     )
 
-    response = await async_client.post(image_target["path"], json={"key": key})
+    response = await async_client.post(image_target["path"], json={"key": key, "hash": "checksum"})
 
     assert response.status_code == 200, response.text
     assert (await _image_state(test_db_manager, image_target))[0] == _location(key=stored)
@@ -288,7 +296,7 @@ async def test_missing_credentials_is_logged_500(async_client, test_db_manager, 
     before = await _image_state(test_db_manager, image_target)
     operation = "delete_object" if method == "DELETE" else "generate_presigned_url"
     getattr(image_s3[0], operation).side_effect = NoCredentialsError()
-    body = _location(key="/images/test.tif", expiration=600) if method == "POST" else None
+    body = _location(key="/images/test.tif", expiration=600, hash="checksum") if method == "POST" else None
 
     response = await async_client.request(method, image_target["path"], json=body)
 
@@ -314,7 +322,8 @@ async def test_section_upload_uses_own_specimen_block(async_client, test_db_mana
         await session.commit()
 
     response = await async_client.post(
-        f"/api/v2/sections/{test_section.section_id}/images/post_dropoff_image", json={"key": "a.tif"}
+        f"/api/v2/sections/{test_section.section_id}/images/post_dropoff_image",
+        json={"key": "a.tif", "hash": "checksum"},
     )
 
     assert response.status_code == 200, response.text
@@ -328,7 +337,7 @@ async def test_upload_empty_key_is_400(async_client, test_db_manager, image_targ
         config, "default_storage", StorageDefault(protocol="s3", server="http://storage.example.com", bucket="images")
     )
 
-    response = await async_client.post(image_target["path"], json={"key": key})
+    response = await async_client.post(image_target["path"], json={"key": key, "hash": "checksum"})
 
     assert response.status_code == 400, response.text
     image_s3[0].generate_presigned_url.assert_not_called()

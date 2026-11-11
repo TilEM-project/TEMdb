@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import io
 
 import pytest
@@ -5,31 +7,39 @@ import requests
 from minio.error import S3Error
 
 from temdb.client.resources.acquisition import DeletedImages
-from temdb.models import FileObjectRequest
 from tests.integration.client.records import tile_payload
 
 CONTENTS = b"integration image"
 
 
+def checksum(contents):
+    return base64.b64encode(hashlib.sha256(contents).digest()).decode("ascii")
+
+
 @pytest.fixture
 def image_location(minio_s3):
-    return FileObjectRequest(
-        protocol="s3", server=minio_s3["server"], bucket=minio_s3["bucket"], key="/image.tif", expiration=300
-    )
+    return {
+        "protocol": "s3",
+        "server": minio_s3["server"],
+        "bucket": minio_s3["bucket"],
+        "key": "/image.tif",
+        "expiration": 300,
+        "hash": checksum(CONTENTS),
+    }
 
 
 @pytest.fixture
 async def tile_image(client, records, image_location):
     await records.acquisition()
     tile = await client.acquisition.add_tile("A1", tile_payload(0))
-    await client.acquisition.put_image("A1", tile.tile_id, io.BytesIO(CONTENTS), image_location)
+    await client.acquisition.put_image("A1", tile.tile_id, io.BytesIO(CONTENTS), **image_location)
     return tile
 
 
 @pytest.fixture
 async def section_image(client, records, image_location, storage_client_manager):
     section = await records.section()
-    await client.section.put_image(section.section_id, "post_dropoff_image", io.BytesIO(CONTENTS), image_location)
+    await client.section.put_image(section.section_id, "post_dropoff_image", io.BytesIO(CONTENTS), **image_location)
     return section
 
 
@@ -42,8 +52,8 @@ def assert_object_missing(minio_s3):
 async def test_acquisition_put_image_url(client, records, image_location):
     await records.acquisition()
     tile = await client.acquisition.add_tile("A1", tile_payload(0))
-    result = await client.acquisition.put_image_url("A1", tile.tile_id, image_location)
-    assert requests.put(result.url, data=CONTENTS).status_code == 200
+    result = await client.acquisition.put_image_url("A1", tile.tile_id, **image_location)
+    assert requests.put(result.url, data=CONTENTS, headers={"x-amz-checksum-sha256": result.hash}).status_code == 200
     assert (await client.acquisition.get_tile("A1", tile.tile_id)).image.key == "image.tif"
 
 
@@ -63,16 +73,28 @@ async def test_acquisition_put_image(client, tile_image, minio_s3, tmp_path):
 
 
 async def test_acquisition_put_image_urls(client, tile_image):
-    result = await client.acquisition.put_image_urls("A1", [tile_image.tile_id], expiration=300)
+    result = await client.acquisition.put_image_urls(
+        "A1", {tile_image.tile_id: checksum(b"bulk upload")}, expiration=300
+    )
     assert set(result.urls) == {tile_image.tile_id}
-    assert requests.put(result.urls[tile_image.tile_id].url, data=b"bulk upload").status_code == 200
+    location = result.urls[tile_image.tile_id]
+    assert (
+        requests.put(location.url, data=b"bulk upload", headers={"x-amz-checksum-sha256": location.hash}).status_code
+        == 200
+    )
 
 
 async def test_acquisition_all_put_image_urls(client, tile_image):
-    result = await client.acquisition.all_put_image_urls("A1", [tile_image.tile_id], expiration=300)
+    result = await client.acquisition.all_put_image_urls(
+        "A1", {tile_image.tile_id: checksum(b"bulk upload")}, expiration=300
+    )
     assert set(result.urls) == {tile_image.tile_id}
     assert result.errors == {}
-    assert requests.put(result.urls[tile_image.tile_id].url, data=b"bulk upload").status_code == 200
+    location = result.urls[tile_image.tile_id]
+    assert (
+        requests.put(location.url, data=b"bulk upload", headers={"x-amz-checksum-sha256": location.hash}).status_code
+        == 200
+    )
 
 
 async def test_acquisition_get_image_url(client, tile_image):
@@ -86,9 +108,12 @@ async def test_acquisition_get_image(client, tile_image):
 
 
 @pytest.mark.parametrize("size", [0, 11, 3 * 1024 * 1024 + 7])
-async def test_acquisition_open_image(client, tile_image, size):
+@pytest.mark.parametrize("supply_hash", [False, True])
+async def test_acquisition_open_image(client, tile_image, size, supply_hash):
     contents = b"x" * size
-    async with client.acquisition.open_image("A1", tile_image.tile_id, "wb", size=size) as image:
+    async with client.acquisition.open_image(
+        "A1", tile_image.tile_id, "wb", hash=checksum(contents) if supply_hash else None, size=size
+    ) as image:
         await image.write(contents[:5])
         await image.write(contents[5:])
     async with client.acquisition.open_image("A1", tile_image.tile_id, "rb") as image:
@@ -136,8 +161,8 @@ async def test_acquisition_delete_all_images(client, tile_image, minio_s3):
 
 async def test_section_put_image_url(client, records, image_location, storage_client_manager):
     section = await records.section()
-    result = await client.section.put_image_url(section.section_id, "post_dropoff_image", image_location)
-    assert requests.put(result.url, data=CONTENTS).status_code == 200
+    result = await client.section.put_image_url(section.section_id, "post_dropoff_image", **image_location)
+    assert requests.put(result.url, data=CONTENTS, headers={"x-amz-checksum-sha256": result.hash}).status_code == 200
     assert (await client.section.get(section.section_id)).optical_images.post_dropoff_image.key == "image.tif"
 
 
@@ -158,8 +183,15 @@ async def test_section_get_image(client, section_image):
     assert image == CONTENTS
 
 
-async def test_section_open_image(client, section_image):
-    async with client.section.open_image(section_image.section_id, "post_dropoff_image", "wb", size=11) as image:
+@pytest.mark.parametrize("supply_hash", [False, True])
+async def test_section_open_image(client, section_image, supply_hash):
+    async with client.section.open_image(
+        section_image.section_id,
+        "post_dropoff_image",
+        "wb",
+        hash=checksum(b"firstsecond") if supply_hash else None,
+        size=11,
+    ) as image:
         await image.write(b"first")
         await image.write(b"second")
     async with client.section.open_image(section_image.section_id, "post_dropoff_image", "rb") as image:
@@ -171,3 +203,20 @@ async def test_section_delete_image(client, section_image, minio_s3):
     await client.section.delete_image(section_image.section_id, "post_dropoff_image")
     assert (await client.section.get(section_image.section_id)).optical_images is None
     assert_object_missing(minio_s3)
+
+
+@pytest.mark.parametrize("resource", ["acquisition", "section"])
+async def test_buffered_write_body_failure_does_not_request_url(client, resource):
+    args = ("A1", "tile") if resource == "acquisition" else ("SEC001", "post_dropoff_image")
+    with pytest.raises(ValueError, match="interrupted"):
+        async with getattr(client, resource).open_image(*args, "wb", size=11):
+            raise ValueError("interrupted")
+
+
+async def test_presigned_upload_rejects_corrupted_contents(client, records, image_location):
+    await records.acquisition()
+    tile = await client.acquisition.add_tile("A1", tile_payload(0))
+    location = await client.acquisition.put_image_url("A1", tile.tile_id, **image_location)
+    response = requests.put(location.url, data=b"corrupted", headers={"x-amz-checksum-sha256": location.hash})
+    assert response.status_code == 400
+    assert "XAmzContentChecksumMismatch" in response.text

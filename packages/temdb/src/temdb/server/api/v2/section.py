@@ -477,20 +477,15 @@ async def list_sections_by_media(
 async def image_put_url(
     section_id: str,
     name: SectionImage,
-    storage_location: FileObjectRequest | None = Body(None, description="Storage location details for the image"),
+    storage_location: FileObjectRequest = Body(..., description="Storage location details for the image"),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager=Depends(get_storage_client_manager),
 ):
     """Generate a pre-signed URL for uploading one image of a section."""
     section_obj = await _section_for_update(session, section_id)
     stored = (section_obj.optical_images or {}).get(name.value)
-    if storage_location is None and stored is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Storage location must be provided.",
-        )
-    if storage_location is None:
-        storage_location = FileObjectRequest.from_file_object(stored)
+    if not storage_location.complete and stored is not None:
+        storage_location = storage_client_manager.apply_file_object(storage_location, stored)
     if not storage_location.complete:
         block_default = await session.scalar(
             select(BlockSQLModel.default_storage).where(

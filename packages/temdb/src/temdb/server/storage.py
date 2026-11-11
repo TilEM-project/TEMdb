@@ -61,21 +61,45 @@ class S3StorageClient(StorageClient):
                 status_code=500,
                 detail="Failed to generate presigned URL for GET",
             )
+        try:
+            metadata = self._client.head_object(
+                Bucket=storage_location.bucket, Key=storage_location.key, ChecksumMode="ENABLED"
+            )
+        except (ClientError, BotoCoreError) as e:
+            logger.error("Failed to retrieve object hash from S3: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to retrieve object hash from S3",
+            )
+        hash = metadata.get("ChecksumSHA256")
+        if not hash:
+            logger.error(
+                "ChecksumSHA256 not found in S3 object metadata for %s/%s",
+                storage_location.bucket,
+                storage_location.key,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="SHA 256 hash not in S3 object metadata",
+            )
         return FileObjectResponse(
             url=presigned_url,
             expiration=expiration,
-            **storage_location.model_dump(exclude={"expiration"}),
+            **storage_location.model_dump(include=set(FileObject.model_fields)),
+            hash=hash,
         )
 
     def put_url(self, storage_location: FileObjectRequest) -> FileObjectResponse:
+        expiration = storage_location.expiration or 3600
         try:
             presigned_url = self._client.generate_presigned_url(
                 "put_object",
                 Params={
                     "Bucket": storage_location.bucket,
                     "Key": storage_location.key,
+                    "ChecksumSHA256": storage_location.hash,
                 },
-                ExpiresIn=storage_location.expiration or 3600,
+                ExpiresIn=expiration,
             )
         except (ClientError, BotoCoreError) as e:
             logger.error("Failed to generate presigned URL for PUT: %s", e)
@@ -85,7 +109,7 @@ class S3StorageClient(StorageClient):
             )
         return FileObjectResponse(
             url=presigned_url,
-            expiration=storage_location.expiration or 3600,
+            expiration=expiration,
             **storage_location.model_dump(exclude={"expiration"}),
         )
 
@@ -180,4 +204,21 @@ class StorageClientManager:
                 status_code=400,
                 detail="Storage key must not be empty.",
             )
+        return storage_location
+
+    @staticmethod
+    def apply_file_object(
+        storage_location: FileObjectRequest, file_object: FileObject | dict | None
+    ) -> FileObjectRequest:
+        if file_object is None:
+            return storage_location
+        if isinstance(file_object, dict):
+            file_object = FileObject.model_validate(file_object)
+        if storage_location.protocol is None:
+            storage_location.protocol = file_object.protocol
+            storage_location.server = file_object.server
+        if storage_location.bucket is None:
+            storage_location.bucket = file_object.bucket
+        if storage_location.key is None:
+            storage_location.key = f"/{file_object.key.lstrip('/')}"
         return storage_location
