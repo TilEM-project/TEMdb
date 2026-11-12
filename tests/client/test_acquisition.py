@@ -265,12 +265,13 @@ async def test_tile_bulk_image_urls_use_json_body_and_return_mapping(image_resou
     kwargs = {"image_hashes" if operation == "put" else "tile_ids": body}
     result = await method("ACQ001", **kwargs, expiration=300)
 
-    request.assert_awaited_once_with(
-        "POST" if operation == "put" else "GET",
-        "acquisitions/ACQ001/tiles/images",
-        json=body,
-        params={"limit": 100, "expiration": 300},
-    )
+    endpoint, params = "acquisitions/ACQ001/tiles/images", {"limit": 100, "expiration": 300}
+    if operation == "put":
+        request.assert_awaited_once_with("POST", endpoint, json=body, params=params)
+    elif tile_ids is None:
+        request.assert_awaited_once_with("GET", endpoint, params=params)
+    else:
+        request.assert_awaited_once_with("POST", f"{endpoint}/urls", json=tile_ids, params=params)
     assert result == ImageURLPage(
         urls={"tile": FileObjectResponse.model_validate(_image_response())},
         metadata=ImagePageMetadata(**_page_metadata()),
@@ -321,8 +322,8 @@ async def test_all_get_image_urls_follows_pages_and_aggregates_errors(image_reso
 
     result = await resource.all_get_image_urls("ACQ001", tile_ids=tile_ids, expiration=300, page_limit=1)
 
-    endpoint = "acquisitions/ACQ001/tiles/images"
-    assert [call.args[:2] for call in request.await_args_list] == [("GET", endpoint), ("GET", endpoint)]
+    endpoint = "acquisitions/ACQ001/tiles/images/urls"
+    assert [call.args[:2] for call in request.await_args_list] == [("POST", endpoint), ("POST", endpoint)]
     assert [call.kwargs for call in request.await_args_list] == [
         {"json": tile_ids, "params": {"limit": 1, "expiration": 300}},
         {"json": tile_ids, "params": {"cursor": "0,0,0", "limit": 1, "expiration": 300}},

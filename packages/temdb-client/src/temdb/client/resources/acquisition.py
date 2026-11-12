@@ -423,7 +423,9 @@ class AcquisitionResource(BaseResource):
             params["cursor"] = cursor
         if expiration is not None:
             params["expiration"] = expiration
-        return ImageURLPage.model_validate(await self._get(endpoint, json=tile_ids, params=params))
+        if tile_ids is None:
+            return ImageURLPage.model_validate(await self._get(endpoint, params=params))
+        return ImageURLPage.model_validate(await self._post(f"{endpoint}/urls", tile_ids, params=params))
 
     async def all_get_image_urls(
         self,
