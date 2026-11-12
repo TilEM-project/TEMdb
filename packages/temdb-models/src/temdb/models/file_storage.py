@@ -10,7 +10,7 @@ class FileObject(TEMDBModel):
     protocol: StorageProtocol = Field(
         ..., description="Storage protocol used for the file, or None to use the default."
     )
-    server: str = Field(..., description="Server address or None for protocol default.")
+    server: str | None = Field(None, description="Server address or None for protocol default.")
     bucket: str = Field(..., description="Bucket where the file is stored.")
     key: str = Field(..., description="Key to the file within the bucket.")
 

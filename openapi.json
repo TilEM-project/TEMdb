@@ -2830,14 +2830,20 @@
             "description": "Storage protocol used for the file, or None to use the default."
           },
           "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Server address or None for protocol default.",
-            "title": "Server",
-            "type": "string"
+            "title": "Server"
           }
         },
         "required": [
           "protocol",
-          "server",
           "bucket",
           "key"
         ],
@@ -2946,9 +2952,16 @@
             "description": "Storage protocol used for the file, or None to use the default."
           },
           "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Server address or None for protocol default.",
-            "title": "Server",
-            "type": "string"
+            "title": "Server"
           },
           "url": {
             "description": "Presigned URL to upload or download the file.",
@@ -2958,7 +2971,6 @@
         },
         "required": [
           "protocol",
-          "server",
           "bucket",
           "key",
           "url",

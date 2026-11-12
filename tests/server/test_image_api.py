@@ -176,6 +176,24 @@ async def test_image_upload_resolves_parent_and_server_defaults(
     image_s3[1].assert_called_once_with("s3", endpoint_url=expected["server"])
 
 
+async def test_image_round_trip_with_default_storage_without_server(
+    async_client, test_db_manager, image_target, image_s3, monkeypatch
+):
+    await _set_image(test_db_manager, image_target, None)
+    monkeypatch.setattr(config, "default_storage", StorageDefault(protocol="s3", bucket="images", expiration=900))
+
+    put = await async_client.post(image_target["path"], json={"key": "images/test.tif", "hash": "checksum"})
+    get = await async_client.get(image_target["path"])
+
+    assert put.status_code == 200, put.text
+    assert get.status_code == 200, get.text
+    expected = _location(server=None)
+    assert {key: put.json()[key] for key in expected} == expected
+    assert {key: get.json()[key] for key in expected} == expected
+    assert (await _image_state(test_db_manager, image_target))[0] == expected
+    image_s3[1].assert_called_once_with("s3", endpoint_url=None)
+
+
 @pytest.mark.parametrize("method", ["GET", "DELETE"])
 async def test_image_operation_without_metadata_returns_404(
     async_client, test_db_manager, image_target, image_s3, method
