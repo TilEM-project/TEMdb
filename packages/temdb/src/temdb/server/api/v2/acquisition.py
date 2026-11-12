@@ -808,14 +808,38 @@ async def image_get_urls(
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
     cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
     limit: int = Query(100, ge=1, le=1000),
-    tile_ids: list[str] | None = Body(None),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
 ):
-    """Generate presigned PUT URLs for tiles in an acquisition.
+    """Generate presigned GET URLs for every tile image in an acquisition."""
+    return await _image_get_url_page(acquisition_id, None, expiration, cursor, limit, session, storage_client_manager)
 
-    The tile_id list is optional; if omitted, all tiles in the acquisition are returned.
-    """
+
+@acquisition_api.post("/acquisitions/{acquisition_id}/tiles/images/urls", response_model=dict[str, Any])
+async def image_get_urls_for_tiles(
+    acquisition_id: str,
+    expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    limit: int = Query(100, ge=1, le=1000),
+    tile_ids: list[str] = Body(..., description="The tiles to generate presigned GET URLs for"),
+    session: AsyncSession = Depends(get_async_session),
+    storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
+):
+    """Generate presigned GET URLs for the listed tile images in an acquisition."""
+    return await _image_get_url_page(
+        acquisition_id, tile_ids, expiration, cursor, limit, session, storage_client_manager
+    )
+
+
+async def _image_get_url_page(
+    acquisition_id: str,
+    tile_ids: list[str] | None,
+    expiration: int | None,
+    cursor: str | None,
+    limit: int,
+    session: AsyncSession,
+    storage_client_manager: StorageClientManager,
+) -> dict[str, Any]:
     acquisition = await session.scalars(
         select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_id == acquisition_id)
     )

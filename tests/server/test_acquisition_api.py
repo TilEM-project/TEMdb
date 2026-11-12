@@ -1722,7 +1722,9 @@ async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
         if method == "POST"
         else selected
     )
-    response = await async_client.request(method, path, json=request_body, params={"expiration": 300})
+    response = await async_client.request(
+        *_bulk_route(method, path, selected), json=request_body, params={"expiration": 300}
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -1814,14 +1816,13 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
             server, operation, Params, ExpiresIn
         )
         client.delete_object.side_effect = delete_object
-    factory = Mock(side_effect=lambda service, endpoint_url: clients[endpoint_url])
+    factory = Mock(side_effect=lambda service, endpoint_url, config: clients[endpoint_url])
     monkeypatch.setattr("boto3.client", factory)
     selected = tile_ids[:3] if select_subset else None
     requested = tile_ids[:3] if select_subset else tile_ids
 
     response = await async_client.request(
-        method,
-        f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
+        *_bulk_route(method, f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images", selected),
         json={tile_id: _checksum(b"image") for tile_id in requested} if method == "POST" else selected,
         params={"expiration": 300},
     )
@@ -1952,6 +1953,25 @@ async def test_tile_deletion_preserves_tiles_with_images(
         )
         assert tile is not None
         assert tile.image == test_tile.image
+
+
+def _bulk_route(method, path, tile_ids):
+    if method == "GET" and tile_ids is not None:
+        return "POST", f"{path}/urls"
+    return method, path
+
+
+async def test_bulk_get_urls_ignores_a_get_body(async_client, test_db_manager, test_acquisition, minio_s3):
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 2)
+    for tile_id in tile_ids:
+        await _store_tile_image(test_db_manager, minio_s3, tile_id)
+
+    response = await async_client.request(
+        "GET", f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images", json=tile_ids[:1]
+    )
+
+    assert response.status_code == 200, response.text
+    assert set(response.json()["urls"]) == set(tile_ids)
 
 
 async def _seed_image_tiles(

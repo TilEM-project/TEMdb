@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -173,7 +173,7 @@ async def test_image_upload_resolves_parent_and_server_defaults(
     assert {key: response.json()[key] for key in expected} == expected
     assert response.json()["expiration"] == (600 if source == "parent" else 900)
     assert (await _image_state(test_db_manager, image_target))[0] == expected
-    image_s3[1].assert_called_once_with("s3", endpoint_url=expected["server"])
+    image_s3[1].assert_called_once_with("s3", endpoint_url=expected["server"], config=ANY)
 
 
 async def test_image_round_trip_with_default_storage_without_server(
@@ -191,7 +191,7 @@ async def test_image_round_trip_with_default_storage_without_server(
     assert {key: put.json()[key] for key in expected} == expected
     assert {key: get.json()[key] for key in expected} == expected
     assert (await _image_state(test_db_manager, image_target))[0] == expected
-    image_s3[1].assert_called_once_with("s3", endpoint_url=None)
+    image_s3[1].assert_called_once_with("s3", endpoint_url=None, config=ANY)
 
 
 @pytest.mark.parametrize("method", ["GET", "DELETE"])
