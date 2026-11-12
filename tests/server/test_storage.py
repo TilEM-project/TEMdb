@@ -1,4 +1,5 @@
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from botocore.exceptions import ClientError, InvalidRegionError
@@ -39,7 +40,7 @@ async def test_manager_routes_s3_operations(storage_client_manager, s3, location
         client.delete_object.assert_called_once_with(Bucket="images", Key="image.tif")
         return
 
-    factory.assert_called_once_with("s3", endpoint_url=location.server)
+    factory.assert_called_once_with("s3", endpoint_url=location.server, config=ANY)
     client.generate_presigned_url.assert_called_once_with(
         "put_object" if operation == "put_url" else "get_object",
         Params={
@@ -55,6 +56,21 @@ async def test_manager_routes_s3_operations(storage_client_manager, s3, location
     assert response.hash == "checksum"
     if operation == "get_url":
         client.head_object.assert_called_once_with(Bucket="images", Key="image.tif", ChecksumMode="ENABLED")
+
+
+@pytest.mark.parametrize("server", [None, "https://storage.example.com"])
+async def test_put_url_signs_the_checksum_header(storage_client_manager, monkeypatch, server):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-west-2")
+    request = FileObjectRequest(protocol="s3", server=server, bucket="images", key="/image.tif", hash="checksum")
+    storage_client_manager.finalize(request)
+
+    response = await storage_client_manager.put_url(request)
+
+    query = parse_qs(urlsplit(response.url).query)
+    assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
+    assert "x-amz-checksum-sha256" in query["X-Amz-SignedHeaders"][0].split(";")
 
 
 @pytest.mark.parametrize("operation", ["put_url", "get_url", "delete"])
