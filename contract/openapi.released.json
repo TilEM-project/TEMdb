@@ -2831,14 +2831,20 @@
               "description": "Storage protocol used for the file, or None to use the default."
             },
             "server": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "Server address or None for protocol default.",
-              "title": "Server",
-              "type": "string"
+              "title": "Server"
             }
           },
           "required": [
             "protocol",
-            "server",
             "bucket",
             "key"
           ],
@@ -2947,9 +2953,16 @@
               "description": "Storage protocol used for the file, or None to use the default."
             },
             "server": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "Server address or None for protocol default.",
-              "title": "Server",
-              "type": "string"
+              "title": "Server"
             },
             "url": {
               "description": "Presigned URL to upload or download the file.",
@@ -2959,7 +2972,6 @@
           },
           "required": [
             "protocol",
-            "server",
             "bucket",
             "key",
             "url",
@@ -7158,7 +7170,7 @@
     },
     "info": {
       "title": "TEMDB",
-      "version": "4.0.0rc1"
+      "version": "4.0.0rc2"
     },
     "openapi": "3.1.0",
     "paths": {
@@ -9562,7 +9574,7 @@
           ]
         },
         "get": {
-          "description": "Generate presigned PUT URLs for tiles in an acquisition.\n\nThe tile_id list is optional; if omitted, all tiles in the acquisition are returned.",
+          "description": "Generate presigned GET URLs for every tile image in an acquisition.",
           "operationId": "image_get_urls_api_v2_acquisitions__acquisition_id__tiles_images_get",
           "parameters": [
             {
@@ -9624,26 +9636,6 @@
               }
             }
           ],
-          "requestBody": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Tile Ids"
-                }
-              }
-            }
-          },
           "responses": {
             "200": {
               "content": {
@@ -9836,6 +9828,145 @@
             }
           },
           "summary": "Image Put Urls",
+          "tags": [
+            "Acquisitions"
+          ]
+        }
+      },
+      "/api/v2/acquisitions/{acquisition_id}/tiles/images/urls": {
+        "post": {
+          "description": "Generate presigned GET URLs for the listed tile images in an acquisition.",
+          "operationId": "image_get_urls_for_tiles_api_v2_acquisitions__acquisition_id__tiles_images_urls_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "acquisition_id",
+              "required": true,
+              "schema": {
+                "title": "Acquisition Id",
+                "type": "string"
+              }
+            },
+            {
+              "description": "Expiration time in seconds for the presigned URL",
+              "in": "query",
+              "name": "expiration",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": 3600,
+                "description": "Expiration time in seconds for the presigned URL",
+                "title": "Expiration"
+              }
+            },
+            {
+              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page, as 'row,col,retake'",
+                "title": "Cursor"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The tiles to generate presigned GET URLs for",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Tile Ids",
+                  "type": "array"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Image Get Urls For Tiles Api V2 Acquisitions  Acquisition Id  Tiles Images Urls Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/APIErrorResponse"
+                  }
+                }
+              },
+              "description": "Bad Request"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/APIErrorResponse"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/APIErrorResponse"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Image Get Urls For Tiles",
           "tags": [
             "Acquisitions"
           ]
@@ -17573,5 +17704,5 @@
       }
     }
   },
-  "version": "4.0.0rc1"
+  "version": "4.0.0rc2"
 }
