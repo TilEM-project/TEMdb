@@ -75,6 +75,17 @@ class TestCalibration:
         with pytest.raises(ValidationError):
             Calibration()
 
+    def test_placement_fields_are_optional(self):
+        """The flips and the stage unit can be left out, and are kept when sent."""
+        assert Calibration(pixel_size=4.0, rotation_angle=0.5).flip_x is None
+        placed = Calibration(pixel_size=4.0, rotation_angle=0.5, flip_x=True, flip_y=False, stage_position_unit="nm")
+        assert (placed.flip_x, placed.flip_y, placed.stage_position_unit) == (True, False, "nm")
+
+    def test_stage_unit_other_than_nm_is_refused(self):
+        """Stage positions are stored in nm, so no other unit can be declared."""
+        with pytest.raises(ValidationError):
+            Calibration(pixel_size=4.0, rotation_angle=0.5, stage_position_unit="um")
+
 
 class TestStorageLocation:
     def test_valid_storage_location(self):

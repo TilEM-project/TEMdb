@@ -44,7 +44,6 @@ class TileBase(TEMDBModel):
     max_value: float | None = Field(None, description="Maximum pixel value of the tile")
     mean_value: float | None = Field(None, description="Mean pixel value of the tile")
     std_value: float | None = Field(None, description="Standard deviation of pixel values of the tile")
-    image: FileObject | None = Field(None, description="The tile image")
     matcher: list[Matcher] | None = Field(None, description="List of matchers for the tile")
     supertile_id: str | None = Field(None, description="ID of the supertile the tile belongs to")
     supertile_raster_position: RasterPosition | None = Field(
@@ -54,6 +53,7 @@ class TileBase(TEMDBModel):
 
 class TileCreate(TileBase):
     raster_index: int = Field(..., description="Index of the tile in the raster")
+    image: FileObject | None = Field(None, description="The tile image")
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")
     raster_position: RasterPosition = Field(..., description="Row, column raster position of the tile")
     retake: int = Field(0, ge=0, le=32767, description="Capture number at this position within the run; 0 is the first")
@@ -67,6 +67,7 @@ class TileResponse(TileBase):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     tile_id: str = Field(..., description="{montage_id}_r{row:03d}_c{col:03d}, plus _a{retake} for a retake")
+    image: FileObject | None = Field(None, description="The tile image")
     acquisition_id: str = Field(..., description="Parent acquisition ID")
     raster_index: int = Field(..., description="Index of the tile in the raster")
     stage_position: StagePosition = Field(..., description="Stage position of the tile in stage coordinates in nm")

@@ -104,7 +104,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "hardware_settings": {
@@ -576,7 +576,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "failed_tile_count": {
@@ -888,7 +888,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "kind": {
@@ -1035,7 +1035,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -1202,7 +1202,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "kind": {
@@ -1347,7 +1347,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "failed_tile_count": {
@@ -1660,7 +1660,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "microCT_info": {
@@ -1741,7 +1741,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -1823,7 +1823,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "microCT_info": {
@@ -1882,6 +1882,30 @@
             "description": "Aperture centroid in stage coordinates in nm",
             "title": "Aperture Centroid"
           },
+          "flip_x": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the tile grid is mirrored in stage x",
+            "title": "Flip X"
+          },
+          "flip_y": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the tile grid is mirrored in stage y",
+            "title": "Flip Y"
+          },
           "lens_model": {
             "anyOf": [
               {
@@ -1902,6 +1926,19 @@
             "description": "Rotation angle in degrees",
             "title": "Rotation Angle",
             "type": "number"
+          },
+          "stage_position_unit": {
+            "anyOf": [
+              {
+                "const": "nm",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unit of the tiles' stage positions",
+            "title": "Stage Position Unit"
           }
         },
         "required": [
@@ -2068,7 +2105,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "knife_id": {
@@ -2182,7 +2219,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -2291,7 +2328,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "knife_id": {
@@ -2405,7 +2442,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "metadata_json": {
@@ -2565,7 +2602,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "metadata_json": {
@@ -2697,7 +2734,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "metadata_json": {
@@ -3147,7 +3184,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "lc_id": {
@@ -3305,7 +3342,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "lc_id": {
@@ -3432,7 +3469,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "shared_transform": {
@@ -3628,7 +3665,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "location": {
@@ -3702,7 +3739,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -3791,7 +3828,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "location": {
@@ -3937,7 +3974,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "parent_created_at": {
@@ -4437,7 +4474,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -4530,7 +4567,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "payload": {
@@ -4876,7 +4913,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "media_id": {
@@ -5266,7 +5303,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -5434,7 +5471,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "optical_images": {
@@ -5738,7 +5775,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "functional_imaging_metadata": {
@@ -5802,7 +5839,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "functional_imaging_metadata": {
@@ -5872,7 +5909,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "functional_imaging_metadata": {
@@ -6117,7 +6154,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "media_id": {
@@ -6180,7 +6217,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "fiducials": {
@@ -6267,7 +6304,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "fiducials": {
@@ -6355,7 +6392,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "fiducials": {
@@ -6426,7 +6463,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "id": {
@@ -6507,7 +6544,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+            "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
             "title": "Extra"
           },
           "media_id": {
@@ -6980,17 +7017,6 @@
             ],
             "description": "Focus score of the tile",
             "title": "Focus Score"
-          },
-          "image": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FileObject"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The tile image"
           },
           "matcher": {
             "anyOf": [

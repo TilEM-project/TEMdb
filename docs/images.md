@@ -18,34 +18,38 @@ request.
 
 ### Uploading
 
-Pass a storage location with the first upload. A key with a leading slash is used as written:
+Pass the storage location as keyword arguments with the first upload. A key with a leading slash is used as written.
+The client computes the file's SHA-256 checksum, which storage checks on upload:
 
 ```python
 import asyncio
 
 from temdb.client import TEMdbClient
-from temdb.models import FileObjectRequest, SectionImage
+from temdb.models import SectionImage
 
 
 async def main():
-    location = FileObjectRequest(
-        protocol="s3",
-        server="https://s3.us-west-2.amazonaws.com",
-        bucket="my-bucket",
-        key="/001134/00113400_qc.jpeg",
-    )
     async with TEMdbClient("http://temdb.example.com") as client:
         with open("00113400_qc.jpeg", "rb") as image:
-            await client.section.put_image(section_id, SectionImage.QC, image, location)
+            await client.section.put_image(
+                section_id,
+                SectionImage.QC,
+                image,
+                protocol="s3",
+                server="https://s3.us-west-2.amazonaws.com",
+                bucket="my-bucket",
+                key="/001134/00113400_qc.jpeg",
+            )
 
 
 asyncio.run(main())
 ```
 
-If the block has a `default_storage`, or the server has a default, a key is enough:
+If the block has a `default_storage`, or the server has a default, a key is enough. It is placed under the default's
+key prefix:
 
 ```python
-location = FileObjectRequest(key="001134/00113400_qc.jpeg")
+await client.section.put_image(section_id, SectionImage.QC, image, key="001134/00113400_qc.jpeg")
 ```
 
 To replace a stored image, delete it first. Uploading to a different location, or changing or clearing an image
@@ -59,6 +63,9 @@ image = await client.section.get_image(section_id, SectionImage.QC)
 url = await client.section.get_image_url(section_id, SectionImage.QC, expiration=300)
 print(url.url)
 ```
+
+Both raise `TEMdbConflictError` for an image that was not uploaded through TEMdb, because its file has no SHA-256
+checksum in storage, and `TEMdbNotFoundError` when the file is not in storage.
 
 ### Deleting
 
@@ -76,7 +83,7 @@ A tile holds one image. The tile methods take the acquisition and tile ids inste
 
 ```python
 with open("tile.tif", "rb") as image:
-    await client.acquisition.put_image(acquisition_id, tile_id, image, location)
+    await client.acquisition.put_image(acquisition_id, tile_id, image, key="tiles/tile.tif")
 
 image = await client.acquisition.get_image(acquisition_id, tile_id)
 ```

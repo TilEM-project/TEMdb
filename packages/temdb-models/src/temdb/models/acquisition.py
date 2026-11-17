@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, field_validator
 from pydantic_core import PydanticCustomError
@@ -28,6 +28,9 @@ class LensCorrectionModel(TEMDBModel):
 class Calibration(TEMDBModel):
     pixel_size: float = Field(..., description="Pixel size in nm")
     rotation_angle: float = Field(..., description="Rotation angle in degrees")
+    flip_x: bool | None = Field(None, description="Whether the tile grid is mirrored in stage x")
+    flip_y: bool | None = Field(None, description="Whether the tile grid is mirrored in stage y")
+    stage_position_unit: Literal["nm"] | None = Field(None, description="Unit of the tiles' stage positions")
     lens_model: LensCorrectionModel | None = Field(None, description="Lens correction model")
     aperture_centroid: list[float] | None = Field(None, description="Aperture centroid in stage coordinates in nm")
 
