@@ -16,10 +16,9 @@ class MicroscopeResource(BaseResource):
         """Get a microscope by its microscope_id."""
         return MicroscopeResponse.model_validate(await self._get(f"microscopes/{microscope_id}"))
 
-    async def list(self, skip: int = 0, limit: int = 50) -> list[MicroscopeResponse]:
+    async def list(self, skip: int | None = None, limit: int | None = None) -> list[MicroscopeResponse]:
         """List microscopes."""
-        data = await self._get("microscopes", params={"skip": skip, "limit": limit})
-        return [MicroscopeResponse.model_validate(i) for i in data] if isinstance(data, list) else []
+        return await self._list("microscopes", MicroscopeResponse, {}, skip=skip, limit=limit)
 
     @accepts_keywords(MicroscopeUpdate)
     async def update(self, microscope_id: str, data: MicroscopeUpdate) -> MicroscopeResponse:

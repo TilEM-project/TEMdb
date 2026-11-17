@@ -12,9 +12,11 @@ from .exceptions import (
     TEMdbServerError,
     TEMdbUnprocessableError,
 )
+from .resources.base import Page
 
 __all__ = [
     "TEMdbClient",
+    "Page",
     "TEMdbError",
     "TEMdbClientError",
     "TEMdbChecksumError",

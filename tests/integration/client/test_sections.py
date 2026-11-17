@@ -1,8 +1,29 @@
-from datetime import datetime, timezone
+import inspect
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from temdb.client.exceptions import TEMdbNotFoundError
+from temdb.client.resources.base import BaseResource
+
+PAGE = inspect.signature(BaseResource._list).parameters["page_size"].default
+
+
+async def test_section_list_by_media_returns_more_than_one_page(client, records):
+    await records.cutting_session()
+    await records.substrate()
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for minute in range(PAGE + 5):
+        await client.section.create(
+            timestamp=start + timedelta(minutes=minute), cutting_session_id="CS1", media_id="M1"
+        )
+
+    everything = await client.section.list_by_media("M1")
+    first_page = await client.section.list_by_media("M1", limit=PAGE)
+
+    assert len(everything) == PAGE + 5
+    assert len({section.section_id for section in everything}) == PAGE + 5
+    assert len(first_page) == PAGE and first_page.has_more is True
 
 
 async def test_section_create(client, records):

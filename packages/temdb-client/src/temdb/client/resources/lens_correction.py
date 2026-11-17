@@ -29,14 +29,13 @@ class LensCorrectionResource(BaseResource):
         self,
         microscope_id: str | None = None,
         magnification: int | None = None,
-        skip: int = 0,
-        limit: int = 50,
+        skip: int | None = None,
+        limit: int | None = None,
     ) -> list[LensCorrectionResponse]:
         """List lens corrections, newest-first, optionally filtered."""
-        params = {"microscope_id": microscope_id, "magnification": magnification, "skip": skip, "limit": limit}
+        params = {"microscope_id": microscope_id, "magnification": magnification}
         params = {k: v for k, v in params.items() if v is not None}
-        data = await self._get("lens-corrections", params=params)
-        return [LensCorrectionResponse.model_validate(i) for i in data] if isinstance(data, list) else []
+        return await self._list("lens-corrections", LensCorrectionResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(LensCorrectionUpdate)
     async def update(self, lc_id: str, data: LensCorrectionUpdate) -> LensCorrectionResponse:

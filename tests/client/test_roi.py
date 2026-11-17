@@ -60,7 +60,7 @@ async def test_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_list_by_section_uses_scoped_path():
     res, request = _resource()
-    request.return_value = [_roi_payload(), _roi_payload(roi_number=2, roi_id="SUB001.A0001.R002")]
+    request.return_value = ([_roi_payload(), _roi_payload(roi_number=2, roi_id="SUB001.A0001.R002")], {})
     out = await res.list_by_section("SEC001", limit=2)
     assert request.await_args.args[:2] == ("GET", "sections/SEC001/rois")
     assert request.await_args.kwargs["params"] == {"skip": 0, "limit": 2}

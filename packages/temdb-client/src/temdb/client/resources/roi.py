@@ -16,14 +16,12 @@ class ROIResource(BaseResource):
     """Resource class for interacting with ROI endpoints."""
 
     async def list_by_section(
-        self, section_id: str, skip: int = 0, limit: int = 100, **kwargs: Any
+        self, section_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
     ) -> list[ROIResponse]:
         """List ROIs associated with a specific section."""
         endpoint = f"sections/{section_id}/rois"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return [ROIResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        params = dict(kwargs)
+        return await self._list(endpoint, ROIResponse, params, skip=skip, limit=limit)
 
     async def list_all(
         self,
@@ -32,8 +30,8 @@ class ROIResource(BaseResource):
         cutting_session_id: str | None = None,
         section_id: str | None = None,
         is_parent_roi: bool | None = None,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> list[ROIResponse]:
         """List all ROIs, optionally filtering."""
@@ -44,13 +42,10 @@ class ROIResource(BaseResource):
             "cutting_session_id": cutting_session_id,
             "section_id": section_id,
             "is_parent_roi": is_parent_roi,
-            "skip": skip,
-            "limit": limit,
         }
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return [ROIResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        return await self._list(endpoint, ROIResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(ROICreate)
     async def create(self, roi_data: ROICreate) -> ROIResponse:

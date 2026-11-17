@@ -14,14 +14,10 @@ from .base import BaseResource, accepts_keywords
 class SpecimenResource(BaseResource):
     """Resource class for interacting with Specimen endpoints."""
 
-    async def list(self, skip: int = 0, limit: int = 100, **kwargs: Any) -> list[SpecimenResponse]:
+    async def list(self, skip: int | None = None, limit: int | None = None, **kwargs: Any) -> list[SpecimenResponse]:
         """List specimens with optional pagination."""
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get("specimens", params=params)
-        return (
-            [SpecimenResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        params = dict(kwargs)
+        return await self._list("specimens", SpecimenResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(SpecimenCreate)
     async def create(self, specimen_data: SpecimenCreate) -> SpecimenResponse:
@@ -45,9 +41,9 @@ class SpecimenResource(BaseResource):
         """Delete a specimen."""
         await self._delete(f"specimens/{specimen_id}")
 
-    async def list_blocks(self, specimen_id: str, skip: int = 0, limit: int = 100) -> builtins.list[BlockResponse]:
+    async def list_blocks(
+        self, specimen_id: str, skip: int | None = None, limit: int | None = None
+    ) -> builtins.list[BlockResponse]:
         """List blocks associated with a specific specimen."""
         endpoint = f"specimens/{specimen_id}/blocks"
-        params = {"skip": skip, "limit": limit}
-        response_data = await self._get(endpoint, params=params)
-        return [BlockResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        return await self._list(endpoint, BlockResponse, {}, skip=skip, limit=limit)

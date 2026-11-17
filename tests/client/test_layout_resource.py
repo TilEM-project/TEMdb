@@ -30,7 +30,7 @@ def _layout_payload(**extra):
 @pytest.mark.asyncio
 async def test_layout_list_filters_and_returns_models():
     resource, request = _layout_resource()
-    request.return_value = [_layout_payload()]
+    request.return_value = ([_layout_payload()], {})
 
     layouts = await resource.list(media_type="wafer", skip=2, limit=5)
 

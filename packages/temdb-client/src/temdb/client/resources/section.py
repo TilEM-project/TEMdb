@@ -26,16 +26,12 @@ class SectionResource(BaseResource):
         super().__init__(*args, **kwargs)
 
     async def list_by_session(
-        self, cutting_session_id: str, skip: int = 0, limit: int = 100, **kwargs: Any
+        self, cutting_session_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
     ) -> list[SectionResponse]:
         """List sections associated with a specific cutting session."""
         endpoint = f"sections/sessions/{cutting_session_id}"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        params = dict(kwargs)
+        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
 
     async def list_all(
         self,
@@ -44,8 +40,8 @@ class SectionResource(BaseResource):
         cutting_session_id: str | None = None,
         media_id: str | None = None,
         quality: SectionQuality | None = None,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> list[SectionResponse]:
         """List all sections, optionally filtering."""
@@ -56,15 +52,10 @@ class SectionResource(BaseResource):
             "cutting_session_id": cutting_session_id,
             "media_id": media_id,
             "quality": (quality.value if quality else None),
-            "skip": skip,
-            "limit": limit,
         }
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(SectionCreate)
     async def create(self, section_data: SectionCreate) -> SectionResponse:
@@ -214,43 +205,32 @@ class SectionResource(BaseResource):
         await self._delete(f"sections/{section_id}")
 
     async def list_by_block(
-        self, block_id: str, skip: int = 0, limit: int = 100, **kwargs: Any
+        self, block_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
     ) -> list[SectionResponse]:
         """List sections associated with a specific block."""
         endpoint = f"sections/blocks/{block_id}"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        params = dict(kwargs)
+        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
 
     async def list_by_specimen(
-        self, specimen_id: str, skip: int = 0, limit: int = 100, **kwargs: Any
+        self, specimen_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
     ) -> list[SectionResponse]:
         """List sections associated with a specific specimen."""
         endpoint = f"sections/specimens/{specimen_id}"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        params = dict(kwargs)
+        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
 
     async def list_by_media(
         self,
         media_id: str,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         relative_position: int | None = None,
         **kwargs: Any,
     ) -> list[SectionResponse]:
         """List sections by media ID."""
         endpoint = f"sections/media/{media_id}"
-        params = {"skip": skip, "limit": limit, "relative_position": relative_position}
+        params = {"relative_position": relative_position}
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)

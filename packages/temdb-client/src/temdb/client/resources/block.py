@@ -14,29 +14,26 @@ class BlockResource(BaseResource):
     """Resource class for interacting with Block endpoints."""
 
     async def list_by_specimen(
-        self, specimen_id: str, skip: int = 0, limit: int = 100, **kwargs: Any
+        self, specimen_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
     ) -> list[BlockResponse]:
         """List blocks associated with a specific specimen."""
         endpoint = f"blocks/specimens/{specimen_id}/blocks"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return [BlockResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        params = dict(kwargs)
+        return await self._list(endpoint, BlockResponse, params, skip=skip, limit=limit)
 
     async def list_all(
         self,
         specimen_id: str | None = None,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> list[BlockResponse]:
         """List all blocks, optionally filtering by specimen_id."""
         endpoint = "blocks"
-        params = {"skip": skip, "limit": limit, "specimen_id": specimen_id}
+        params = {"specimen_id": specimen_id}
         params = {k: v for k, v in params.items() if v is not None}
         params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return [BlockResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
+        return await self._list(endpoint, BlockResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(BlockCreate)
     async def create(self, block_data: BlockCreate) -> BlockResponse:
@@ -64,14 +61,8 @@ class BlockResource(BaseResource):
         await self._delete(endpoint)
 
     async def get_cut_sessions(
-        self, specimen_id: str, block_id: str, skip: int = 0, limit: int = 100
+        self, specimen_id: str, block_id: str, skip: int | None = None, limit: int | None = None
     ) -> list[CuttingSessionResponse]:
         """Get cutting sessions related to a specific block."""
         endpoint = f"blocks/specimens/{specimen_id}/blocks/{block_id}/cut-sessions"
-        params = {"skip": skip, "limit": limit}
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [CuttingSessionResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
-        )
+        return await self._list(endpoint, CuttingSessionResponse, {}, skip=skip, limit=limit)

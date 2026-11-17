@@ -121,7 +121,10 @@ class TEMdbClient:
     def substrate_layout(self) -> SubstrateLayoutResource:
         return self._substrate_layout
 
-    async def _async_request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any] | list[Any]:
+    async def _async_request(
+        self, method: str, endpoint: str, *, with_headers: bool = False, **kwargs
+    ) -> dict[str, Any] | list[Any] | tuple[dict[str, Any] | list[Any], httpx.Headers]:
+        """Send a request and return its JSON body, or (body, response headers) with with_headers=True."""
         self.logger.debug(f"Async Request: {method} {endpoint}")
         try:
             if "json" in kwargs and method.upper() in ("POST", "PATCH", "PUT"):
@@ -143,9 +146,8 @@ class TEMdbClient:
 
             response = await self._http_client.request(method, endpoint, **kwargs)
             response.raise_for_status()
-            if response.status_code == 204:
-                return {}
-            return response.json()
+            data = {} if response.status_code == 204 else response.json()
+            return (data, response.headers) if with_headers else data
         except httpx.HTTPStatusError as e:
             level = logging.WARNING if e.response.status_code < 500 else logging.ERROR
             self.logger.log(level, f"HTTP error: {e.response.status_code} - {e.response.text}")
