@@ -26,7 +26,7 @@ Specimen
 - **ROI** - Region within section(s) targeted for imaging
 - **Acquisition Task** - Pure imaging plan (no status; replanning supersedes via `superseded_by`)
 - **Acquisition** - Imaging run (in-flight or terminal, see status axes below)
-- **Tile** - Individual image in the acquisition montage
+- **Tile** - Individual image in the acquisition montage; each tile records where its image is stored
 
 Cross-cutting entities: **Dataset** (groups tasks/acquisitions/tiles and drives tile partitioning; may nest via `parent_dataset_id`), **Microscope** (instrument registry referenced by acquisitions), and **Lens Correction** (optical distortion correction referenced by montage runs).
 
@@ -83,6 +83,47 @@ await client.specimen.update("S1", description="new")  # sends only description
 
 Passing both a model and keywords raises `TypeError`; a misspelled field raises a pydantic `ValidationError`
 before any request is sent.
+
+#### Listing
+
+A list method returns **every** matching record, fetching it from the server page by page. Pass `limit` (and `skip`)
+to get a single page instead; it is a list with a `has_more` flag that says whether more records follow.
+
+```python
+sections = await client.section.list_by_media("1008")                # every section on the substrate
+page = await client.section.list_by_media("1008", limit=100)         # one page
+page.has_more                                                         # True if more follow
+```
+
+Acquisition and tile listings page by cursor instead (`acquisition.list`, `get_tiles`); `get_all_tiles` returns every
+tile.
+
+For a listing too long to hold in memory, `client.iterate` hands out one record at a time and fetches the next page
+only when it is needed. It works with any list method that takes `skip` or `cursor`:
+
+```python
+async for tile in client.iterate(client.acquisition.get_tiles, acquisition_id, page_size=1000):
+    ...
+```
+
+#### Errors
+
+Errors are exceptions from `temdb.client`, so catch them by type rather than by message:
+
+| Exception | Raised when |
+|---|---|
+| `TEMdbMissingParentError` | A record the request refers to doesn't exist (yet); `.parent` and `.id` say which. It is a `TEMdbNotFoundError`. |
+| `TEMdbNotFoundError` | The record you asked for doesn't exist |
+| `TEMdbConflictError` | The record already exists, or the change conflicts with stored data |
+| `TEMdbUnprocessableError` | The server rejected the data you sent |
+| `TEMdbContractError` | Client and server are incompatible versions (see below) |
+
+```python
+try:
+    await client.section.create(cutting_session_id="CS1", media_id="1008", timestamp=datetime.now(timezone.utc))
+except TEMdbMissingParentError as error:
+    print(f"not there yet: {error.parent} {error.id!r}")   # e.g. substrate '1008'
+```
 
 #### Image transfers
 
@@ -236,6 +277,20 @@ The server does not depend on the client. Both import from `temdb-models`.
 ### Natural keys are immutable
 
 Natural-key ids (`specimen_id`, `block_id`, `section_id`, ...) are immutable once children reference them. Renames are rejected by the `ON UPDATE NO ACTION` foreign key. If an id is wrong, create a new entity via the CRUD endpoints rather than renaming an existing one.
+
+### Missing parents
+
+A create or update that refers to a record that doesn't exist answers **404** with `error_code: "MISSING_PARENT"` and
+`context: {"parent": "<record type>", "id": "<value>"}`, for example `{"parent": "substrate", "id": "1008"}`. For a
+parent with a composite key, `id` can hold the key's values separated by commas; for a parent ROI, which is found by its
+`created_at`, `id` is `null` and `detail` names the time. Deleting a record that other records still refer to is a
+different case: **409** `FOREIGN_KEY_VIOLATION`.
+
+### Paged lists
+
+List routes take `skip` and `limit`, return rows in a stable order and set the response header `X-Has-More: true|false`. Browsers can read the header
+(it is listed in CORS `expose_headers`). Acquisition and tile listings page by `cursor` instead and report `has_more`
+and `next_cursor` in their `metadata`.
 
 ### Extra fields
 
