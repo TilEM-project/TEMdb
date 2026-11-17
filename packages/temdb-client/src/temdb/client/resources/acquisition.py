@@ -225,20 +225,10 @@ class AcquisitionResource(BaseResource):
         self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
     ) -> builtins.list[TileResponse] | builtins.list[dict[str, Any]]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
-        all_tiles: builtins.list = []
-        cursor: str | None = None
-        while True:
-            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
-            tiles, metadata = (
-                (page["tiles"], page["metadata"]) if isinstance(page, dict) else (page.tiles, page.metadata)
-            )
-            all_tiles.extend(tiles)
-            if not metadata.get("has_more"):
-                break
-            cursor = metadata.get("next_cursor")
-            if cursor is None:
-                break
-        return all_tiles
+        pages = self._cursor_pages(
+            lambda cursor: self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
+        )
+        return [tile async for page in pages for tile in (page["tiles"] if isinstance(page, dict) else page.tiles)]
 
     @accepts_keywords(FileObjectRequest)
     async def put_image_url(
@@ -276,21 +266,15 @@ class AcquisitionResource(BaseResource):
         page_limit: int = 100,
     ) -> ImageURLs:
         """Get upload URLs for the tile/checksum mapping, auto-following cursor pagination."""
-        all_urls: builtins.dict[str, FileObjectResponse] = {}
-        errors: builtins.dict[str, str] = {}
-        cursor: str | None = None
-        while True:
-            page = await self.put_image_urls(
+        result = ImageURLs(urls={}, errors={})
+        async for page in self._cursor_pages(
+            lambda cursor: self.put_image_urls(
                 acquisition_id, image_hashes=image_hashes, expiration=expiration, cursor=cursor, limit=page_limit
             )
-            all_urls.update(page.urls)
-            errors.update(page.metadata.errors)
-            if not page.metadata.has_more:
-                break
-            cursor = page.metadata.next_cursor
-            if cursor is None:
-                break
-        return ImageURLs(urls=all_urls, errors=errors)
+        ):
+            result.urls.update(page.urls)
+            result.errors.update(page.metadata.errors)
+        return result
 
     async def put_image(
         self,
@@ -438,21 +422,15 @@ class AcquisitionResource(BaseResource):
 
         If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
         """
-        all_urls: builtins.dict[str, FileObjectResponse] = {}
-        errors: builtins.dict[str, str] = {}
-        cursor: str | None = None
-        while True:
-            page = await self.get_image_urls(
+        result = ImageURLs(urls={}, errors={})
+        async for page in self._cursor_pages(
+            lambda cursor: self.get_image_urls(
                 acquisition_id, tile_ids=tile_ids, expiration=expiration, cursor=cursor, limit=page_limit
             )
-            all_urls.update(page.urls)
-            errors.update(page.metadata.errors)
-            if not page.metadata.has_more:
-                break
-            cursor = page.metadata.next_cursor
-            if cursor is None:
-                break
-        return ImageURLs(urls=all_urls, errors=errors)
+        ):
+            result.urls.update(page.urls)
+            result.errors.update(page.metadata.errors)
+        return result
 
     async def delete_image(self, acquisition_id: str, tile_id: str) -> None:
         """Delete the image for a specific tile."""
@@ -481,19 +459,13 @@ class AcquisitionResource(BaseResource):
 
     async def delete_all_images(self, acquisition_id: str, page_limit: int = 100) -> DeletedImages:
         """Delete images for all tiles in an acquisition, auto-following cursor pagination."""
-        all_deleted: builtins.list[str] = []
-        errors: builtins.dict[str, str] = {}
-        cursor: str | None = None
-        while True:
-            page = await self.delete_images(acquisition_id, cursor=cursor, limit=page_limit)
-            all_deleted.extend(page.deleted_images)
-            errors.update(page.metadata.errors)
-            if not page.metadata.has_more:
-                break
-            cursor = page.metadata.next_cursor
-            if cursor is None:
-                break
-        return DeletedImages(deleted=all_deleted, errors=errors)
+        result = DeletedImages(deleted=[], errors={})
+        async for page in self._cursor_pages(
+            lambda cursor: self.delete_images(acquisition_id, cursor=cursor, limit=page_limit)
+        ):
+            result.deleted.extend(page.deleted_images)
+            result.errors.update(page.metadata.errors)
+        return result
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""
