@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSessionResponse
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
 
@@ -19,6 +20,7 @@ block_api = APIRouter(
 
 @block_api.get("/blocks", response_model=list[BlockResponse])
 async def list_blocks(
+    response: Response,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -28,8 +30,8 @@ async def list_blocks(
     statement = select(BlockSQLModel)
     if specimen_id:
         statement = statement.where(BlockSQLModel.specimen_id == specimen_id)
-    statement = statement.order_by(BlockSQLModel.specimen_id, BlockSQLModel.block_id)
-    return (await session.execute(statement.offset(skip).limit(limit))).scalars().all()
+    statement = statement.order_by(BlockSQLModel.specimen_id, BlockSQLModel.block_id, BlockSQLModel.id)
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @block_api.get(
@@ -37,6 +39,7 @@ async def list_blocks(
     response_model=list[CuttingSessionResponse],
 )
 async def get_block_cut_sessions(
+    response: Response,
     specimen_id: str,
     block_id: str,
     skip: int = Query(0, ge=0),
@@ -52,14 +55,16 @@ async def get_block_cut_sessions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Block with ID '{block_id}' for specimen '{specimen_id}' not found",
         )
-    sessions = await session.scalars(
+    statement = (
         select(CuttingSessionSQLModel)
         .where(CuttingSessionSQLModel.block_id == block_id, CuttingSessionSQLModel.specimen_id == specimen_id)
-        .order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
-        .offset(skip)
-        .limit(limit)
+        .order_by(
+            CuttingSessionSQLModel.start_time.desc(),
+            CuttingSessionSQLModel.cutting_session_id,
+            CuttingSessionSQLModel.id,
+        )
     )
-    return sessions.all()
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @block_api.post("/blocks", status_code=status.HTTP_201_CREATED, response_model=BlockResponse)
@@ -175,6 +180,7 @@ async def delete_block(
 
 @block_api.get("/blocks/specimens/{specimen_id}/blocks", response_model=list[BlockResponse])
 async def list_specimen_blocks(
+    response: Response,
     specimen_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -186,16 +192,9 @@ async def list_specimen_blocks(
     ).scalar_one_or_none()
     if specimen_exists is None:
         raise HTTPException(status_code=404, detail=f"Specimen with ID '{specimen_id}' not found")
-    return (
-        (
-            await session.execute(
-                select(BlockSQLModel)
-                .where(BlockSQLModel.specimen_id == specimen_id)
-                .order_by(BlockSQLModel.block_id)
-                .offset(skip)
-                .limit(limit)
-            )
-        )
-        .scalars()
-        .all()
+    statement = (
+        select(BlockSQLModel)
+        .where(BlockSQLModel.specimen_id == specimen_id)
+        .order_by(BlockSQLModel.block_id, BlockSQLModel.id)
     )
+    return await page(session, statement, skip=skip, limit=limit, response=response)

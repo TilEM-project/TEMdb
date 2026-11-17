@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import MicroscopeCreate, MicroscopeResponse, MicroscopeUpdate
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import MicroscopeSQLModel
 
@@ -39,16 +40,18 @@ async def create_microscope(data: MicroscopeCreate, session: AsyncSession = Depe
 
 @microscope_api.get("/microscopes", response_model=list[MicroscopeResponse])
 async def list_microscopes(
+    response: Response,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_async_session),
 ):
-    rows = (
-        await session.scalars(
-            select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.microscope_id).offset(skip).limit(limit)
-        )
-    ).all()
-    return rows
+    return await page(
+        session,
+        select(MicroscopeSQLModel).order_by(MicroscopeSQLModel.microscope_id, MicroscopeSQLModel.id),
+        skip=skip,
+        limit=limit,
+        response=response,
+    )
 
 
 @microscope_api.get("/microscopes/{microscope_id}", response_model=MicroscopeResponse)

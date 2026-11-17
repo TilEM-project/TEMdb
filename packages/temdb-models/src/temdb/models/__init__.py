@@ -72,6 +72,7 @@ from temdb.models.microscope import (
     MicroscopeResponse,
     MicroscopeUpdate,
 )
+from temdb.models.paging import HAS_MORE_HEADER
 from temdb.models.quality_control import (
     AcquisitionFocusScoresResponse,
     BadFocusTileInfo,
@@ -243,6 +244,7 @@ __all__ = [
     "BadFocusTilesResponse",
     # File Storage
     "FileObject",
+    "HAS_MORE_HEADER",
     "FileObjectRequest",
     "FileObjectResponse",
     "StorageDefault",

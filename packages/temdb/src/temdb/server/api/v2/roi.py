@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from temdb.models import APIErrorResponse, ROIChildrenResponse, ROICreate, ROIResponse, ROIUpdate
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import BaseError
 from temdb.server.sqlmodels import (
@@ -58,6 +59,7 @@ def _to_response(roi: ROISQLModel, is_parent: bool = False) -> ROIResponse:
 
 @roi_api.get("/rois", response_model=list[ROIResponse])
 async def list_rois(
+    response: Response,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     cutting_session_id: str | None = Query(None, description="Filter by human-readable Cutting Session ID"),
@@ -92,7 +94,9 @@ async def list_rois(
         conditions.append(has_child if is_parent_roi else ~has_child)
     if conditions:
         statement = statement.where(and_(*conditions))
-    rois = (await session.scalars(statement.order_by(ROISQLModel.roi_id).offset(skip).limit(limit))).all()
+    rois = await page(
+        session, statement.order_by(ROISQLModel.roi_id, ROISQLModel.id), skip=skip, limit=limit, response=response
+    )
     parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in rois))
     return [_to_response(roi, roi.roi_id in parents_with_children) for roi in rois]
 
@@ -329,20 +333,17 @@ async def delete_roi(roi_id: str, session: AsyncSession = Depends(get_async_sess
 
 @roi_api.get("/sections/{section_id}/rois", response_model=list[ROIResponse])
 async def list_section_rois(
+    response: Response,
     section_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve ROIs associated with a specific section using its human-readable ID."""
-    rois = await session.scalars(
-        select(ROISQLModel)
-        .where(ROISQLModel.section_id == section_id)
-        .order_by(ROISQLModel.roi_id)
-        .offset(skip)
-        .limit(limit)
+    statement = (
+        select(ROISQLModel).where(ROISQLModel.section_id == section_id).order_by(ROISQLModel.roi_id, ROISQLModel.id)
     )
-    roi_items = rois.all()
+    roi_items = await page(session, statement, skip=skip, limit=limit, response=response)
     if not roi_items:
         section = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
         if section.one_or_none() is None:

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import any_, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from temdb.models import (
     SubstrateResponse,
     SubstrateUpdate,
 )
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SectionSQLModel, SubstrateLayoutSQLModel, SubstrateSQLModel
 
@@ -26,6 +27,7 @@ substrate_api = APIRouter(
 
 @substrate_api.get("/substrates", response_model=list[SubstrateResponse])
 async def list_substrates(
+    response: Response,
     media_type: str | None = Query(None, description="Filter by substrate media type (e.g., 'wafer', 'tape')"),
     layout_id: str | None = Query(None, description="Filter by substrate layout"),
     available: bool | None = Query(
@@ -44,8 +46,13 @@ async def list_substrates(
     if available is not None:
         has_available = literal(ApertureStatus.AVAILABLE.value) == any_(SubstrateSQLModel.aperture_status)
         statement = statement.where(has_available if available else ~has_available)
-    substrates = (await session.scalars(statement.order_by(SubstrateSQLModel.media_id).offset(skip).limit(limit))).all()
-    return substrates
+    return await page(
+        session,
+        statement.order_by(SubstrateSQLModel.media_id, SubstrateSQLModel.id),
+        skip=skip,
+        limit=limit,
+        response=response,
+    )
 
 
 @substrate_api.post("/substrates", status_code=status.HTTP_201_CREATED, response_model=SubstrateResponse)
@@ -173,6 +180,7 @@ async def delete_substrate(media_id: str, session: AsyncSession = Depends(get_as
 
 @substrate_api.get("/substrates/{media_id}/sections", response_model=list[SectionResponse])
 async def get_substrate_sections(
+    response: Response,
     media_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -186,14 +194,12 @@ async def get_substrate_sections(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate with media_id '{media_id}' not found",
         )
-    sections = await session.scalars(
+    statement = (
         select(SectionSQLModel)
         .where(SectionSQLModel.media_id == media_id)
         .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
-        .offset(skip)
-        .limit(limit)
     )
-    return sections.all()
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @substrate_api.get("/substrates/{media_id}/apertures", response_model=SubstrateApertures)

@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
@@ -68,6 +69,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
 
 @dataset_api.get("/datasets", response_model=list[DatasetResponse])
 async def list_datasets(
+    response: Response,
     specimen_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     parent_dataset_id: uuid.UUID | None = Query(None),
@@ -82,12 +84,13 @@ async def list_datasets(
         stmt = stmt.where(DatasetSQLModel.status == status_filter)
     if parent_dataset_id is not None:
         stmt = stmt.where(DatasetSQLModel.parent_dataset_id == parent_dataset_id)
-    rows = (
-        await session.scalars(
-            stmt.order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id).offset(skip).limit(limit)
-        )
-    ).all()
-    return rows
+    return await page(
+        session,
+        stmt.order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id),
+        skip=skip,
+        limit=limit,
+        response=response,
+    )
 
 
 @dataset_api.get("/datasets/by-name/{name}", response_model=DatasetResponse)

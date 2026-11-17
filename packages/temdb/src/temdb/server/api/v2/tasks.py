@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from temdb.models import (
     AcquisitionTaskResponse,
     AcquisitionTaskUpdate,
 )
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
@@ -144,6 +145,7 @@ def _task_from_create(
 
 @acquisition_task_api.get("/acquisition-tasks", response_model=list[AcquisitionTaskResponse])
 async def list_tasks(
+    response: Response,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
@@ -201,7 +203,7 @@ async def list_tasks(
     if task_group_id is not None:
         filters.append(AcquisitionTaskSQLModel.task_group_id == task_group_id)
         statement = statement.order_by(AcquisitionTaskSQLModel.tilt_angle_deg)
-    statement = statement.order_by(AcquisitionTaskSQLModel.task_id)
+    statement = statement.order_by(AcquisitionTaskSQLModel.task_id, AcquisitionTaskSQLModel.id)
     if current_only or imageable:
         filters.append(AcquisitionTaskSQLModel.superseded_by.is_(None))
     if skip_destroyed or imageable:
@@ -244,7 +246,7 @@ async def list_tasks(
     if filters:
         statement = statement.where(and_(*filters))
 
-    rows = (await session.execute(statement.offset(skip).limit(limit))).all()
+    rows = await page(session, statement, skip=skip, limit=limit, response=response, scalars=False)
     if not rows:
         return []
     tasks = [row[0] for row in rows]
@@ -343,6 +345,7 @@ async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_se
 
 @acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=list[AcquisitionResponse])
 async def get_task_acquisitions(
+    response: Response,
     task_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -353,15 +356,12 @@ async def get_task_acquisitions(
         is None
     ):
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    return (
-        await session.scalars(
-            select(AcquisitionSQLModel)
-            .where(AcquisitionSQLModel.acquisition_task_id == task_id)
-            .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
-            .offset(skip)
-            .limit(limit)
-        )
-    ).all()
+    statement = (
+        select(AcquisitionSQLModel)
+        .where(AcquisitionSQLModel.acquisition_task_id == task_id)
+        .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
+    )
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @acquisition_task_api.post(
