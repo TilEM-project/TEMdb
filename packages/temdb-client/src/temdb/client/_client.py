@@ -185,11 +185,10 @@ class TEMdbClient:
         """Check server contract compatibility with this client's model version."""
         try:
             contract = await self._async_request("GET", "contract")
-        except TEMdbNotFoundError:
-            # TODO(4.0.0): raise TEMdbContractError; 3.0.0 servers have no /contract.
-            self.logger.warning(f"{self.raw_base_url} has no /contract route; skipping the compatibility check")
-            self.contract = {}
-            return self.contract
+        except TEMdbNotFoundError as error:
+            raise TEMdbContractError(
+                f"{self.raw_base_url} has no /contract route; it is older than TEMdb 4.0 and this client needs 4.x"
+            ) from error
         if not isinstance(contract, dict) or not isinstance(contract.get("models_version"), str):
             raise TEMdbContractError(f"{self.raw_base_url} answered /contract without a models_version: {contract!r}")
         ours = importlib.metadata.version("temdb-models")
