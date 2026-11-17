@@ -67,6 +67,9 @@ class S3StorageClient(StorageClient):
                 Bucket=storage_location.bucket, Key=storage_location.key, ChecksumMode="ENABLED"
             )
         except (ClientError, BotoCoreError) as e:
+            if isinstance(e, ClientError) and e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+                logger.warning("No S3 object at %s/%s", storage_location.bucket, storage_location.key)
+                raise HTTPException(status_code=404, detail="The image is not in storage")
             logger.error("Failed to retrieve object hash from S3: %s", e)
             raise HTTPException(
                 status_code=500,
@@ -74,14 +77,14 @@ class S3StorageClient(StorageClient):
             )
         hash = metadata.get("ChecksumSHA256")
         if not hash:
-            logger.error(
+            logger.warning(
                 "ChecksumSHA256 not found in S3 object metadata for %s/%s",
                 storage_location.bucket,
                 storage_location.key,
             )
             raise HTTPException(
-                status_code=500,
-                detail="SHA 256 hash not in S3 object metadata",
+                status_code=409,
+                detail="The stored image has no SHA-256 checksum; it was not uploaded through TEMdb",
             )
         return FileObjectResponse(
             url=presigned_url,
