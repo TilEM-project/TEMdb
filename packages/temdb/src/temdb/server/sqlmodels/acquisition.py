@@ -94,7 +94,6 @@ class AcquisitionSQLModel(TimestampMixin, ModelDumpMixin, Base):
         default=lambda: datetime.now(timezone.utc),
     )
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    storage_locations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     montage_set_name: Mapped[str | None] = mapped_column(String, nullable=True)
     sub_region: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     replaces_acquisition_id: Mapped[str | None] = mapped_column(

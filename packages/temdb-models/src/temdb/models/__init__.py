@@ -8,8 +8,6 @@ from temdb.models.acquisition import (
     Calibration,
     HardwareParams,
     LensCorrectionModel,
-    StorageLocation,
-    StorageLocationCreate,
 )
 from temdb.models.block import (
     BlockBase,
@@ -163,8 +161,6 @@ __all__ = [
     "AcquisitionParams",
     "Calibration",
     "LensCorrectionModel",
-    "StorageLocation",
-    "StorageLocationCreate",
     # Specimen
     "SpecimenBase",
     "SpecimenCreate",

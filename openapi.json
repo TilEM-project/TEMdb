@@ -189,21 +189,6 @@
             "description": "Start time of acquisition (defaults to now if not provided)",
             "title": "Start Time"
           },
-          "storage_locations": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/StorageLocation"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Storage locations of acquisition",
-            "title": "Storage Locations"
-          },
           "sub_region": {
             "anyOf": [
               {
@@ -737,21 +722,6 @@
             ],
             "description": "Terminal run status; null while in flight",
             "title": "Status"
-          },
-          "storage_locations": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/StorageLocation"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Storage locations of acquisition",
-            "title": "Storage Locations"
           },
           "sub_region": {
             "anyOf": [
@@ -1425,21 +1395,6 @@
             ],
             "description": "Terminal run status (write-once): complete, aborted, or failed",
             "title": "Status"
-          },
-          "storage_locations": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/StorageLocation"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Storage locations of acquisition",
-            "title": "Storage Locations"
           },
           "sub_region": {
             "anyOf": [
@@ -6026,47 +5981,6 @@
           }
         },
         "title": "StorageDefault",
-        "type": "object"
-      },
-      "StorageLocation": {
-        "additionalProperties": false,
-        "properties": {
-          "base_path": {
-            "description": "Base path of storage location",
-            "title": "Base Path",
-            "type": "string"
-          },
-          "date_added": {
-            "description": "Date storage location was added",
-            "format": "date-time",
-            "title": "Date Added",
-            "type": "string"
-          },
-          "is_current": {
-            "description": "Whether this is the current storage location",
-            "title": "Is Current",
-            "type": "boolean"
-          },
-          "location_type": {
-            "description": "Type of storage location, e.g. local, s3, etc.",
-            "title": "Location Type",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "description": "Metadata of storage location",
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "location_type",
-          "base_path",
-          "is_current",
-          "date_added",
-          "metadata"
-        ],
-        "title": "StorageLocation",
         "type": "object"
       },
       "StorageProtocol": {

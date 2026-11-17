@@ -51,26 +51,11 @@ class AcquisitionParams(TEMDBModel):
     saved_bit_depth: int = Field(..., description="Bit depth of saved image")
 
 
-class StorageLocation(TEMDBModel):
-    location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
-    base_path: str = Field(..., description="Base path of storage location")
-    is_current: bool = Field(..., description="Whether this is the current storage location")
-    date_added: datetime = Field(..., description="Date storage location was added")
-    metadata: dict[str, Any] = Field(..., description="Metadata of storage location")
-
-
-class StorageLocationCreate(TEMDBModel):
-    location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
-    base_path: str = Field(..., description="Base path of storage location")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata of storage location")
-
-
 class AcquisitionBase(TEMDBRecord):
     hardware_settings: HardwareParams = Field(None, description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(None, description="Acquisition settings of acquisition")
     calibration_info: Calibration | None = None
     tilt_angle_deg: float | None = Field(None, description="Tilt angle of acquisition in degrees")
-    storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
     montage_set_name: str | None = Field(None, description="Name of montage set")
     sub_region: dict[str, int] | None = Field(None, description="Sub region of acquisition")
     replaces_acquisition_id: str | None = Field(None, description="ID of acquisition this acquisition replaces")
