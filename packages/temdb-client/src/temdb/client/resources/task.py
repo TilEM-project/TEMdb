@@ -8,7 +8,7 @@ from temdb.models import (
     AcquisitionTaskUpdate,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class AcquisitionTaskResource(BaseResource):
@@ -36,21 +36,20 @@ class AcquisitionTaskResource(BaseResource):
         Work fetch is list(imageable=True, loaded_media_ids=[...]) —
         only tasks the scope can physically image right now are returned.
         """
-        params = {
-            "specimen_id": specimen_id,
-            "block_id": block_id,
-            "roi_id": roi_id,
-            "kind": kind,
-            "media_id": media_id,
-            "task_group_id": str(task_group_id) if task_group_id is not None else None,
-            "current_only": current_only,
-            "skip_destroyed": skip_destroyed,
-            "skip_completed": skip_completed,
-            "imageable": imageable,
-            "loaded_media_id": loaded_media_ids,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(
+            specimen_id=specimen_id,
+            block_id=block_id,
+            roi_id=roi_id,
+            kind=kind,
+            media_id=media_id,
+            task_group_id=str(task_group_id) if task_group_id is not None else None,
+            current_only=current_only,
+            skip_destroyed=skip_destroyed,
+            skip_completed=skip_completed,
+            imageable=imageable,
+            loaded_media_id=loaded_media_ids,
+            **kwargs,
+        )
         return await self._list("acquisition-tasks", AcquisitionTaskResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(AcquisitionTaskCreate)

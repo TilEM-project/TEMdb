@@ -14,7 +14,7 @@ from temdb.models import (
     StorageProtocol,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 from .image import BufferedImageWriter, ImageReader, ImageWriter, image_request, open_image, put_image
 
 
@@ -46,15 +46,14 @@ class SectionResource(BaseResource):
     ) -> list[SectionResponse]:
         """List all sections, optionally filtering."""
         endpoint = "sections"
-        params = {
-            "specimen_id": specimen_id,
-            "block_id": block_id,
-            "cutting_session_id": cutting_session_id,
-            "media_id": media_id,
-            "quality": (quality.value if quality else None),
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(
+            specimen_id=specimen_id,
+            block_id=block_id,
+            cutting_session_id=cutting_session_id,
+            media_id=media_id,
+            quality=(quality.value if quality else None),
+            **kwargs,
+        )
         return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(SectionCreate)
@@ -230,7 +229,5 @@ class SectionResource(BaseResource):
     ) -> list[SectionResponse]:
         """List sections by media ID."""
         endpoint = f"sections/media/{media_id}"
-        params = {"relative_position": relative_position}
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(relative_position=relative_position, **kwargs)
         return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)

@@ -8,7 +8,7 @@ from temdb.models import (
     SubstrateResponse,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class SubstrateLayoutResource(BaseResource):
@@ -22,11 +22,7 @@ class SubstrateLayoutResource(BaseResource):
         **kwargs: Any,
     ) -> list[SubstrateLayoutResponse]:
         """List substrate layouts with optional filtering and pagination."""
-        params = {
-            "media_type": media_type,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(media_type=media_type, **kwargs)
         return await self._list("layouts", SubstrateLayoutResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(SubstrateLayoutCreate)

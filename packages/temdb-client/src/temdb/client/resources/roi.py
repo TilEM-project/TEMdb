@@ -9,7 +9,7 @@ from temdb.models import (
     ROIUpdate,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class ROIResource(BaseResource):
@@ -36,15 +36,14 @@ class ROIResource(BaseResource):
     ) -> list[ROIResponse]:
         """List all ROIs, optionally filtering."""
         endpoint = "rois"
-        params = {
-            "specimen_id": specimen_id,
-            "block_id": block_id,
-            "cutting_session_id": cutting_session_id,
-            "section_id": section_id,
-            "is_parent_roi": is_parent_roi,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(
+            specimen_id=specimen_id,
+            block_id=block_id,
+            cutting_session_id=cutting_session_id,
+            section_id=section_id,
+            is_parent_roi=is_parent_roi,
+            **kwargs,
+        )
         return await self._list(endpoint, ROIResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(ROICreate)

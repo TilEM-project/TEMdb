@@ -22,7 +22,7 @@ from temdb.models import (
     TileUpdate,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 from .image import BufferedImageWriter, ImageReader, ImageWriter, image_request, open_image, put_image
 
 
@@ -92,24 +92,23 @@ class AcquisitionResource(BaseResource):
 
         With fields, the page is returned as the server sends it: each acquisition holds only those fields.
         """
-        params = {
-            "cursor": cursor,
-            "limit": limit,
-            "sort_by": sort_by,
-            "sort_order": sort_order,
-            "specimen_id": specimen_id,
-            "roi_id": roi_id,
-            "acquisition_task_id": acquisition_task_id,
-            "montage_set_name": montage_set_name,
-            "magnification": magnification,
-            "status": status,
-            "qc_state": qc_state,
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
-            "fields": fields,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(
+            cursor=cursor,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            specimen_id=specimen_id,
+            roi_id=roi_id,
+            acquisition_task_id=acquisition_task_id,
+            montage_set_name=montage_set_name,
+            magnification=magnification,
+            status=status,
+            qc_state=qc_state,
+            start_date=start_date.isoformat() if start_date else None,
+            end_date=end_date.isoformat() if end_date else None,
+            fields=fields,
+            **kwargs,
+        )
         response_data = await self._get("acquisitions", params=params)
         return response_data if fields else PaginatedAcquisitionResponse.model_validate(response_data)
 
@@ -152,16 +151,9 @@ class AcquisitionResource(BaseResource):
     ) -> PaginatedTileResponse | dict[str, Any]:
         """Retrieve tiles for an acquisition with pagination."""
         endpoint = f"acquisitions/{acquisition_id}/tiles"
-        params = {
-            "limit": limit,
-            "cursor": cursor,
-            "fields": fields,
-            "x_min": x_min,
-            "x_max": x_max,
-            "y_min": y_min,
-            "y_max": y_max,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
+        params = without_none(
+            limit=limit, cursor=cursor, fields=fields, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max
+        )
         response_data = await self._get(endpoint, params=params)
         return response_data if fields else PaginatedTileResponse.model_validate(response_data)
 
@@ -492,16 +484,15 @@ class AcquisitionResource(BaseResource):
         status: AcquisitionStatusFilter | None = None,
     ) -> dict[str, Any]:
         """List acquisitions with complete hierarchy metadata."""
-        params = {
-            "cursor": cursor,
-            "limit": limit,
-            "sort_by": sort_by,
-            "sort_order": sort_order,
-            "specimen_id": specimen_id,
-            "roi_id": roi_id,
-            "acquisition_task_id": acquisition_task_id,
-            "substrate_media_id": substrate_media_id,
-            "status": status,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
+        params = without_none(
+            cursor=cursor,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            specimen_id=specimen_id,
+            roi_id=roi_id,
+            acquisition_task_id=acquisition_task_id,
+            substrate_media_id=substrate_media_id,
+            status=status,
+        )
         return await self._get("aggregated/acquisitions", params=params)

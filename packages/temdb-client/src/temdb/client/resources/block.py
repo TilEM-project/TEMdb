@@ -7,7 +7,7 @@ from temdb.models import (
     CuttingSessionResponse,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class BlockResource(BaseResource):
@@ -30,9 +30,7 @@ class BlockResource(BaseResource):
     ) -> list[BlockResponse]:
         """List all blocks, optionally filtering by specimen_id."""
         endpoint = "blocks"
-        params = {"specimen_id": specimen_id}
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(specimen_id=specimen_id, **kwargs)
         return await self._list(endpoint, BlockResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(BlockCreate)

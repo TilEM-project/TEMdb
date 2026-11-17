@@ -100,6 +100,11 @@ class BaseResource:
         return records, (flag == "true") if flag is not None else len(records) == limit
 
 
+def without_none(**values: Any) -> dict[str, Any]:
+    """The keyword arguments whose value is not None, for building query parameters."""
+    return {key: value for key, value in values.items() if value is not None}
+
+
 def _next_cursor(page: Any, cursor: str | None) -> str | None:
     metadata = page["metadata"] if isinstance(page, dict) else page.metadata
     if isinstance(metadata, dict):

@@ -1,6 +1,6 @@
 from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class LensCorrectionResource(BaseResource):
@@ -33,8 +33,7 @@ class LensCorrectionResource(BaseResource):
         limit: int | None = None,
     ) -> list[LensCorrectionResponse]:
         """List lens corrections, newest-first, optionally filtered."""
-        params = {"microscope_id": microscope_id, "magnification": magnification}
-        params = {k: v for k, v in params.items() if v is not None}
+        params = without_none(microscope_id=microscope_id, magnification=magnification)
         return await self._list("lens-corrections", LensCorrectionResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(LensCorrectionUpdate)

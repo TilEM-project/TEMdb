@@ -2,7 +2,7 @@ from typing import Any
 
 from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class DatasetResource(BaseResource):
@@ -33,9 +33,7 @@ class DatasetResource(BaseResource):
         **kwargs: Any,
     ) -> list[DatasetResponse]:
         """List datasets, optionally filtered by specimen_id and/or status."""
-        params = {"specimen_id": specimen_id, "status": status}
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(specimen_id=specimen_id, status=status, **kwargs)
         return await self._list("datasets", DatasetResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(DatasetUpdate)
