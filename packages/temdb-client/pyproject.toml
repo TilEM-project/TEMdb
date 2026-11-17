@@ -7,7 +7,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.13",
-    "httpx>=0.28",
+    "httpx>=0.28,<1",
     "temdb-models==4.0.0rc2",
 ]
 

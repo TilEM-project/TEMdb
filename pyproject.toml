@@ -25,7 +25,7 @@ dev = [
     "temdb",
     "pytest>=9.0",
     "pytest-asyncio>=1.4",
-    "httpx>=0.28",
+    "httpx>=0.28,<1",
     "testcontainers[minio]>=4.14",
     "ruff>=0.15",
     "faker>=40.0",
