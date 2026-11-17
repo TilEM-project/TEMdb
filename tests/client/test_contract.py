@@ -38,10 +38,8 @@ async def test_mismatched_major_version_is_rejected_on_enter():
             pass
 
 
-@pytest.mark.asyncio
-async def test_missing_contract_route_warns_and_proceeds(caplog):
-    """A server without /contract (3.0.0) is used after one warning and one /contract request."""
-    seen = []
+def pre_4_server(seen: list[str]):
+    """A 3.x server: it has no /contract route."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request.url.path)
@@ -49,11 +47,31 @@ async def test_missing_contract_route_warns_and_proceeds(caplog):
             return httpx.Response(404, json={"detail": "Not Found"})
         return httpx.Response(200, json=[])
 
-    async with TEMdbClient("http://test", transport=httpx.MockTransport(handler)) as client:
-        await client.specimen.list()
-        await client.specimen.list()
-    assert seen == ["/api/v2/contract", "/api/v2/specimens", "/api/v2/specimens"]
-    assert [r.levelname for r in caplog.records if "no /contract" in r.getMessage()] == ["WARNING"]
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_server_without_contract_route_is_refused_on_enter():
+    seen = []
+
+    with pytest.raises(TEMdbContractError, match=r"http://test has no /contract route; it is older than TEMdb 4\.0"):
+        async with TEMdbClient("http://test", transport=httpx.MockTransport(pre_4_server(seen))):
+            pass
+
+    assert seen == ["/api/v2/contract"]
+
+
+@pytest.mark.asyncio
+async def test_server_without_contract_route_is_refused_on_first_call():
+    seen = []
+    client = TEMdbClient("http://test", transport=httpx.MockTransport(pre_4_server(seen)))
+    try:
+        with pytest.raises(TEMdbContractError, match="no /contract route"):
+            await client.specimen.list()
+    finally:
+        await client.close()
+
+    assert seen == ["/api/v2/contract"]
 
 
 @pytest.mark.asyncio
