@@ -1974,6 +1974,51 @@ async def test_bulk_get_urls_ignores_a_get_body(async_client, test_db_manager, t
     assert set(response.json()["urls"]) == set(tile_ids)
 
 
+@pytest.mark.parametrize("bulk", [False, True])
+async def test_tile_update_naming_image_is_refused(async_client, test_acquisition, stored_tile_image, test_tile, bulk):
+    """A tile update cannot clear its image; the tile keeps the stored one."""
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+    tiles = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    change = {"image": None, "mean_value": 1.0}
+
+    response = await async_client.patch(
+        f"{tiles}/bulk" if bulk else f"{tiles}/{tile_id}", json={tile_id: change} if bulk else change
+    )
+
+    assert response.status_code == 422, response.text
+    assert (await async_client.get(f"{tiles}/{tile_id}")).json()["image"] == stored_tile_image
+
+
+async def test_bulk_get_urls_look_up_together(
+    async_client, test_db_manager, test_acquisition, minio_s3, storage_client_manager, monkeypatch
+):
+    """A page looks up 10 images at a time, and a tile whose image is not in storage is still reported by tile."""
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 12)
+    images = [await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in tile_ids]
+    minio_s3["client"].remove_object(images[2]["bucket"], images[2]["key"])
+    lookup = storage_client_manager.get_url
+    running = peak = 0
+
+    async def counted(*args):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        try:
+            return await lookup(*args)
+        finally:
+            running -= 1
+
+    monkeypatch.setattr(storage_client_manager, "get_url", counted)
+
+    response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body["urls"]) == set(tile_ids) - {tile_ids[2]}
+    assert body["metadata"]["errors"] == {tile_ids[2]: "The image is not in storage"}
+    assert peak == 10
+
+
 async def _seed_image_tiles(
     async_client: AsyncClient,
     acquisition_id: str,
@@ -1997,7 +2042,13 @@ async def _seed_image_tiles(
 async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisition, monkeypatch, caplog, method):
     tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
     client = Mock()
-    client.generate_presigned_url.side_effect = [NoCredentialsError(), "https://signed", "https://signed"]
+
+    def sign(operation, Params, **kwargs):
+        if "tile_0" in Params["Key"]:
+            raise NoCredentialsError()
+        return "https://signed"
+
+    client.generate_presigned_url.side_effect = sign
     client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
 

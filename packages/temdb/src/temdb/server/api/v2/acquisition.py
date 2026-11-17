@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 import uuid
@@ -873,17 +874,23 @@ async def _image_get_url_page(
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
     urls = {}
     errors = {}
-    for tile in tiles_obj:
-        if tile.image is None:
-            continue
+    with_image = [tile for tile in tiles_obj if tile.image is not None]
+    free = asyncio.Semaphore(10)
+
+    async def lookup(tile):
+        async with free:
+            return await storage_client_manager.get_url(FileObject.model_validate(tile.image), expiration)
+
+    found = await asyncio.gather(*(lookup(tile) for tile in with_image), return_exceptions=True)
+    for tile, url_data in zip(with_image, found):
         tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
-        storage_location = FileObject.model_validate(tile.image)
-        try:
-            url_data = await storage_client_manager.get_url(storage_location, expiration)
+        if isinstance(url_data, HTTPException):
+            logger.warning(f"Error generating presigned URL for tile {tile_id}: {url_data.detail}")
+            errors[tile_id] = url_data.detail
+        elif isinstance(url_data, BaseException):
+            raise url_data
+        else:
             urls[tile_id] = url_data
-        except HTTPException as e:
-            logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
-            errors[tile_id] = e.detail
     next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
     return {
         "urls": urls,
