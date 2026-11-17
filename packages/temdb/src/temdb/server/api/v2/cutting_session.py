@@ -168,6 +168,16 @@ async def update_cutting_session(
     )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    moved = [
+        field
+        for field in ("block_id", "specimen_id")
+        if field in update_data and update_data[field] != getattr(cutting_session_obj, field)
+    ]
+    if moved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cutting Session '{cutting_session_id}' cannot change its {' or '.join(moved)}",
+        )
     extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(cutting_session_obj, field, value)

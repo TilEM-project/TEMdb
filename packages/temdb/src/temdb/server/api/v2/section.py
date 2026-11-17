@@ -274,6 +274,7 @@ async def _stored_at_placement(session: AsyncSession, row: SectionSQLModel) -> S
             f"Section '{stored.section_id}' is already at this placement with different {', '.join(differing)}",
             status_code=status.HTTP_409_CONFLICT,
             error_code="KEY_IN_USE",
+            context={"section_id": stored.section_id, "differing": differing},
         )
     return stored
 

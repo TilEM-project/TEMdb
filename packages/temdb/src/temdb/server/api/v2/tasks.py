@@ -290,7 +290,9 @@ async def update_task(
     updated_fields: AcquisitionTaskUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
-    task_obj = await session.scalar(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    task_obj = await session.scalar(
+        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id).with_for_update()
+    )
     if task_obj is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     update_data = updated_fields.model_dump(
@@ -299,6 +301,15 @@ async def update_task(
     )
     if not update_data:
         raise HTTPException(400, "No update fields provided")
+    plan_fields = sorted(update_data.keys() - {"tags", "metadata", "extra"})
+    if task_obj.superseded_by is not None and plan_fields:
+        raise HTTPException(
+            409,
+            f"Task '{task_id}' is superseded by '{task_obj.superseded_by}'; "
+            f"its {', '.join(plan_fields)} cannot be updated",
+        )
+    if update_data.get("kind", "lens_correction") != "lens_correction" and task_obj.roi_id is None:
+        raise HTTPException(422, f"Task '{task_id}' has no ROI, so its kind must stay 'lens_correction'")
     extra_changes = update_data.pop("extra", None)
     if "metadata" in update_data:
         task_obj.metadata_json = update_data.pop("metadata")

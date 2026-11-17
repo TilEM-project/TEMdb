@@ -112,6 +112,49 @@ async def test_supersede_lifecycle(
 
 
 @pytest.mark.asyncio
+async def test_superseded_task_update_is_refused(
+    async_client: AsyncClient, test_acquisition_task, test_specimen, test_block, test_roi
+):
+    old_id = test_acquisition_task.task_id
+    replaced = await async_client.post(
+        f"/api/v2/acquisition-tasks/{old_id}/supersede",
+        json={
+            "task_id": f"{old_id}_V2",
+            "specimen_id": test_specimen.specimen_id,
+            "block_id": test_block.block_id,
+            "roi_id": test_roi.roi_id,
+        },
+    )
+    assert replaced.status_code == 201, replaced.text
+
+    response = await async_client.patch(
+        f"/api/v2/acquisition-tasks/{old_id}", json={"tilt_angle_deg": 5.0, "tags": ["late"]}
+    )
+
+    assert response.status_code == 409, response.text
+    stored = (await async_client.get(f"/api/v2/acquisition-tasks/{old_id}")).json()
+    assert (stored["tilt_angle_deg"], stored["tags"]) == (None, [])
+    tagged = await async_client.patch(f"/api/v2/acquisition-tasks/{old_id}", json={"tags": ["late"]})
+    assert tagged.status_code == 200, tagged.text
+    updated = await async_client.patch(f"/api/v2/acquisition-tasks/{old_id}_V2", json={"tilt_angle_deg": 5.0})
+    assert updated.status_code == 200, updated.text
+
+
+@pytest.mark.asyncio
+async def test_task_without_roi_stays_lens_correction(async_client: AsyncClient, init_db):
+    path = "/api/v2/acquisition-tasks"
+    created = await async_client.post(path, json={"task_id": "TEST_TASK_LC_KIND", "kind": "lens_correction"})
+    assert created.status_code == 201, created.text
+
+    response = await async_client.patch(f"{path}/TEST_TASK_LC_KIND", json={"kind": "montage"})
+
+    assert response.status_code == 422, response.text
+    assert (await async_client.get(f"{path}/TEST_TASK_LC_KIND")).json()["kind"] == "lens_correction"
+    same = await async_client.patch(f"{path}/TEST_TASK_LC_KIND", json={"kind": "lens_correction", "tags": ["a"]})
+    assert same.status_code == 200, same.text
+
+
+@pytest.mark.asyncio
 async def test_create_lens_correction_task_without_lineage(async_client: AsyncClient, init_db):
     response = await async_client.post(
         "/api/v2/acquisition-tasks",
