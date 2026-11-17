@@ -147,7 +147,8 @@ class TEMdbClient:
                 return {}
             return response.json()
         except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
+            level = logging.WARNING if e.response.status_code < 500 else logging.ERROR
+            self.logger.log(level, f"HTTP error: {e.response.status_code} - {e.response.text}")
             raise TEMdbServerError.from_httpx_status_error(e) from e
         except httpx.RequestError as e:
             self.logger.error(f"Request failed: {str(e)}")

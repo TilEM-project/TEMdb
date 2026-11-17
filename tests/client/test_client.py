@@ -122,6 +122,19 @@ async def test_async_request_raises_mapped_server_error(client):
     assert "Validation failed" in str(exc_info.value)
 
 
+@pytest.mark.parametrize("status, level", [(404, "WARNING"), (409, "WARNING"), (500, "ERROR"), (503, "ERROR")])
+@pytest.mark.asyncio
+async def test_error_response_log_level_follows_its_class(client, caplog, status, level):
+    """A 4xx answer is logged as a warning about the request, a 5xx as an error of the server."""
+    req = httpx.Request("POST", "https://api.temdb.example.com/api/v2/layouts")
+    client._http_client.request = AsyncMock(return_value=httpx.Response(status, request=req, json={"detail": "no"}))
+
+    with caplog.at_level("DEBUG"), pytest.raises(TEMdbServerError):
+        await client._async_request("POST", "layouts", json={})
+
+    assert [record.levelname for record in caplog.records if "HTTP error" in record.message] == [level]
+
+
 @pytest.mark.parametrize(
     "status,expected",
     [

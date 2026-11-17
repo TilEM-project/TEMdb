@@ -8,7 +8,7 @@ from temdb.models import (
     SubstrateResponse,
 )
 
-from .base import BaseResource
+from .base import BaseResource, accepts_keywords
 
 
 class SubstrateLayoutResource(BaseResource):
@@ -36,6 +36,7 @@ class SubstrateLayoutResource(BaseResource):
             else []
         )
 
+    @accepts_keywords(SubstrateLayoutCreate)
     async def create(self, layout_data: SubstrateLayoutCreate) -> SubstrateLayoutResponse:
         """Create a new substrate layout."""
         response_data = await self._post("layouts", data=layout_data.model_dump(exclude_unset=True))
@@ -46,6 +47,7 @@ class SubstrateLayoutResource(BaseResource):
         response_data = await self._get(f"layouts/{layout_id}")
         return SubstrateLayoutResponse.model_validate(response_data)
 
+    @accepts_keywords(SubstrateLayoutUpdate)
     async def update(self, layout_id: str, layout_data: SubstrateLayoutUpdate) -> SubstrateLayoutResponse:
         """Update an existing substrate layout."""
         update_payload = layout_data.model_dump(exclude_unset=True)
