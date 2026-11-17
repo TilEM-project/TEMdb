@@ -55,9 +55,42 @@ class ShapeType(str, Enum):
     POLYGON = "polygon"
 
 
-RUN_STATUSES = ("complete", "aborted", "failed")
+class AcquisitionStatus(str, Enum):
+    COMPLETE = "complete"
+    ABORTED = "aborted"
+    FAILED = "failed"
+
+
+class QCState(str, Enum):
+    PENDING = "pending"
+    QC_PASS = "qc_pass"
+    QC_FAIL = "qc_fail"
+    NEEDS_REVIEW = "needs_review"
+
+
+class TransferState(str, Enum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
+    ERROR = "error"
+
+
+class SectionCondition(str, Enum):
+    OK = "ok"
+    DAMAGED = "damaged"
+    DESTROYED = "destroyed"
+    CONTAMINATED = "contaminated"
+    LOST = "lost"
+
+
+class TaskKind(str, Enum):
+    MONTAGE = "montage"
+    LENS_CORRECTION = "lens_correction"
+
+
+RUN_STATUSES = tuple(status.value for status in AcquisitionStatus)
 AcquisitionStatusFilter = Literal["complete", "aborted", "failed", "in_flight"]
-QC_STATES = ("pending", "qc_pass", "qc_fail", "needs_review")
-TRANSFER_STATES = ("not_started", "in_progress", "complete", "error")
-SECTION_CONDITIONS = ("ok", "damaged", "destroyed", "contaminated", "lost")
-TASK_KINDS = ("montage", "lens_correction")
+QC_STATES = tuple(state.value for state in QCState)
+TRANSFER_STATES = tuple(state.value for state in TransferState)
+SECTION_CONDITIONS = tuple(condition.value for condition in SectionCondition)
+TASK_KINDS = tuple(kind.value for kind in TaskKind)

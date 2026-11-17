@@ -112,10 +112,9 @@
             "description": "Hardware settings of acquisition"
           },
           "kind": {
+            "$ref": "#/components/schemas/TaskKind",
             "default": "montage",
-            "description": "Run kind: montage or lens_correction",
-            "title": "Kind",
-            "type": "string"
+            "description": "Run kind: montage or lens_correction"
           },
           "lc_id": {
             "anyOf": [
@@ -585,9 +584,8 @@
             "type": "integer"
           },
           "kind": {
-            "description": "Run kind: montage or lens_correction",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind",
+            "description": "Run kind: montage or lens_correction"
           },
           "lc_id": {
             "anyOf": [
@@ -636,9 +634,8 @@
             "title": "Montage Set Name"
           },
           "qc_state": {
-            "description": "QC axis state",
-            "title": "Qc State",
-            "type": "string"
+            "$ref": "#/components/schemas/QCState",
+            "description": "QC axis state"
           },
           "qc_state_updated_at": {
             "anyOf": [
@@ -714,14 +711,13 @@
           "status": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/AcquisitionStatus"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Terminal run status; null while in flight",
-            "title": "Status"
+            "description": "Terminal run status; null while in flight"
           },
           "sub_region": {
             "anyOf": [
@@ -762,9 +758,8 @@
             "title": "Tilt Angle Deg"
           },
           "transfer_state": {
-            "description": "Transfer axis state",
-            "title": "Transfer State",
-            "type": "string"
+            "$ref": "#/components/schemas/TransferState",
+            "description": "Transfer axis state"
           },
           "transfer_state_updated_at": {
             "anyOf": [
@@ -819,6 +814,15 @@
         "title": "AcquisitionResponse",
         "type": "object"
       },
+      "AcquisitionStatus": {
+        "enum": [
+          "complete",
+          "aborted",
+          "failed"
+        ],
+        "title": "AcquisitionStatus",
+        "type": "string"
+      },
       "AcquisitionTaskCreate": {
         "additionalProperties": false,
         "description": "Schema for creating an acquisition task.",
@@ -862,10 +866,9 @@
             "title": "Extra"
           },
           "kind": {
+            "$ref": "#/components/schemas/TaskKind",
             "default": "montage",
-            "description": "Task kind: montage or lens_correction",
-            "title": "Kind",
-            "type": "string"
+            "description": "Task kind: montage or lens_correction"
           },
           "metadata": {
             "additionalProperties": true,
@@ -1014,9 +1017,8 @@
             "type": "integer"
           },
           "kind": {
-            "description": "Task kind: montage or lens_correction",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind",
+            "description": "Task kind: montage or lens_correction"
           },
           "metadata": {
             "anyOf": [
@@ -1176,9 +1178,8 @@
             "title": "Extra"
           },
           "kind": {
-            "description": "Task kind: montage or lens_correction",
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/TaskKind",
+            "description": "Task kind: montage or lens_correction"
           },
           "metadata": {
             "anyOf": [
@@ -1361,16 +1362,8 @@
             "title": "Montage Set Name"
           },
           "qc_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "QC axis state",
-            "title": "Qc State"
+            "$ref": "#/components/schemas/QCState",
+            "description": "QC axis state"
           },
           "replaces_acquisition_id": {
             "anyOf": [
@@ -1385,16 +1378,8 @@
             "title": "Replaces Acquisition Id"
           },
           "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Terminal run status (write-once): complete, aborted, or failed",
-            "title": "Status"
+            "$ref": "#/components/schemas/AcquisitionStatus",
+            "description": "Terminal run status (write-once)"
           },
           "sub_region": {
             "anyOf": [
@@ -1436,16 +1421,8 @@
             "title": "Tilt Angle Deg"
           },
           "transfer_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Transfer axis state",
-            "title": "Transfer State"
+            "$ref": "#/components/schemas/TransferState",
+            "description": "Transfer axis state"
           },
           "updated_by": {
             "anyOf": [
@@ -3860,6 +3837,16 @@
         "title": "PolygonParams",
         "type": "object"
       },
+      "QCState": {
+        "enum": [
+          "pending",
+          "qc_pass",
+          "qc_fail",
+          "needs_review"
+        ],
+        "title": "QCState",
+        "type": "string"
+      },
       "ROIChildrenMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -4792,6 +4779,17 @@
         "title": "RectangleParams",
         "type": "object"
       },
+      "SectionCondition": {
+        "enum": [
+          "ok",
+          "damaged",
+          "destroyed",
+          "contaminated",
+          "lost"
+        ],
+        "title": "SectionCondition",
+        "type": "string"
+      },
       "SectionCreate": {
         "additionalProperties": false,
         "description": "Schema for creating a section.",
@@ -4810,10 +4808,9 @@
             "title": "Aperture Index"
           },
           "condition": {
+            "$ref": "#/components/schemas/SectionCondition",
             "default": "ok",
-            "description": "Physical condition of the section",
-            "title": "Condition",
-            "type": "string"
+            "description": "Physical condition of the section"
           },
           "condition_reason": {
             "anyOf": [
@@ -5195,10 +5192,9 @@
             "type": "string"
           },
           "condition": {
+            "$ref": "#/components/schemas/SectionCondition",
             "default": "ok",
-            "description": "Physical condition of the section",
-            "title": "Condition",
-            "type": "string"
+            "description": "Physical condition of the section"
           },
           "condition_reason": {
             "anyOf": [
@@ -5387,9 +5383,8 @@
             "title": "Aperture Index"
           },
           "condition": {
-            "description": "Physical condition of the section",
-            "title": "Condition",
-            "type": "string"
+            "$ref": "#/components/schemas/SectionCondition",
+            "description": "Physical condition of the section"
           },
           "condition_reason": {
             "anyOf": [
@@ -6475,6 +6470,14 @@
         "title": "SubstrateUpdate",
         "type": "object"
       },
+      "TaskKind": {
+        "enum": [
+          "montage",
+          "lens_correction"
+        ],
+        "title": "TaskKind",
+        "type": "string"
+      },
       "TileBulkDeleteResult": {
         "additionalProperties": false,
         "properties": {
@@ -7025,6 +7028,16 @@
         },
         "title": "TileUpdate",
         "type": "object"
+      },
+      "TransferState": {
+        "enum": [
+          "not_started",
+          "in_progress",
+          "complete",
+          "error"
+        ],
+        "title": "TransferState",
+        "type": "string"
       },
       "TriangleParams": {
         "additionalProperties": false,

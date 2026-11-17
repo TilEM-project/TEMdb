@@ -34,13 +34,18 @@ from temdb.models.enums import (
     SECTION_CONDITIONS,
     TASK_KINDS,
     TRANSFER_STATES,
+    AcquisitionStatus,
     AcquisitionStatusFilter,
     ApertureStatus,
+    QCState,
+    SectionCondition,
     SectionImage,
     SectionQuality,
     ShapeType,
     StorageProtocol,
     SubstrateType,
+    TaskKind,
+    TransferState,
 )
 from temdb.models.error import APIErrorResponse
 from temdb.models.file_storage import (
@@ -142,6 +147,11 @@ __all__ = [
     "QC_STATES",
     "TRANSFER_STATES",
     "SECTION_CONDITIONS",
+    "AcquisitionStatus",
+    "QCState",
+    "SectionCondition",
+    "TaskKind",
+    "TransferState",
     "TASK_KINDS",
     # Tile
     "Matcher",
