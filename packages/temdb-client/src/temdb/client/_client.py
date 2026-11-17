@@ -24,6 +24,19 @@ from .resources.task import AcquisitionTaskResource
 
 
 class TEMdbClient:
+    specimen: SpecimenResource
+    block: BlockResource
+    cutting_session: CuttingSessionResource
+    substrate: SubstrateResource
+    acquisition_task: AcquisitionTaskResource
+    roi: ROIResource
+    acquisition: AcquisitionResource
+    dataset: DatasetResource
+    section: SectionResource
+    microscope: MicroscopeResource
+    lens_correction: LensCorrectionResource
+    substrate_layout: SubstrateLayoutResource
+
     def __init__(
         self,
         base_url: str,
@@ -60,66 +73,18 @@ class TEMdbClient:
         self.contract: dict[str, Any] | None = None
         self._contract_lock = asyncio.Lock()
 
-        self._specimen = SpecimenResource(self._api_request, self.api_url)
-        self._block = BlockResource(self._api_request, self.api_url)
-        self._cutting_session = CuttingSessionResource(self._api_request, self.api_url)
-        self._substrate = SubstrateResource(self._api_request, self.api_url)
-        self._acquisition_task = AcquisitionTaskResource(self._api_request, self.api_url)
-        self._roi = ROIResource(self._api_request, self.api_url)
-        self._acquisition = AcquisitionResource(self._api_request, self.api_url, file_client=self._file_client)
-        self._dataset = DatasetResource(self._api_request, self.api_url)
-        self._section = SectionResource(self._api_request, self.api_url, file_client=self._file_client)
-        self._microscope = MicroscopeResource(self._api_request, self.api_url)
-        self._lens_correction = LensCorrectionResource(self._api_request, self.api_url)
-        self._substrate_layout = SubstrateLayoutResource(self._api_request, self.api_url)
-
-    @property
-    def specimen(self) -> SpecimenResource:
-        return self._specimen
-
-    @property
-    def block(self) -> BlockResource:
-        return self._block
-
-    @property
-    def cutting_session(self) -> CuttingSessionResource:
-        return self._cutting_session
-
-    @property
-    def substrate(self) -> SubstrateResource:
-        return self._substrate
-
-    @property
-    def acquisition_task(self) -> AcquisitionTaskResource:
-        return self._acquisition_task
-
-    @property
-    def roi(self) -> ROIResource:
-        return self._roi
-
-    @property
-    def acquisition(self) -> AcquisitionResource:
-        return self._acquisition
-
-    @property
-    def dataset(self) -> DatasetResource:
-        return self._dataset
-
-    @property
-    def section(self) -> SectionResource:
-        return self._section
-
-    @property
-    def microscope(self) -> MicroscopeResource:
-        return self._microscope
-
-    @property
-    def lens_correction(self) -> LensCorrectionResource:
-        return self._lens_correction
-
-    @property
-    def substrate_layout(self) -> SubstrateLayoutResource:
-        return self._substrate_layout
+        self.specimen = SpecimenResource(self._api_request, self.api_url)
+        self.block = BlockResource(self._api_request, self.api_url)
+        self.cutting_session = CuttingSessionResource(self._api_request, self.api_url)
+        self.substrate = SubstrateResource(self._api_request, self.api_url)
+        self.acquisition_task = AcquisitionTaskResource(self._api_request, self.api_url)
+        self.roi = ROIResource(self._api_request, self.api_url)
+        self.acquisition = AcquisitionResource(self._api_request, self.api_url, file_client=self._file_client)
+        self.dataset = DatasetResource(self._api_request, self.api_url)
+        self.section = SectionResource(self._api_request, self.api_url, file_client=self._file_client)
+        self.microscope = MicroscopeResource(self._api_request, self.api_url)
+        self.lens_correction = LensCorrectionResource(self._api_request, self.api_url)
+        self.substrate_layout = SubstrateLayoutResource(self._api_request, self.api_url)
 
     async def _async_request(
         self, method: str, endpoint: str, *, with_headers: bool = False, **kwargs
