@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate
 from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
@@ -37,7 +38,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
         await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id))
     ).one_or_none()
     if microscope is None:
-        raise HTTPException(status_code=404, detail=f"Microscope '{data.microscope_id}' not found")
+        raise MissingParentError(MicroscopeSQLModel, data.microscope_id)
     lc = LensCorrectionSQLModel(
         lc_id=data.lc_id if data.lc_id is not None else uuid7(),
         microscope_id=data.microscope_id,

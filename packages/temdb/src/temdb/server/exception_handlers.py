@@ -1,4 +1,6 @@
 import logging
+import re
+from functools import cache
 from http import HTTPStatus
 
 from asyncpg.exceptions import (
@@ -17,8 +19,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from temdb.models import APIErrorResponse
 from temdb.server.config import is_debug_traceback_enabled
+from temdb.server.sqlmodels.base import Base
 
 logger = logging.getLogger(__name__)
+
+MISSING_KEY = re.compile(r'Key \([^)]*\)=\((?P<values>.*)\) is not present in table "(?P<table>[^"]+)"')
 
 
 class BaseError(Exception):
@@ -36,6 +41,31 @@ class BaseError(Exception):
         self.error_code = error_code or self.__class__.__name__.upper()
         self.context = context
         super().__init__(detail)
+
+
+def record_name(model: type) -> str:
+    """The readable name of a record type, from its model class: SubstrateLayoutSQLModel is "substrate layout"."""
+    words = re.findall(r"[A-Z]+(?![a-z])|[A-Z][a-z]*", model.__name__.removesuffix("SQLModel"))
+    return " ".join(word if len(word) > 1 and word.isupper() else word.lower() for word in words)
+
+
+@cache
+def record_model_for_table(table: str) -> type | None:
+    """The model class mapped to a database table, or None."""
+    return next((mapper.class_ for mapper in Base.registry.mappers if mapper.local_table.name == table), None)
+
+
+class MissingParentError(BaseError):
+    """A record the request refers to does not exist (yet)."""
+
+    def __init__(self, parent: type | str, id: str | None, detail: str | None = None):
+        name = parent if isinstance(parent, str) else record_name(parent)
+        super().__init__(
+            detail or f"{name[:1].upper()}{name[1:]} '{id}' does not exist",
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code="MISSING_PARENT",
+            context={"parent": name, "id": id},
+        )
 
 
 async def business_logic_exception_handler(request: Request, exc: BaseError):
@@ -81,8 +111,17 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 
 async def integrity_exception_handler(request: Request, exc: IntegrityError):
-    """Foreign-key and unique violations are a 409 naming the table; other violations stay 500."""
+    """A reference to a missing record is MISSING_PARENT 404; other foreign-key and unique violations are a 409 naming
+    the table; other violations stay 500."""
     postgres_error = exc.driver_exception
+    missing = (
+        MISSING_KEY.search(postgres_error.detail or "")
+        if isinstance(postgres_error, ForeignKeyViolationError)
+        else None
+    )
+    if missing:
+        parent = record_model_for_table(missing["table"]) or missing["table"]
+        return await business_logic_exception_handler(request, MissingParentError(parent, missing["values"]))
     if isinstance(postgres_error, ForeignKeyViolationError):
         error_code = "FOREIGN_KEY_VIOLATION"
     elif isinstance(postgres_error, UniqueViolationError):

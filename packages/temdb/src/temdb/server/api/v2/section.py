@@ -21,7 +21,7 @@ from temdb.models import (
 from temdb.server.api.v2.paging import page
 from temdb.server.config import config
 from temdb.server.dependencies import get_async_session, get_storage_client_manager
-from temdb.server.exception_handlers import BaseError
+from temdb.server.exception_handlers import BaseError, MissingParentError
 from temdb.server.sqlmodels import (
     BlockSQLModel,
     CuttingSessionSQLModel,
@@ -288,7 +288,7 @@ async def lock_substrate(session: AsyncSession, media_id: str) -> SubstrateSQLMo
         select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id).with_for_update(key_share=True)
     )
     if substrate is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Substrate '{media_id}' not found")
+        raise MissingParentError(SubstrateSQLModel, media_id)
     return substrate
 
 
@@ -297,9 +297,7 @@ async def _cutting_session(session: AsyncSession, cutting_session_id: str) -> Cu
         select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
     )
     if cut_session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Cutting Session with ID '{cutting_session_id}' not found"
-        )
+        raise MissingParentError(CuttingSessionSQLModel, cutting_session_id)
     return cut_session
 
 

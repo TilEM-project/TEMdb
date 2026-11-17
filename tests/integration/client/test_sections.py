@@ -3,10 +3,21 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from temdb.client.exceptions import TEMdbNotFoundError
+from temdb.client.exceptions import TEMdbMissingParentError, TEMdbNotFoundError
 from temdb.client.resources.base import BaseResource
 
 PAGE = inspect.signature(BaseResource._list).parameters["page_size"].default
+
+
+async def test_section_on_a_missing_substrate_raises_missing_parent(client, records):
+    await records.cutting_session()
+
+    with pytest.raises(TEMdbMissingParentError) as raised:
+        await client.section.create(
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc), cutting_session_id="CS1", media_id="NO_SUCH_SUBSTRATE"
+        )
+
+    assert (raised.value.parent, raised.value.id) == ("substrate", "NO_SUCH_SUBSTRATE")
 
 
 async def test_section_list_by_media_returns_more_than_one_page(client, records):

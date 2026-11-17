@@ -241,7 +241,8 @@ async def test_create_acquisition_invalid_parent(
     }
     response = await async_client.post("/api/v2/acquisitions", json=acquisition_data)
     assert response.status_code == 404
-    assert f"Acquisition Task '{invalid_task_id}' not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "acquisition task", "id": invalid_task_id}
 
     get_response = await async_client.get(f"/api/v2/acquisitions/{acq_id_hr}")
     assert get_response.status_code == 404

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from temdb.models import BlockCreate, BlockResponse, BlockUpdate, CuttingSessionResponse
 from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SpecimenSQLModel
 
 from ..utils import drop_null_keys, error_responses, merge_extra
@@ -78,10 +79,7 @@ async def create_block(
     )
     specimen_obj = specimen.one_or_none()
     if specimen_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Specimen with ID '{block_data.specimen_id}' not found",
-        )
+        raise MissingParentError(SpecimenSQLModel, block_data.specimen_id)
     new_block = BlockSQLModel(
         block_id=block_data.block_id,
         specimen_id=block_data.specimen_id,

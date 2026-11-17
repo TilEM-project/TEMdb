@@ -37,6 +37,7 @@ from temdb.models import (
 )
 from temdb.server.config import config
 from temdb.server.dependencies import get_async_session, get_storage_client_manager
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -290,24 +291,24 @@ async def create_acquisition(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )
     if microscope.first() is None:
-        raise HTTPException(404, f"Microscope '{acq_data.microscope_id}' not found.")
+        raise MissingParentError(MicroscopeSQLModel, acq_data.microscope_id)
     if acq_data.lc_id is not None:
         lens_correction = await session.scalars(
             select(LensCorrectionSQLModel).where(LensCorrectionSQLModel.lc_id == acq_data.lc_id)
         )
         if lens_correction.first() is None:
-            raise HTTPException(404, f"Lens correction '{acq_data.lc_id}' not found.")
+            raise MissingParentError(LensCorrectionSQLModel, str(acq_data.lc_id))
     task_obj = await session.scalar(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
     )
     if task_obj is None:
-        raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
+        raise MissingParentError(AcquisitionTaskSQLModel, acq_data.acquisition_task_id)
     roi_obj = None
     if acq_data.roi_id is not None:
         roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
         roi_obj = roi.first()
         if roi_obj is None:
-            raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
+            raise MissingParentError(ROISQLModel, acq_data.roi_id)
         if task_obj.roi_id != roi_obj.roi_id:
             raise HTTPException(
                 400,
@@ -327,10 +328,7 @@ async def create_acquisition(
         )
         replacement_obj = replacement.first()
         if replacement_obj is None:
-            raise HTTPException(
-                404,
-                f"Acquisition to replace ID '{acq_data.replaces_acquisition_id}' not found.",
-            )
+            raise MissingParentError(AcquisitionSQLModel, str(acq_data.replaces_acquisition_id))
         replacement_id = replacement_obj.acquisition_id
     dataset_uuid = None
     if acq_data.dataset_id is not None:

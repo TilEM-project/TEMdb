@@ -14,6 +14,7 @@ from temdb.models import (
 )
 from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
@@ -107,13 +108,13 @@ async def _validate_lineage(session: AsyncSession, task_data: AcquisitionTaskCre
     ).first()
     specimen_obj = validation_row[0] if validation_row else None
     if specimen_obj is None:
-        raise HTTPException(404, f"Specimen '{task_data.specimen_id}' not found")
+        raise MissingParentError(SpecimenSQLModel, task_data.specimen_id)
     block_obj = validation_row[1]
     if block_obj is None:
-        raise HTTPException(404, f"Block '{task_data.block_id}' not found for specimen '{task_data.specimen_id}'")
+        raise MissingParentError(BlockSQLModel, task_data.block_id)
     roi_obj = validation_row[2]
     if roi_obj is None:
-        raise HTTPException(404, f"ROI '{task_data.roi_id}' not found")
+        raise MissingParentError(ROISQLModel, task_data.roi_id)
     if (validation_row.roi_specimen_id, validation_row.roi_block_id) != (specimen_obj.specimen_id, block_obj.block_id):
         raise HTTPException(
             400,

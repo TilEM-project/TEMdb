@@ -67,6 +67,8 @@ class TEMdbServerError(TEMdbError):
         context = payload.get("context")
         if not isinstance(context, dict):
             context = {}
+        if payload.get("error_code") == "MISSING_PARENT":
+            exception = TEMdbMissingParentError
         message = f"{httpx_error.request.url}: {payload.get('detail', exception.NAME)}"
         errors = _format_validation_errors(context.get("errors"))
         if errors:
@@ -102,6 +104,20 @@ class TEMdbNotFoundError(TEMdbServerError):
     """Resource not found."""
 
     NAME = "Not found"
+
+
+class TEMdbMissingParentError(TEMdbNotFoundError):
+    """A record the request refers to does not exist (yet); `parent` and `id` say which."""
+
+    NAME = "Missing parent"
+
+    @property
+    def parent(self) -> str | None:
+        return self.context.get("parent")
+
+    @property
+    def id(self) -> str | None:
+        return self.context.get("id")
 
 
 class TEMdbConflictError(TEMdbServerError):

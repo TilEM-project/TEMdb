@@ -15,6 +15,7 @@ from temdb.models import (
 )
 from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import SectionSQLModel, SubstrateLayoutSQLModel, SubstrateSQLModel
 
 from ..utils import drop_null_keys, error_responses, merge_extra
@@ -65,10 +66,7 @@ async def create_substrate(
         SubstrateLayoutSQLModel, substrate_data.substrate_layout_id, with_for_update={"read": True}
     )
     if layout is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Substrate layout '{substrate_data.substrate_layout_id}' not found",
-        )
+        raise MissingParentError(SubstrateLayoutSQLModel, substrate_data.substrate_layout_id)
     aperture_count = len(layout.apertures or [])
     aperture_status = substrate_data.aperture_status or ["available"] * aperture_count
     if len(aperture_status) != aperture_count:
@@ -130,10 +128,7 @@ async def update_substrate(
             SubstrateLayoutSQLModel, update_data["substrate_layout_id"], with_for_update={"read": True}
         )
         if layout is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Substrate layout '{update_data['substrate_layout_id']}' not found",
-            )
+            raise MissingParentError(SubstrateLayoutSQLModel, update_data["substrate_layout_id"])
         if len(layout.apertures or []) != len(substrate_obj.aperture_status):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
 from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import DatasetSQLModel
 from temdb.server.sqlmodels.tile_partition import resolve_size_class
@@ -36,7 +37,7 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
             await session.scalars(select(DatasetSQLModel).where(DatasetSQLModel.dataset_id == data.parent_dataset_id))
         ).one_or_none()
         if parent is None:
-            raise HTTPException(status_code=404, detail=f"Parent dataset '{data.parent_dataset_id}' not found")
+            raise MissingParentError(DatasetSQLModel, str(data.parent_dataset_id))
         if parent.parent_dataset_id is not None:
             raise HTTPException(
                 status_code=400,

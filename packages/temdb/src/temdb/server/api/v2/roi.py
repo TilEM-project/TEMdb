@@ -10,7 +10,7 @@ from sqlalchemy.orm import aliased
 from temdb.models import APIErrorResponse, ROIChildrenResponse, ROICreate, ROIResponse, ROIUpdate
 from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
-from temdb.server.exception_handlers import BaseError
+from temdb.server.exception_handlers import BaseError, MissingParentError
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -19,7 +19,7 @@ from temdb.server.sqlmodels import (
 )
 
 from ..utils import drop_null_keys, error_responses, merge_extra
-from .section import lock_substrate, section_or_404
+from .section import lock_substrate
 
 roi_api = APIRouter(
     tags=["ROIs"],
@@ -121,8 +121,9 @@ async def _parent(
         )
     )
     if parent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+        raise MissingParentError(
+            ROISQLModel,
+            parent_created_at.isoformat(),
             detail=f"No ROI created at {parent_created_at.isoformat()} on section '{section.section_id}'",
         )
     if len(await _chain(session, parent)) >= 3:
@@ -177,7 +178,9 @@ async def _stored(
 
 async def _create(session: AsyncSession, roi_data: ROICreate) -> tuple[ROISQLModel, bool]:
     """Create the ROI, or return the stored one, and whether it was created."""
-    section = await section_or_404(session, roi_data.section_id)
+    section = await session.scalar(select(SectionSQLModel).where(SectionSQLModel.section_id == roi_data.section_id))
+    if section is None:
+        raise MissingParentError(SectionSQLModel, roi_data.section_id)
     await lock_substrate(session, section.media_id)
     parent = await _parent(session, section, roi_data.parent_created_at)
     stored = await _stored(session, section, roi_data, parent)
