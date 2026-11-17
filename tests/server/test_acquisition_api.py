@@ -16,6 +16,7 @@ from httpx import AsyncClient
 from minio.error import S3Error
 from sqlalchemy import and_, null, or_, select, update
 
+from temdb.server.config import config
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
 from temdb.server.sqlmodels.tile import TileSQLModel, format_tile_id
 
@@ -1584,6 +1585,36 @@ async def stored_tile_image(test_db_manager, minio_s3, test_tile, test_acquisiti
     )
 
 
+async def test_bulk_retry_without_images_matches_tiles_with_uploaded_images(
+    async_client, test_db_manager, test_acquisition, minio_s3
+):
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk"
+    batch = [_image_tile_payload(f"tile_{i}", i, include_image=False) for i in range(2)]
+    tile_ids = await _seed_image_tiles(
+        async_client, test_acquisition.acquisition_id, 2, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
+    images = [await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in tile_ids]
+
+    response = await async_client.post(path, json=batch)
+
+    assert response.status_code in (200, 201), response.text
+    assert response.json()["skipped_existing"] == len(batch)
+    for tile_id, image in zip(tile_ids, images):
+        stored = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}")
+        assert stored.json()["image"]["key"] == image["key"]
+
+
+async def test_bulk_retry_with_a_different_image_is_refused(async_client, test_acquisition):
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk"
+    await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1)
+    changed = _image_tile_payload("tile_0", 0)
+    changed["image"] = _tile_image("path/to/another.tif")
+
+    response = await async_client.post(path, json=[changed])
+
+    assert response.status_code == 409, response.text
+
+
 async def test_tile_image_upload_roundtrip(async_client, test_db_manager, test_acquisition, test_tile, minio_s3):
     tile_id = str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))
     await _set_tiles_image_to_sql_null(test_db_manager, [tile_id])
@@ -1992,8 +2023,10 @@ async def test_tile_update_naming_image_is_refused(async_client, test_acquisitio
 async def test_bulk_get_urls_look_up_together(
     async_client, test_db_manager, test_acquisition, minio_s3, storage_client_manager, monkeypatch
 ):
-    """A page looks up 10 images at a time, and a tile whose image is not in storage is still reported by tile."""
-    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 12)
+    """A page looks up image_lookup_concurrency images at a time, and a tile whose image is not in storage is still
+    reported by tile."""
+    concurrency = config.image_lookup_concurrency
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, concurrency + 2)
     images = [await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in tile_ids]
     minio_s3["client"].remove_object(images[2]["bucket"], images[2]["key"])
     lookup = storage_client_manager.get_url
@@ -2016,7 +2049,7 @@ async def test_bulk_get_urls_look_up_together(
     body = response.json()
     assert set(body["urls"]) == set(tile_ids) - {tile_ids[2]}
     assert body["metadata"]["errors"] == {tile_ids[2]: "The image is not in storage"}
-    assert peak == 10
+    assert peak == concurrency
 
 
 async def _seed_image_tiles(

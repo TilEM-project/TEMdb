@@ -587,12 +587,18 @@ async def add_tiles_to_acquisition(
                 .offset(0)
                 .lateral("stored")
             )
+            changed = [
+                and_(incoming.c[key].is_not(None), stored.c[key].is_distinct_from(incoming.c[key]))
+                if key == "image"
+                else stored.c[key].is_distinct_from(incoming.c[key])
+                for key in rows[0]
+            ]
             differing = (
                 await session.execute(
                     select(stored.c.row, stored.c.col, stored.c.retake)
                     .select_from(incoming)
                     .join(stored, true())
-                    .where(or_(*(stored.c[key].is_distinct_from(incoming.c[key]) for key in rows[0])))
+                    .where(or_(*changed))
                     .order_by(stored.c.row, stored.c.col, stored.c.retake)
                 )
             ).all()
@@ -875,7 +881,7 @@ async def _image_get_url_page(
     urls = {}
     errors = {}
     with_image = [tile for tile in tiles_obj if tile.image is not None]
-    free = asyncio.Semaphore(10)
+    free = asyncio.Semaphore(config.image_lookup_concurrency)
 
     async def lookup(tile):
         async with free:
