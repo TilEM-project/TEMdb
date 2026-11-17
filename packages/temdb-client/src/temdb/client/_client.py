@@ -1,8 +1,10 @@
 import asyncio
 import gzip
 import importlib.metadata
+import inspect
 import json
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
 
 import httpx
@@ -10,6 +12,7 @@ from pydantic_core import to_jsonable_python
 
 from .exceptions import TEMdbClientError, TEMdbContractError, TEMdbNotFoundError, TEMdbServerError
 from .resources.acquisition import AcquisitionResource
+from .resources.base import _next_cursor
 from .resources.block import BlockResource
 from .resources.cutting_session import CuttingSessionResource
 from .resources.dataset import DatasetResource
@@ -138,6 +141,35 @@ class TEMdbClient:
         """Get API information."""
         result = await self._async_request("GET", f"{self.raw_base_url}/")
         return cast(dict[str, Any], result)
+
+    async def iterate(
+        self, method: Callable[..., Awaitable[Any]], *args: Any, page_size: int = 100, **kwargs: Any
+    ) -> AsyncIterator[Any]:
+        """Yield each record of a list method, fetching page_size records at a time, for listings too long to hold.
+
+        async for section in client.iterate(client.section.list_by_media, media_id): ...
+        """
+        parameters = inspect.signature(method).parameters
+        if not {"cursor", "skip"} & parameters.keys():
+            raise TypeError(f"{method.__name__} doesn't page; call it directly")
+        if taken := {"skip", "limit", "cursor"} & kwargs.keys():
+            raise TypeError(f"iterate sets {', '.join(sorted(taken))} itself; pass page_size instead")
+        resource = method.__self__
+        if "cursor" in parameters:
+            pages = resource._pages(
+                lambda cursor: method(*args, cursor=cursor, limit=page_size, **kwargs), _next_cursor
+            )
+        else:
+            pages = resource._pages(
+                lambda skip: method(*args, skip=skip, limit=page_size, **kwargs),
+                lambda page, skip: skip + len(page) if page.has_more and page else None,
+                0,
+            )
+        async for page in pages:
+            items = page.items() if isinstance(page, dict) else page
+            records = page if isinstance(page, list) else next(value for key, value in items if key != "metadata")
+            for record in records:
+                yield record
 
     async def close(self) -> None:
         self.logger.info("Closing async TEMdb client")
