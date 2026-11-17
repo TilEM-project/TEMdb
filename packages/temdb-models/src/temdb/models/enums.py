@@ -1,8 +1,8 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 
-class SectionQuality(str, Enum):
+class SectionQuality(StrEnum):
     GOOD = "good"
     BROKEN = "broken"
     THIN = "thin"
@@ -10,7 +10,7 @@ class SectionQuality(str, Enum):
     EMPTY = "empty"
 
 
-class MatchPosition(str, Enum):
+class MatchPosition(StrEnum):
     INVALID = "invalid"
     CENTER = "center"
     LEFT = "left"
@@ -19,18 +19,18 @@ class MatchPosition(str, Enum):
     BOTTOM = "bottom"
 
 
-class SectionImage(str, Enum):
+class SectionImage(StrEnum):
     POST_PICKUP = "post_pickup_image"
     POST_DROPOFF = "post_dropoff_image"
     QC = "qc_image"
 
 
-class StorageProtocol(str, Enum):
+class StorageProtocol(StrEnum):
     S3 = "s3"
     GCS = "gcs"
 
 
-class SubstrateType(str, Enum):
+class SubstrateType(StrEnum):
     GRID_DISC = "grid_disc"
     WAFER = "wafer"
     TAPE = "tape"
@@ -40,13 +40,13 @@ class SubstrateType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class ApertureStatus(str, Enum):
+class ApertureStatus(StrEnum):
     AVAILABLE = "available"
     USED = "used"
     DAMAGED = "damaged"
 
 
-class ShapeType(str, Enum):
+class ShapeType(StrEnum):
     CIRCLE = "circle"
     SLOT = "slot"
     RECTANGLE = "rectangle"
@@ -55,27 +55,27 @@ class ShapeType(str, Enum):
     POLYGON = "polygon"
 
 
-class AcquisitionStatus(str, Enum):
+class AcquisitionStatus(StrEnum):
     COMPLETE = "complete"
     ABORTED = "aborted"
     FAILED = "failed"
 
 
-class QCState(str, Enum):
+class QCState(StrEnum):
     PENDING = "pending"
     QC_PASS = "qc_pass"
     QC_FAIL = "qc_fail"
     NEEDS_REVIEW = "needs_review"
 
 
-class TransferState(str, Enum):
+class TransferState(StrEnum):
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
     ERROR = "error"
 
 
-class SectionCondition(str, Enum):
+class SectionCondition(StrEnum):
     OK = "ok"
     DAMAGED = "damaged"
     DESTROYED = "destroyed"
@@ -83,7 +83,7 @@ class SectionCondition(str, Enum):
     LOST = "lost"
 
 
-class TaskKind(str, Enum):
+class TaskKind(StrEnum):
     MONTAGE = "montage"
     LENS_CORRECTION = "lens_correction"
 

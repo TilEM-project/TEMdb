@@ -3,7 +3,7 @@ name = "temdb-workspace"
 version = "4.0.0rc2"
 description = "TEMdb monorepo workspace"
 license = "BSD-3-Clause"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
 ]
 [tool.uv.workspace]
