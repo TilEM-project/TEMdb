@@ -115,3 +115,19 @@ async def test_a_parent_only_the_database_checks_is_named_too(
     )
 
     assert_missing_parent(response, "dataset", dataset_id)
+
+
+async def test_roi_create_with_a_missing_parent_roi_names_it_by_time(async_client: AsyncClient, test_section):
+    drawn = "2025-01-01T00:00:00+00:00"
+    response = await async_client.post(
+        "/api/v2/rois",
+        json={
+            "section_id": test_section.section_id,
+            "created_at": NOW,
+            "parent_created_at": drawn,
+            "payload": {"vertices": [[0, 0], [10, 0], [10, 10]], "rotation_angle": 0.0},
+        },
+    )
+
+    assert_missing_parent(response, "ROI", None)
+    assert drawn in response.json()["detail"]

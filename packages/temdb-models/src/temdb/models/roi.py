@@ -96,19 +96,3 @@ class ROIResponse(TEMDBRecord):
     updated_at: datetime | None = None
 
     roi_payload: ROIPayload | None = Field(None, description="Domain attributes of the ROI")
-
-
-class ROIChildrenMetadata(TEMDBModel):
-    skip: int
-    limit: int
-    total_children: int
-    has_more: bool
-
-
-class ROIChildrenResponse(TEMDBModel):
-    """Response model for ROI children query."""
-
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
-
-    children: list[ROIResponse]
-    metadata: ROIChildrenMetadata

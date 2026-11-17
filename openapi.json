@@ -3847,56 +3847,6 @@
         "title": "QCState",
         "type": "string"
       },
-      "ROIChildrenMetadata": {
-        "additionalProperties": false,
-        "properties": {
-          "has_more": {
-            "title": "Has More",
-            "type": "boolean"
-          },
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "skip": {
-            "title": "Skip",
-            "type": "integer"
-          },
-          "total_children": {
-            "title": "Total Children",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "skip",
-          "limit",
-          "total_children",
-          "has_more"
-        ],
-        "title": "ROIChildrenMetadata",
-        "type": "object"
-      },
-      "ROIChildrenResponse": {
-        "description": "Response model for ROI children query.",
-        "properties": {
-          "children": {
-            "items": {
-              "$ref": "#/components/schemas/ROIResponse"
-            },
-            "title": "Children",
-            "type": "array"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/ROIChildrenMetadata"
-          }
-        },
-        "required": [
-          "children",
-          "metadata"
-        ],
-        "title": "ROIChildrenResponse",
-        "type": "object"
-      },
       "ROICreate": {
         "additionalProperties": false,
         "properties": {
@@ -14826,7 +14776,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ROIChildrenResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/ROIResponse"
+                  },
+                  "title": "Response Get Child Rois Api V2 Rois  Roi Id  Children Get",
+                  "type": "array"
                 }
               }
             },

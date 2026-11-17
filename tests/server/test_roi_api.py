@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import AsyncClient
 
+from temdb.models import HAS_MORE_HEADER
 from temdb.server.sqlmodels import AcquisitionTaskSQLModel
 
 drawn = datetime(2026, 10, 23, 10, 0, tzinfo=timezone.utc)
@@ -265,16 +266,31 @@ async def test_get_child_rois(async_client: AsyncClient, test_roi, test_section)
 
     response = await async_client.get(f"/api/v2/rois/{parent_roi_id}/children")
     assert response.status_code == 200
-    response_data = response.json()
-    assert "children" in response_data
-    assert "metadata" in response_data
-    assert isinstance(response_data["children"], list)
-    assert len(response_data["children"]) == 1
-    assert response_data["children"][0]["roi_id"] == child_roi_id
-    assert response_data["children"][0]["parent_roi_id"] == test_roi.roi_id
-    assert response_data["metadata"]["total_children"] == 1
+    children = response.json()
+    assert [child["roi_id"] for child in children] == [child_roi_id]
+    assert children[0]["parent_roi_id"] == test_roi.roi_id
+    assert response.headers[HAS_MORE_HEADER] == "false"
 
     await async_client.delete(f"/api/v2/rois/{child_roi_id}")
+
+
+@pytest.mark.asyncio
+async def test_child_rois_page_with_has_more(async_client: AsyncClient, test_roi, test_section):
+    created = []
+    for minutes in (1, 2):
+        child = _roi(test_section, minutes=minutes, parent_created_at=test_roi.created_at.isoformat())
+        response = await async_client.post("/api/v2/rois", json=child)
+        assert response.status_code == 201, response.text
+        created.append(response.json()["roi_id"])
+
+    path = f"/api/v2/rois/{test_roi.roi_id}/children"
+    first = await async_client.get(path, params={"limit": 1})
+    second = await async_client.get(path, params={"skip": 1, "limit": 1})
+
+    assert [first.headers[HAS_MORE_HEADER], second.headers[HAS_MORE_HEADER]] == ["true", "false"]
+    assert sorted(row["roi_id"] for row in first.json() + second.json()) == sorted(created)
+    for roi_id in created:
+        await async_client.delete(f"/api/v2/rois/{roi_id}")
 
 
 @pytest.mark.asyncio
@@ -282,10 +298,7 @@ async def test_get_child_rois_no_children(async_client: AsyncClient, test_roi):
     """Test retrieving children for an ROI that has none."""
     response = await async_client.get(f"/api/v2/rois/{test_roi.roi_id}/children")
     assert response.status_code == 200
-    response_data = response.json()
-    assert isinstance(response_data["children"], list)
-    assert len(response_data["children"]) == 0
-    assert response_data["metadata"]["total_children"] == 0
+    assert response.json() == []
 
 
 @pytest.mark.asyncio

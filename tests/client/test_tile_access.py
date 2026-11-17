@@ -144,14 +144,19 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
 
 
 @pytest.mark.asyncio
-async def test_roi_list_acquisitions_passes_qc_state():
-    request = AsyncMock()
+async def test_roi_list_acquisitions_follows_every_cursor_with_the_filters():
+    request = AsyncMock(
+        side_effect=[
+            {"acquisitions": [], "metadata": {"has_more": True, "next_cursor": "c2"}},
+            {"acquisitions": [], "metadata": {"has_more": False, "next_cursor": None}},
+        ]
+    )
     res = ROIResource(request, API)
-    request.return_value = {"acquisitions": [], "metadata": {}}
     out = await res.list_acquisitions("R", status="in_flight", qc_state="needs_review")
-    params = request.await_args.kwargs["params"]
-    assert params["status"] == "in_flight"
-    assert params["qc_state"] == "needs_review"
+    sent = [call.kwargs["params"] for call in request.await_args_list]
+    assert [params.get("cursor") for params in sent] == [None, "c2"]
+    assert all(params["roi_id"] == "R" for params in sent)
+    assert all(params["status"] == "in_flight" and params["qc_state"] == "needs_review" for params in sent)
     assert out == []
 
 
