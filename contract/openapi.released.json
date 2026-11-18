@@ -105,7 +105,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "hardware_settings": {
@@ -113,10 +113,9 @@
               "description": "Hardware settings of acquisition"
             },
             "kind": {
+              "$ref": "#/components/schemas/TaskKind",
               "default": "montage",
-              "description": "Run kind: montage or lens_correction",
-              "title": "Kind",
-              "type": "string"
+              "description": "Run kind: montage or lens_correction"
             },
             "lc_id": {
               "anyOf": [
@@ -189,21 +188,6 @@
               ],
               "description": "Start time of acquisition (defaults to now if not provided)",
               "title": "Start Time"
-            },
-            "storage_locations": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/StorageLocation"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Storage locations of acquisition",
-              "title": "Storage Locations"
             },
             "sub_region": {
               "anyOf": [
@@ -577,7 +561,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "failed_tile_count": {
@@ -601,9 +585,8 @@
               "type": "integer"
             },
             "kind": {
-              "description": "Run kind: montage or lens_correction",
-              "title": "Kind",
-              "type": "string"
+              "$ref": "#/components/schemas/TaskKind",
+              "description": "Run kind: montage or lens_correction"
             },
             "lc_id": {
               "anyOf": [
@@ -652,9 +635,8 @@
               "title": "Montage Set Name"
             },
             "qc_state": {
-              "description": "QC axis state",
-              "title": "Qc State",
-              "type": "string"
+              "$ref": "#/components/schemas/QCState",
+              "description": "QC axis state"
             },
             "qc_state_updated_at": {
               "anyOf": [
@@ -730,29 +712,13 @@
             "status": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "$ref": "#/components/schemas/AcquisitionStatus"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Terminal run status; null while in flight",
-              "title": "Status"
-            },
-            "storage_locations": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/StorageLocation"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Storage locations of acquisition",
-              "title": "Storage Locations"
+              "description": "Terminal run status; null while in flight"
             },
             "sub_region": {
               "anyOf": [
@@ -793,9 +759,8 @@
               "title": "Tilt Angle Deg"
             },
             "transfer_state": {
-              "description": "Transfer axis state",
-              "title": "Transfer State",
-              "type": "string"
+              "$ref": "#/components/schemas/TransferState",
+              "description": "Transfer axis state"
             },
             "transfer_state_updated_at": {
               "anyOf": [
@@ -850,6 +815,15 @@
           "title": "AcquisitionResponse",
           "type": "object"
         },
+        "AcquisitionStatus": {
+          "enum": [
+            "complete",
+            "aborted",
+            "failed"
+          ],
+          "title": "AcquisitionStatus",
+          "type": "string"
+        },
         "AcquisitionTaskCreate": {
           "additionalProperties": false,
           "description": "Schema for creating an acquisition task.",
@@ -889,14 +863,13 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "kind": {
+              "$ref": "#/components/schemas/TaskKind",
               "default": "montage",
-              "description": "Task kind: montage or lens_correction",
-              "title": "Kind",
-              "type": "string"
+              "description": "Task kind: montage or lens_correction"
             },
             "metadata": {
               "additionalProperties": true,
@@ -1036,7 +1009,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -1045,9 +1018,8 @@
               "type": "integer"
             },
             "kind": {
-              "description": "Task kind: montage or lens_correction",
-              "title": "Kind",
-              "type": "string"
+              "$ref": "#/components/schemas/TaskKind",
+              "description": "Task kind: montage or lens_correction"
             },
             "metadata": {
               "anyOf": [
@@ -1203,13 +1175,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "kind": {
-              "description": "Task kind: montage or lens_correction",
-              "title": "Kind",
-              "type": "string"
+              "$ref": "#/components/schemas/TaskKind",
+              "description": "Task kind: montage or lens_correction"
             },
             "metadata": {
               "anyOf": [
@@ -1348,7 +1319,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "failed_tile_count": {
@@ -1392,16 +1363,8 @@
               "title": "Montage Set Name"
             },
             "qc_state": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "QC axis state",
-              "title": "Qc State"
+              "$ref": "#/components/schemas/QCState",
+              "description": "QC axis state"
             },
             "replaces_acquisition_id": {
               "anyOf": [
@@ -1416,31 +1379,8 @@
               "title": "Replaces Acquisition Id"
             },
             "status": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Terminal run status (write-once): complete, aborted, or failed",
-              "title": "Status"
-            },
-            "storage_locations": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/StorageLocation"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Storage locations of acquisition",
-              "title": "Storage Locations"
+              "$ref": "#/components/schemas/AcquisitionStatus",
+              "description": "Terminal run status (write-once)"
             },
             "sub_region": {
               "anyOf": [
@@ -1482,16 +1422,8 @@
               "title": "Tilt Angle Deg"
             },
             "transfer_state": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Transfer axis state",
-              "title": "Transfer State"
+              "$ref": "#/components/schemas/TransferState",
+              "description": "Transfer axis state"
             },
             "updated_by": {
               "anyOf": [
@@ -1661,7 +1593,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "microCT_info": {
@@ -1742,7 +1674,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -1824,7 +1756,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "microCT_info": {
@@ -1883,6 +1815,30 @@
               "description": "Aperture centroid in stage coordinates in nm",
               "title": "Aperture Centroid"
             },
+            "flip_x": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Whether the tile grid is mirrored in stage x",
+              "title": "Flip X"
+            },
+            "flip_y": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Whether the tile grid is mirrored in stage y",
+              "title": "Flip Y"
+            },
             "lens_model": {
               "anyOf": [
                 {
@@ -1903,6 +1859,19 @@
               "description": "Rotation angle in degrees",
               "title": "Rotation Angle",
               "type": "number"
+            },
+            "stage_position_unit": {
+              "anyOf": [
+                {
+                  "const": "nm",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Unit of the tiles' stage positions",
+              "title": "Stage Position Unit"
             }
           },
           "required": [
@@ -2069,7 +2038,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "knife_id": {
@@ -2183,7 +2152,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -2292,7 +2261,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "knife_id": {
@@ -2406,7 +2375,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "metadata_json": {
@@ -2566,7 +2535,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "metadata_json": {
@@ -2698,7 +2667,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "metadata_json": {
@@ -3148,7 +3117,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "lc_id": {
@@ -3306,7 +3275,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "lc_id": {
@@ -3433,7 +3402,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "shared_transform": {
@@ -3629,7 +3598,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "location": {
@@ -3703,7 +3672,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -3792,7 +3761,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "location": {
@@ -3869,55 +3838,15 @@
           "title": "PolygonParams",
           "type": "object"
         },
-        "ROIChildrenMetadata": {
-          "additionalProperties": false,
-          "properties": {
-            "has_more": {
-              "title": "Has More",
-              "type": "boolean"
-            },
-            "limit": {
-              "title": "Limit",
-              "type": "integer"
-            },
-            "skip": {
-              "title": "Skip",
-              "type": "integer"
-            },
-            "total_children": {
-              "title": "Total Children",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "skip",
-            "limit",
-            "total_children",
-            "has_more"
+        "QCState": {
+          "enum": [
+            "pending",
+            "qc_pass",
+            "qc_fail",
+            "needs_review"
           ],
-          "title": "ROIChildrenMetadata",
-          "type": "object"
-        },
-        "ROIChildrenResponse": {
-          "description": "Response model for ROI children query.",
-          "properties": {
-            "children": {
-              "items": {
-                "$ref": "#/components/schemas/ROIResponse"
-              },
-              "title": "Children",
-              "type": "array"
-            },
-            "metadata": {
-              "$ref": "#/components/schemas/ROIChildrenMetadata"
-            }
-          },
-          "required": [
-            "children",
-            "metadata"
-          ],
-          "title": "ROIChildrenResponse",
-          "type": "object"
+          "title": "QCState",
+          "type": "string"
         },
         "ROICreate": {
           "additionalProperties": false,
@@ -3938,7 +3867,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "parent_created_at": {
@@ -4438,7 +4367,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -4531,7 +4460,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "payload": {
@@ -4801,6 +4730,17 @@
           "title": "RectangleParams",
           "type": "object"
         },
+        "SectionCondition": {
+          "enum": [
+            "ok",
+            "damaged",
+            "destroyed",
+            "contaminated",
+            "lost"
+          ],
+          "title": "SectionCondition",
+          "type": "string"
+        },
         "SectionCreate": {
           "additionalProperties": false,
           "description": "Schema for creating a section.",
@@ -4819,10 +4759,9 @@
               "title": "Aperture Index"
             },
             "condition": {
+              "$ref": "#/components/schemas/SectionCondition",
               "default": "ok",
-              "description": "Physical condition of the section",
-              "title": "Condition",
-              "type": "string"
+              "description": "Physical condition of the section"
             },
             "condition_reason": {
               "anyOf": [
@@ -4877,7 +4816,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "media_id": {
@@ -5204,10 +5143,9 @@
               "type": "string"
             },
             "condition": {
+              "$ref": "#/components/schemas/SectionCondition",
               "default": "ok",
-              "description": "Physical condition of the section",
-              "title": "Condition",
-              "type": "string"
+              "description": "Physical condition of the section"
             },
             "condition_reason": {
               "anyOf": [
@@ -5267,7 +5205,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -5396,9 +5334,8 @@
               "title": "Aperture Index"
             },
             "condition": {
-              "description": "Physical condition of the section",
-              "title": "Condition",
-              "type": "string"
+              "$ref": "#/components/schemas/SectionCondition",
+              "description": "Physical condition of the section"
             },
             "condition_reason": {
               "anyOf": [
@@ -5435,7 +5372,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "optical_images": {
@@ -5739,7 +5676,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "functional_imaging_metadata": {
@@ -5803,7 +5740,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "functional_imaging_metadata": {
@@ -5873,7 +5810,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "functional_imaging_metadata": {
@@ -5992,47 +5929,6 @@
           "title": "StorageDefault",
           "type": "object"
         },
-        "StorageLocation": {
-          "additionalProperties": false,
-          "properties": {
-            "base_path": {
-              "description": "Base path of storage location",
-              "title": "Base Path",
-              "type": "string"
-            },
-            "date_added": {
-              "description": "Date storage location was added",
-              "format": "date-time",
-              "title": "Date Added",
-              "type": "string"
-            },
-            "is_current": {
-              "description": "Whether this is the current storage location",
-              "title": "Is Current",
-              "type": "boolean"
-            },
-            "location_type": {
-              "description": "Type of storage location, e.g. local, s3, etc.",
-              "title": "Location Type",
-              "type": "string"
-            },
-            "metadata": {
-              "additionalProperties": true,
-              "description": "Metadata of storage location",
-              "title": "Metadata",
-              "type": "object"
-            }
-          },
-          "required": [
-            "location_type",
-            "base_path",
-            "is_current",
-            "date_added",
-            "metadata"
-          ],
-          "title": "StorageLocation",
-          "type": "object"
-        },
         "StorageProtocol": {
           "enum": [
             "s3",
@@ -6118,7 +6014,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "media_id": {
@@ -6181,7 +6077,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "fiducials": {
@@ -6268,7 +6164,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "fiducials": {
@@ -6356,7 +6252,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "fiducials": {
@@ -6427,7 +6323,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "id": {
@@ -6508,7 +6404,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Free-form fields outside the schema; an update merges keys and null removes one",
+              "description": "Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole",
               "title": "Extra"
             },
             "media_id": {
@@ -6524,6 +6420,14 @@
           },
           "title": "SubstrateUpdate",
           "type": "object"
+        },
+        "TaskKind": {
+          "enum": [
+            "montage",
+            "lens_correction"
+          ],
+          "title": "TaskKind",
+          "type": "string"
         },
         "TileBulkDeleteResult": {
           "additionalProperties": false,
@@ -6982,17 +6886,6 @@
               "description": "Focus score of the tile",
               "title": "Focus Score"
             },
-            "image": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/FileObject"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "The tile image"
-            },
             "matcher": {
               "anyOf": [
                 {
@@ -7087,6 +6980,16 @@
           "title": "TileUpdate",
           "type": "object"
         },
+        "TransferState": {
+          "enum": [
+            "not_started",
+            "in_progress",
+            "complete",
+            "error"
+          ],
+          "title": "TransferState",
+          "type": "string"
+        },
         "TriangleParams": {
           "additionalProperties": false,
           "properties": {
@@ -7170,7 +7073,7 @@
     },
     "info": {
       "title": "TEMDB",
-      "version": "4.0.0rc2"
+      "version": "4.0.0rc3"
     },
     "openapi": "3.1.0",
     "paths": {
@@ -14874,7 +14777,11 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/ROIChildrenResponse"
+                    "items": {
+                      "$ref": "#/components/schemas/ROIResponse"
+                    },
+                    "title": "Response Get Child Rois Api V2 Rois  Roi Id  Children Get",
+                    "type": "array"
                   }
                 }
               },
@@ -17704,5 +17611,5 @@
       }
     }
   },
-  "version": "4.0.0rc2"
+  "version": "4.0.0rc3"
 }
