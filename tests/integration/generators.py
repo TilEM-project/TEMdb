@@ -190,7 +190,6 @@ def generate_acquisition(
         "lens_correction": fake.boolean(),
         "start_time": fake.past_datetime(start_date="-7d", tzinfo=timezone.utc),
         "end_time": None,
-        "storage_locations": [],
         "montage_set_name": f"Set_{roi.roi_id}" if fake.boolean() else None,
         "sub_region": None,
         "replaces_acquisition_id": None,

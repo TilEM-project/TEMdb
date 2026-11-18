@@ -1,6 +1,6 @@
 import logging
 import statistics
-from enum import Enum
+from enum import StrEnum
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -50,7 +50,7 @@ class Heatmaps(BaseModel):
     raster_positions: list[dict[str, int]]
 
 
-class HeatmapType(str, Enum):
+class HeatmapType(StrEnum):
     FOCUS_SCORE = "focus_score"
     STD_DEV = "std_dev"
     MATCHER_ROW_QUALITY = "matcher_row_quality"

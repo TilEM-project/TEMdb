@@ -156,6 +156,46 @@ async def test_update_cutting_session(async_client: AsyncClient, test_cutting_se
     assert response_data["cutting_session_id"] == test_cutting_session.cutting_session_id
 
 
+@pytest.mark.parametrize("field", ["block_id", "specimen_id"])
+@pytest.mark.asyncio
+async def test_update_cannot_move_a_session(async_client: AsyncClient, test_cutting_session, field):
+    other = {
+        "block_id": {"specimen_id": test_cutting_session.specimen_id, "block_id": "OTHER_BLOCK"},
+        "specimen_id": {"specimen_id": "OTHER_SPECIMEN", "block_id": test_cutting_session.block_id},
+    }[field]
+    await async_client.post("/api/v2/specimens", json={"specimen_id": "OTHER_SPECIMEN"})
+    created = await async_client.post("/api/v2/blocks", json=other)
+    assert created.status_code == 201, created.text
+    path = f"/api/v2/cutting-sessions/{test_cutting_session.cutting_session_id}"
+
+    response = await async_client.patch(path, json={field: other[field], "operator": "Moved"})
+
+    assert response.status_code == 409, response.text
+    assert field in response.json()["detail"]
+    stored = (
+        await async_client.get(
+            f"/api/v2/cutting-sessions/specimens/{test_cutting_session.specimen_id}"
+            f"/blocks/{test_cutting_session.block_id}/sessions/{test_cutting_session.cutting_session_id}"
+        )
+    ).json()
+    assert (stored[field], stored["operator"]) == (getattr(test_cutting_session, field), test_cutting_session.operator)
+
+
+@pytest.mark.asyncio
+async def test_update_resending_its_block_is_accepted(async_client: AsyncClient, test_cutting_session):
+    response = await async_client.patch(
+        f"/api/v2/cutting-sessions/{test_cutting_session.cutting_session_id}",
+        json={
+            "block_id": test_cutting_session.block_id,
+            "specimen_id": test_cutting_session.specimen_id,
+            "operator": "Same block",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["operator"] == "Same block"
+
+
 @pytest.mark.asyncio
 async def test_cutting_session_extra_fields_round_trip(async_client: AsyncClient, test_block):
     cutting_session_id = f"TEST_CUT_EXTRA_{int(datetime.now(timezone.utc).timestamp())}"

@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import LensCorrectionSQLModel, MicroscopeSQLModel
 
@@ -36,7 +38,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
         await session.scalars(select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == data.microscope_id))
     ).one_or_none()
     if microscope is None:
-        raise HTTPException(status_code=404, detail=f"Microscope '{data.microscope_id}' not found")
+        raise MissingParentError(MicroscopeSQLModel, data.microscope_id)
     lc = LensCorrectionSQLModel(
         lc_id=data.lc_id if data.lc_id is not None else uuid7(),
         microscope_id=data.microscope_id,
@@ -59,6 +61,7 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
 
 @lens_correction_api.get("/lens-corrections", response_model=list[LensCorrectionResponse])
 async def list_lens_corrections(
+    response: Response,
     microscope_id: str | None = Query(None),
     magnification: int | None = Query(None),
     skip: int = Query(0, ge=0),
@@ -70,14 +73,8 @@ async def list_lens_corrections(
         stmt = stmt.where(LensCorrectionSQLModel.microscope_id == microscope_id)
     if magnification is not None:
         stmt = stmt.where(LensCorrectionSQLModel.magnification == magnification)
-    rows = (
-        await session.scalars(
-            stmt.order_by(LensCorrectionSQLModel.started_at.desc(), LensCorrectionSQLModel.lc_id.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-    ).all()
-    return rows
+    statement = stmt.order_by(LensCorrectionSQLModel.started_at.desc(), LensCorrectionSQLModel.lc_id.desc())
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 # NOTE: /current must be declared before /{lc_id} so the literal path wins.

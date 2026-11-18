@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSessionUpdate, SectionResponse
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SectionSQLModel
 
 from ..utils import drop_null_keys, error_responses, merge_extra
@@ -19,6 +21,7 @@ cutting_session_api = APIRouter(
 
 @cutting_session_api.get("/cutting-sessions", response_model=list[CuttingSessionResponse])
 async def list_cutting_sessions(
+    response: Response,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     operator: str | None = Query(None, description="Filter by operator name"),
@@ -34,9 +37,10 @@ async def list_cutting_sessions(
         statement = statement.where(CuttingSessionSQLModel.block_id == block_id)
     if operator:
         statement = statement.where(CuttingSessionSQLModel.operator == operator)
-    statement = statement.order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
-    sessions = (await session.scalars(statement.offset(skip).limit(limit))).all()
-    return sessions
+    statement = statement.order_by(
+        CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id, CuttingSessionSQLModel.id
+    )
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @cutting_session_api.get(
@@ -44,6 +48,7 @@ async def list_cutting_sessions(
     response_model=list[SectionResponse],
 )
 async def get_cutting_session_sections(
+    response: Response,
     specimen_id: str,
     block_id: str,
     cutting_session_id: str,
@@ -65,14 +70,12 @@ async def get_cutting_session_sections(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session '{cutting_session_id}' not found or does not match specimen/block.",
         )
-    sections = await session.scalars(
+    statement = (
         select(SectionSQLModel)
         .where(SectionSQLModel.cutting_session_id == cutting_session_id)
-        .order_by(SectionSQLModel.section_number)
-        .offset(skip)
-        .limit(limit)
+        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
     )
-    return sections.all()
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @cutting_session_api.post(
@@ -96,10 +99,7 @@ async def create_cutting_session(
             detail=f"Block ID '{session_data.block_id}' belongs to more than one specimen; pass specimen_id",
         ) from exc
     if block_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Block with ID '{session_data.block_id}' not found",
-        )
+        raise MissingParentError(BlockSQLModel, session_data.block_id)
     new_session = CuttingSessionSQLModel(
         cutting_session_id=session_data.cutting_session_id,
         block_id=block_obj.block_id,
@@ -168,6 +168,16 @@ async def update_cutting_session(
     )
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update data provided")
+    moved = [
+        field
+        for field in ("block_id", "specimen_id")
+        if field in update_data and update_data[field] != getattr(cutting_session_obj, field)
+    ]
+    if moved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cutting Session '{cutting_session_id}' cannot change its {' or '.join(moved)}",
+        )
     extra_changes = update_data.pop("extra", None)
     for field, value in update_data.items():
         setattr(cutting_session_obj, field, value)
@@ -205,6 +215,7 @@ async def delete_cutting_session(
     response_model=list[CuttingSessionResponse],
 )
 async def list_block_cutting_sessions(
+    response: Response,
     specimen_id: str,
     block_id: str,
     skip: int = Query(0, ge=0),
@@ -212,20 +223,16 @@ async def list_block_cutting_sessions(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve cutting sessions associated with a specific block using human-readable IDs."""
-    sessions = (
-        (
-            await session.execute(
-                select(CuttingSessionSQLModel)
-                .where(
-                    CuttingSessionSQLModel.block_id == block_id,
-                    CuttingSessionSQLModel.specimen_id == specimen_id,
-                )
-                .order_by(CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id)
-                .offset(skip)
-                .limit(limit)
-            )
+    statement = (
+        select(CuttingSessionSQLModel)
+        .where(
+            CuttingSessionSQLModel.block_id == block_id,
+            CuttingSessionSQLModel.specimen_id == specimen_id,
         )
-        .scalars()
-        .all()
+        .order_by(
+            CuttingSessionSQLModel.start_time.desc(),
+            CuttingSessionSQLModel.cutting_session_id,
+            CuttingSessionSQLModel.id,
+        )
     )
-    return sessions
+    return await page(session, statement, skip=skip, limit=limit, response=response)

@@ -9,7 +9,7 @@ from temdb.models import (
     SubstrateUpdate,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class SubstrateResource(BaseResource):
@@ -20,26 +20,13 @@ class SubstrateResource(BaseResource):
         media_type: str | None = None,
         layout_id: str | None = None,
         available: bool | None = None,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> list[SubstrateResponse]:
         """List substrates with optional filtering and pagination."""
-        params = {
-            "media_type": media_type,
-            "layout_id": layout_id,
-            "available": available,
-            "skip": skip,
-            "limit": limit,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
-        response_data = await self._get("substrates", params=params)
-        return (
-            [SubstrateResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
-        )
+        params = without_none(media_type=media_type, layout_id=layout_id, available=available, **kwargs)
+        return await self._list("substrates", SubstrateResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(SubstrateCreate)
     async def create(self, substrate_data: SubstrateCreate) -> SubstrateResponse:
@@ -69,12 +56,8 @@ class SubstrateResource(BaseResource):
         await self._delete(f"substrates/{media_id}")
 
     async def list_related_sections(
-        self, media_id: str, skip: int = 0, limit: int = 100
+        self, media_id: str, skip: int | None = None, limit: int | None = None
     ) -> builtins.list[SectionResponse]:
         """List sections related to a specific substrate."""
         endpoint = f"substrates/{media_id}/sections"
-        params = {"skip": skip, "limit": limit}
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        return await self._list(endpoint, SectionResponse, {}, skip=skip, limit=limit)

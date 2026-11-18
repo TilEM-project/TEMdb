@@ -1,12 +1,11 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import ConfigDict, Field, field_validator
-from pydantic_core import PydanticCustomError
+from pydantic import ConfigDict, Field
 
 from temdb.models.base import TEMDBModel, TEMDBRecord
-from temdb.models.enums import QC_STATES, RUN_STATUSES, TASK_KINDS, TRANSFER_STATES
+from temdb.models.enums import AcquisitionStatus, QCState, TaskKind, TransferState
 
 
 class LensCorrectionModel(TEMDBModel):
@@ -28,6 +27,9 @@ class LensCorrectionModel(TEMDBModel):
 class Calibration(TEMDBModel):
     pixel_size: float = Field(..., description="Pixel size in nm")
     rotation_angle: float = Field(..., description="Rotation angle in degrees")
+    flip_x: bool | None = Field(None, description="Whether the tile grid is mirrored in stage x")
+    flip_y: bool | None = Field(None, description="Whether the tile grid is mirrored in stage y")
+    stage_position_unit: Literal["nm"] | None = Field(None, description="Unit of the tiles' stage positions")
     lens_model: LensCorrectionModel | None = Field(None, description="Lens correction model")
     aperture_centroid: list[float] | None = Field(None, description="Aperture centroid in stage coordinates in nm")
 
@@ -48,26 +50,11 @@ class AcquisitionParams(TEMDBModel):
     saved_bit_depth: int = Field(..., description="Bit depth of saved image")
 
 
-class StorageLocation(TEMDBModel):
-    location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
-    base_path: str = Field(..., description="Base path of storage location")
-    is_current: bool = Field(..., description="Whether this is the current storage location")
-    date_added: datetime = Field(..., description="Date storage location was added")
-    metadata: dict[str, Any] = Field(..., description="Metadata of storage location")
-
-
-class StorageLocationCreate(TEMDBModel):
-    location_type: str = Field(..., description="Type of storage location, e.g. local, s3, etc.")
-    base_path: str = Field(..., description="Base path of storage location")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata of storage location")
-
-
 class AcquisitionBase(TEMDBRecord):
     hardware_settings: HardwareParams = Field(None, description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(None, description="Acquisition settings of acquisition")
     calibration_info: Calibration | None = None
     tilt_angle_deg: float | None = Field(None, description="Tilt angle of acquisition in degrees")
-    storage_locations: list[StorageLocation] | None = Field(None, description="Storage locations of acquisition")
     montage_set_name: str | None = Field(None, description="Name of montage set")
     sub_region: dict[str, int] | None = Field(None, description="Sub region of acquisition")
     replaces_acquisition_id: str | None = Field(None, description="ID of acquisition this acquisition replaces")
@@ -80,54 +67,26 @@ class AcquisitionCreate(AcquisitionBase):
     acquisition_task_id: str = Field(..., description="Parent task identifier")
     microscope_id: str = Field(..., description="Microscope that executes this run")
     dataset_id: str | None = Field(None, description="Dataset this acquisition belongs to (UUIDv7)")
-    kind: str = Field("montage", description="Run kind: montage or lens_correction")
+    kind: TaskKind = Field(TaskKind.MONTAGE, description="Run kind: montage or lens_correction")
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
     start_time: datetime | None = Field(None, description="Start time of acquisition (defaults to now if not provided)")
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
-    @field_validator("kind")
-    @classmethod
-    def _kind_vocab(cls, v: str) -> str:
-        if v not in TASK_KINDS:
-            raise PydanticCustomError("value_error", f"kind must be one of {TASK_KINDS}")
-        return v
-
 
 class AcquisitionUpdate(AcquisitionBase):
     calibration_info: dict[str, Any] | None = Field(None, description="Calibration information of acquisition")
-    status: str | None = Field(None, description="Terminal run status (write-once): complete, aborted, or failed")
+    status: AcquisitionStatus = Field(None, description="Terminal run status (write-once)")
     end_time: datetime | None = Field(None, description="End time of acquisition (set with terminal status)")
     error_message: str | None = Field(None, description="Failure detail for terminal status")
-    qc_state: str | None = Field(None, description="QC axis state")
-    transfer_state: str | None = Field(None, description="Transfer axis state")
+    qc_state: QCState = Field(None, description="QC axis state")
+    transfer_state: TransferState = Field(None, description="Transfer axis state")
     updated_by: str | None = Field(None, description="Actor stamped on qc_state/transfer_state changes")
     tile_count: int | None = Field(None, description="Rollup: total tiles")
     avg_focus_score: float | None = Field(None, description="Rollup: mean tile focus score")
     failed_tile_count: int | None = Field(None, description="Rollup: failed tiles")
     median_match_quality: float | None = Field(None, description="Rollup: median tile match quality")
-
-    @field_validator("status")
-    @classmethod
-    def _status_terminal(cls, v: str | None) -> str:
-        if v not in RUN_STATUSES:
-            raise PydanticCustomError("value_error", f"status must be one of {RUN_STATUSES}")
-        return v
-
-    @field_validator("qc_state")
-    @classmethod
-    def _qc_state_vocab(cls, v: str | None) -> str:
-        if v not in QC_STATES:
-            raise PydanticCustomError("value_error", f"qc_state must be one of {QC_STATES}")
-        return v
-
-    @field_validator("transfer_state")
-    @classmethod
-    def _transfer_state_vocab(cls, v: str | None) -> str:
-        if v not in TRANSFER_STATES:
-            raise PydanticCustomError("value_error", f"transfer_state must be one of {TRANSFER_STATES}")
-        return v
 
 
 class AcquisitionResponse(AcquisitionBase):
@@ -142,19 +101,19 @@ class AcquisitionResponse(AcquisitionBase):
     acquisition_task_id: str = Field(..., description="Parent task identifier")
     microscope_id: str = Field(..., description="Microscope that executed this run")
     dataset_id: uuid.UUID | None = Field(None, description="Dataset this acquisition belongs to (UUIDv7)")
-    kind: str = Field(..., description="Run kind: montage or lens_correction")
+    kind: TaskKind = Field(..., description="Run kind: montage or lens_correction")
     lc_id: uuid.UUID | None = Field(None, description="Lens correction applied to this run")
     hardware_settings: HardwareParams = Field(..., description="Hardware settings of acquisition")
     acquisition_settings: AcquisitionParams = Field(..., description="Acquisition settings of acquisition")
     replaces_acquisition_id: str | None = Field(
         None, description="Business ID (acquisition_id) of acquisition this acquisition replaces"
     )
-    status: str | None = Field(None, description="Terminal run status; null while in flight")
+    status: AcquisitionStatus | None = Field(None, description="Terminal run status; null while in flight")
     error_message: str | None = Field(None, description="Failure detail for terminal status")
-    qc_state: str = Field(..., description="QC axis state")
+    qc_state: QCState = Field(..., description="QC axis state")
     qc_state_updated_at: datetime | None = None
     qc_state_updated_by: str | None = None
-    transfer_state: str = Field(..., description="Transfer axis state")
+    transfer_state: TransferState = Field(..., description="Transfer axis state")
     transfer_state_updated_at: datetime | None = None
     transfer_state_updated_by: str | None = None
     tile_count: int | None = None

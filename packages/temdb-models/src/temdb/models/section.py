@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import ConfigDict, Field, computed_field, model_validator
 
 from .base import TEMDBModel, TEMDBRecord
-from .enums import SECTION_CONDITIONS, SectionImage, SectionQuality
+from .enums import SectionCondition, SectionImage, SectionQuality
 from .file_storage import FileObject
 
 
@@ -90,15 +90,8 @@ class SectionBase(TEMDBRecord):
     run_parameters: SectioningRunParameters | None = Field(
         None, description="Detailed parameters from the sectioning run"
     )
-    condition: str = Field(None, description="Physical condition of the section")
+    condition: SectionCondition = Field(None, description="Physical condition of the section")
     condition_reason: str | None = Field(None, description="Reason for the current condition")
-
-    @field_validator("condition")
-    @classmethod
-    def validate_condition(cls, value: str) -> str:
-        if value not in SECTION_CONDITIONS:
-            raise ValueError(f"condition must be one of {SECTION_CONDITIONS}")
-        return value
 
 
 class SectionCreate(SectionBase):
@@ -110,7 +103,7 @@ class SectionCreate(SectionBase):
         description="ID of the substrate (wafer, tape, etc.) this section is placed on",
     )
     timestamp: datetime = Field(..., description="Timestamp of section creation/cutting")
-    condition: str = Field("ok", description="Physical condition of the section")
+    condition: SectionCondition = Field(SectionCondition.OK, description="Physical condition of the section")
     created_at: datetime | None = Field(None, description="Creation timestamp; server-generated if omitted")
 
 
@@ -139,7 +132,7 @@ class SectionResponse(SectionBase):
     block_id: str = Field(..., description="ID of the block")
     specimen_id: str = Field(..., description="ID of the specimen")
     media_id: str = Field(..., description="ID of the substrate")
-    condition: str = Field("ok", description="Physical condition of the section")
+    condition: SectionCondition = Field(SectionCondition.OK, description="Physical condition of the section")
     condition_reason: str | None = Field(None, description="Reason for the current condition")
 
     created_at: datetime | None = None

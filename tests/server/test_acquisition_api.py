@@ -16,6 +16,7 @@ from httpx import AsyncClient
 from minio.error import S3Error
 from sqlalchemy import and_, null, or_, select, update
 
+from temdb.server.config import config
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
 from temdb.server.sqlmodels.tile import TileSQLModel, format_tile_id
 
@@ -240,7 +241,8 @@ async def test_create_acquisition_invalid_parent(
     }
     response = await async_client.post("/api/v2/acquisitions", json=acquisition_data)
     assert response.status_code == 404
-    assert f"Acquisition Task '{invalid_task_id}' not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "acquisition task", "id": invalid_task_id}
 
     get_response = await async_client.get(f"/api/v2/acquisitions/{acq_id_hr}")
     assert get_response.status_code == 404
@@ -1584,6 +1586,36 @@ async def stored_tile_image(test_db_manager, minio_s3, test_tile, test_acquisiti
     )
 
 
+async def test_bulk_retry_without_images_matches_tiles_with_uploaded_images(
+    async_client, test_db_manager, test_acquisition, minio_s3
+):
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk"
+    batch = [_image_tile_payload(f"tile_{i}", i, include_image=False) for i in range(2)]
+    tile_ids = await _seed_image_tiles(
+        async_client, test_acquisition.acquisition_id, 2, image_is_sql_null=True, test_db_manager=test_db_manager
+    )
+    images = [await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in tile_ids]
+
+    response = await async_client.post(path, json=batch)
+
+    assert response.status_code in (200, 201), response.text
+    assert response.json()["skipped_existing"] == len(batch)
+    for tile_id, image in zip(tile_ids, images):
+        stored = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/{tile_id}")
+        assert stored.json()["image"]["key"] == image["key"]
+
+
+async def test_bulk_retry_with_a_different_image_is_refused(async_client, test_acquisition):
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/bulk"
+    await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1)
+    changed = _image_tile_payload("tile_0", 0)
+    changed["image"] = _tile_image("path/to/another.tif")
+
+    response = await async_client.post(path, json=[changed])
+
+    assert response.status_code == 409, response.text
+
+
 async def test_tile_image_upload_roundtrip(async_client, test_db_manager, test_acquisition, test_tile, minio_s3):
     tile_id = str(format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake))
     await _set_tiles_image_to_sql_null(test_db_manager, [tile_id])
@@ -1974,6 +2006,53 @@ async def test_bulk_get_urls_ignores_a_get_body(async_client, test_db_manager, t
     assert set(response.json()["urls"]) == set(tile_ids)
 
 
+@pytest.mark.parametrize("bulk", [False, True])
+async def test_tile_update_naming_image_is_refused(async_client, test_acquisition, stored_tile_image, test_tile, bulk):
+    """A tile update cannot clear its image; the tile keeps the stored one."""
+    tile_id = format_tile_id(test_acquisition.montage_id, test_tile.row, test_tile.col, test_tile.retake)
+    tiles = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
+    change = {"image": None, "mean_value": 1.0}
+
+    response = await async_client.patch(
+        f"{tiles}/bulk" if bulk else f"{tiles}/{tile_id}", json={tile_id: change} if bulk else change
+    )
+
+    assert response.status_code == 422, response.text
+    assert (await async_client.get(f"{tiles}/{tile_id}")).json()["image"] == stored_tile_image
+
+
+async def test_bulk_get_urls_look_up_together(
+    async_client, test_db_manager, test_acquisition, minio_s3, storage_client_manager, monkeypatch
+):
+    """A page looks up image_lookup_concurrency images at a time, and a tile whose image is not in storage is still
+    reported by tile."""
+    concurrency = config.image_lookup_concurrency
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, concurrency + 2)
+    images = [await _store_tile_image(test_db_manager, minio_s3, tile_id) for tile_id in tile_ids]
+    minio_s3["client"].remove_object(images[2]["bucket"], images[2]["key"])
+    lookup = storage_client_manager.get_url
+    running = peak = 0
+
+    async def counted(*args):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        try:
+            return await lookup(*args)
+        finally:
+            running -= 1
+
+    monkeypatch.setattr(storage_client_manager, "get_url", counted)
+
+    response = await async_client.get(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body["urls"]) == set(tile_ids) - {tile_ids[2]}
+    assert body["metadata"]["errors"] == {tile_ids[2]: "The image is not in storage"}
+    assert peak == concurrency
+
+
 async def _seed_image_tiles(
     async_client: AsyncClient,
     acquisition_id: str,
@@ -1997,7 +2076,13 @@ async def _seed_image_tiles(
 async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisition, monkeypatch, caplog, method):
     tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 3)
     client = Mock()
-    client.generate_presigned_url.side_effect = [NoCredentialsError(), "https://signed", "https://signed"]
+
+    def sign(operation, Params, **kwargs):
+        if "tile_0" in Params["Key"]:
+            raise NoCredentialsError()
+        return "https://signed"
+
+    client.generate_presigned_url.side_effect = sign
     client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
 
@@ -2039,51 +2124,53 @@ async def test_bulk_delete_missing_credentials_skips_tile(async_client, test_acq
     assert "Unable to locate credentials" in caplog.text
 
 
+def _storage_call(calls: list[bool], result=None):
+    """A fake S3 call that records, for each call, whether it ran on the event loop."""
+
+    def call(*_, **__):
+        try:
+            asyncio.get_running_loop()
+            calls.append(True)
+        except RuntimeError:
+            calls.append(False)
+        return result
+
+    return call
+
+
 async def test_image_delete_keeps_server_responsive(async_client, test_acquisition, monkeypatch):
     await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 4)
+    on_event_loop = []
     client = Mock()
-    client.delete_object.side_effect = lambda **_: time.sleep(0.5)
+    client.delete_object.side_effect = _storage_call(on_event_loop)
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
 
-    async def health_wait():
-        due = time.perf_counter() + 0.6
-        await asyncio.sleep(0.6)
-        await async_client.get("/health")
-        return time.perf_counter() - due
-
-    response, waited = await asyncio.gather(
-        async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"), health_wait()
-    )
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images")
 
     assert response.status_code == 200, response.text
-    assert waited < 0.3
+    assert on_event_loop == [False] * 4
 
 
 @pytest.mark.parametrize(("method", "single"), [("POST", False), ("GET", False), ("POST", True), ("GET", True)])
 async def test_presign_keeps_server_responsive(async_client, test_acquisition, monkeypatch, method, single):
     tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1 if single else 4)
+    on_event_loop = []
     client = Mock()
-    client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(1.0 if single else 0.5) or "https://signed"
-    client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
+    client.generate_presigned_url.side_effect = _storage_call(on_event_loop, "https://signed")
+    client.head_object.side_effect = _storage_call(on_event_loop, {"ChecksumSHA256": _checksum(b"image")})
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
     base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
     path = f"{base}/{tile_ids[0]}/image" if single else f"{base}/images"
-
-    async def health_wait():
-        due = time.perf_counter() + 0.6
-        await asyncio.sleep(0.6)
-        await async_client.get("/health")
-        return time.perf_counter() - due
-
     body = (
         ({"hash": _checksum(b"image")} if single else {tile_id: _checksum(b"image") for tile_id in tile_ids})
         if method == "POST"
         else None
     )
-    response, waited = await asyncio.gather(async_client.request(method, path, json=body), health_wait())
+
+    response = await async_client.request(method, path, json=body)
 
     assert response.status_code == 200, response.text
-    assert waited < 0.3
+    assert on_event_loop and not any(on_event_loop)
 
 
 async def test_concurrent_uploads_keep_one_location(async_client, test_db_manager, test_acquisition, monkeypatch):

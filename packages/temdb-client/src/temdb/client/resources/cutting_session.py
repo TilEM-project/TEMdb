@@ -7,7 +7,7 @@ from temdb.models import (
     SectionResponse,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class CuttingSessionResource(BaseResource):
@@ -17,47 +17,28 @@ class CuttingSessionResource(BaseResource):
         self,
         specimen_id: str,
         block_id: str,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> list[CuttingSessionResponse]:
         """List cutting sessions associated with a specific block."""
         endpoint = f"cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions"
-        params = {"skip": skip, "limit": limit}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [CuttingSessionResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
-        )
+        params = dict(kwargs)
+        return await self._list(endpoint, CuttingSessionResponse, params, skip=skip, limit=limit)
 
     async def list_all(
         self,
         specimen_id: str | None = None,
         block_id: str | None = None,
         operator: str | None = None,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> list[CuttingSessionResponse]:
         """List all cutting sessions, optionally filtering."""
         endpoint = "cutting-sessions"
-        params = {
-            "skip": skip,
-            "limit": limit,
-            "specimen_id": specimen_id,
-            "block_id": block_id,
-            "operator": operator,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [CuttingSessionResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
-        )
+        params = without_none(specimen_id=specimen_id, block_id=block_id, operator=operator, **kwargs)
+        return await self._list(endpoint, CuttingSessionResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(CuttingSessionCreate)
     async def create(self, session_data: CuttingSessionCreate) -> CuttingSessionResponse:
@@ -92,13 +73,9 @@ class CuttingSessionResource(BaseResource):
         specimen_id: str,
         block_id: str,
         cutting_session_id: str,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
     ) -> list[SectionResponse]:
         """List sections associated with a specific cutting session."""
         endpoint = f"cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions/{cutting_session_id}/sections"
-        params = {"skip": skip, "limit": limit}
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [SectionResponse.model_validate(item) for item in response_data] if isinstance(response_data, list) else []
-        )
+        return await self._list(endpoint, SectionResponse, {}, skip=skip, limit=limit)

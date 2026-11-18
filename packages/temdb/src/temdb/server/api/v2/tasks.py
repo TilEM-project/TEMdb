@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +12,9 @@ from temdb.models import (
     AcquisitionTaskResponse,
     AcquisitionTaskUpdate,
 )
+from temdb.server.api.v2.paging import page
 from temdb.server.dependencies import get_async_session
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
@@ -106,13 +108,13 @@ async def _validate_lineage(session: AsyncSession, task_data: AcquisitionTaskCre
     ).first()
     specimen_obj = validation_row[0] if validation_row else None
     if specimen_obj is None:
-        raise HTTPException(404, f"Specimen '{task_data.specimen_id}' not found")
+        raise MissingParentError(SpecimenSQLModel, task_data.specimen_id)
     block_obj = validation_row[1]
     if block_obj is None:
-        raise HTTPException(404, f"Block '{task_data.block_id}' not found for specimen '{task_data.specimen_id}'")
+        raise MissingParentError(BlockSQLModel, task_data.block_id)
     roi_obj = validation_row[2]
     if roi_obj is None:
-        raise HTTPException(404, f"ROI '{task_data.roi_id}' not found")
+        raise MissingParentError(ROISQLModel, task_data.roi_id)
     if (validation_row.roi_specimen_id, validation_row.roi_block_id) != (specimen_obj.specimen_id, block_obj.block_id):
         raise HTTPException(
             400,
@@ -144,6 +146,7 @@ def _task_from_create(
 
 @acquisition_task_api.get("/acquisition-tasks", response_model=list[AcquisitionTaskResponse])
 async def list_tasks(
+    response: Response,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
@@ -201,7 +204,7 @@ async def list_tasks(
     if task_group_id is not None:
         filters.append(AcquisitionTaskSQLModel.task_group_id == task_group_id)
         statement = statement.order_by(AcquisitionTaskSQLModel.tilt_angle_deg)
-    statement = statement.order_by(AcquisitionTaskSQLModel.task_id)
+    statement = statement.order_by(AcquisitionTaskSQLModel.task_id, AcquisitionTaskSQLModel.id)
     if current_only or imageable:
         filters.append(AcquisitionTaskSQLModel.superseded_by.is_(None))
     if skip_destroyed or imageable:
@@ -244,7 +247,7 @@ async def list_tasks(
     if filters:
         statement = statement.where(and_(*filters))
 
-    rows = (await session.execute(statement.offset(skip).limit(limit))).all()
+    rows = await page(session, statement, skip=skip, limit=limit, response=response, scalars=False)
     if not rows:
         return []
     tasks = [row[0] for row in rows]
@@ -290,7 +293,9 @@ async def update_task(
     updated_fields: AcquisitionTaskUpdate = Body(...),
     session: AsyncSession = Depends(get_async_session),
 ):
-    task_obj = await session.scalar(select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id))
+    task_obj = await session.scalar(
+        select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == task_id).with_for_update()
+    )
     if task_obj is None:
         raise HTTPException(404, f"Task ID '{task_id}' not found")
     update_data = updated_fields.model_dump(
@@ -299,6 +304,15 @@ async def update_task(
     )
     if not update_data:
         raise HTTPException(400, "No update fields provided")
+    plan_fields = sorted(update_data.keys() - {"tags", "metadata", "extra"})
+    if task_obj.superseded_by is not None and plan_fields:
+        raise HTTPException(
+            409,
+            f"Task '{task_id}' is superseded by '{task_obj.superseded_by}'; "
+            f"its {', '.join(plan_fields)} cannot be updated",
+        )
+    if update_data.get("kind", "lens_correction") != "lens_correction" and task_obj.roi_id is None:
+        raise HTTPException(422, f"Task '{task_id}' has no ROI, so its kind must stay 'lens_correction'")
     extra_changes = update_data.pop("extra", None)
     if "metadata" in update_data:
         task_obj.metadata_json = update_data.pop("metadata")
@@ -332,6 +346,7 @@ async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_se
 
 @acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=list[AcquisitionResponse])
 async def get_task_acquisitions(
+    response: Response,
     task_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -342,15 +357,12 @@ async def get_task_acquisitions(
         is None
     ):
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    return (
-        await session.scalars(
-            select(AcquisitionSQLModel)
-            .where(AcquisitionSQLModel.acquisition_task_id == task_id)
-            .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
-            .offset(skip)
-            .limit(limit)
-        )
-    ).all()
+    statement = (
+        select(AcquisitionSQLModel)
+        .where(AcquisitionSQLModel.acquisition_task_id == task_id)
+        .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
+    )
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @acquisition_task_api.post(

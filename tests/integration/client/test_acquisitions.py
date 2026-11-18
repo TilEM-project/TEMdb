@@ -107,6 +107,18 @@ async def test_acquisition_get_all_tiles(client, records):
     assert [t.raster_index for t in tiles] == list(range(10))
 
 
+async def test_iterate_yields_every_tile_one_page_at_a_time(client, records):
+    await records.tiles()
+    tiles = [tile async for tile in client.iterate(client.acquisition.get_tiles, "A1", page_size=3)]
+    assert [t.raster_index for t in tiles] == list(range(10))
+
+
+async def test_iterate_yields_every_section_through_offset_pages(client, records):
+    section = await records.section()
+    sections = [s async for s in client.iterate(client.section.list_by_media, "M1", page_size=1)]
+    assert [s.section_id for s in sections] == [section.section_id]
+
+
 async def test_acquisition_get_tile_count(client, records):
     await records.tiles()
     assert await client.acquisition.get_tile_count("A1") == {"tile_count": 10}

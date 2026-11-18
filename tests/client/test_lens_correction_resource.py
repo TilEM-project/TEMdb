@@ -1,9 +1,11 @@
+import inspect
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 
+from temdb.client.resources.base import BaseResource
 from temdb.client.resources.lens_correction import LensCorrectionResource
 from temdb.client.resources.microscope import MicroscopeResource
 from temdb.models import (
@@ -110,14 +112,14 @@ async def test_lc_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_lc_list_filters_and_returns_models():
     res, request = _lc_resource()
-    request.return_value = [_lc_payload(), _lc_payload(lc_id=str(uuid.uuid4()))]
+    request.return_value = ([_lc_payload(), _lc_payload(lc_id=str(uuid.uuid4()))], {})
     out = await res.list(microscope_id=SCOPE_ID, magnification=20000)
     assert request.await_args.args[1] == "lens-corrections"
     assert request.await_args.kwargs["params"] == {
         "microscope_id": SCOPE_ID,
         "magnification": 20000,
         "skip": 0,
-        "limit": 50,
+        "limit": inspect.signature(BaseResource._list).parameters["page_size"].default,
     }
     assert len(out) == 2
 

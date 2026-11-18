@@ -119,7 +119,10 @@ class TestTileBase:
         assert tile.focus_score is None
 
     def test_tile_base_with_values(self):
-        tile = TileBase(
+        tile = TileCreate(
+            raster_index=0,
+            stage_position={"x": 0, "y": 0},
+            raster_position={"row": 0, "col": 0},
             focus_score=0.9,
             image=_tile_image("image.tif"),
         )
@@ -183,6 +186,12 @@ class TestTileUpdate:
 
     def test_omitted_fields_stay_unset(self):
         assert TileUpdate(focus_score=0.5).model_dump(exclude_unset=True) == {"focus_score": 0.5}
+
+    @pytest.mark.parametrize("image", [None, {"protocol": "s3", "bucket": "images", "key": "tile.tif"}])
+    def test_image_is_not_updatable(self, image):
+        """A tile's image changes only through the image routes, so an update that names it is refused."""
+        with pytest.raises(ValidationError):
+            TileUpdate(image=image)
 
     @pytest.mark.parametrize(
         "field",

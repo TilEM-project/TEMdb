@@ -30,7 +30,7 @@ def _layout_payload(**extra):
 @pytest.mark.asyncio
 async def test_layout_list_filters_and_returns_models():
     resource, request = _layout_resource()
-    request.return_value = [_layout_payload()]
+    request.return_value = ([_layout_payload()], {})
 
     layouts = await resource.list(media_type="wafer", skip=2, limit=5)
 
@@ -52,3 +52,27 @@ async def test_layout_update_patches_and_delete_uses_layout_path():
 
     await resource.delete("LAYOUT001")
     assert request.await_args.args[:2] == ("DELETE", "layouts/LAYOUT001")
+
+
+@pytest.mark.asyncio
+async def test_layout_create_accepts_keywords():
+    """Layout fields passed as keywords are sent as one SubstrateLayoutCreate."""
+    resource, request = _layout_resource()
+    request.return_value = _layout_payload()
+
+    await resource.create(layout_id="LAYOUT001", media_type="wafer", apertures=[])
+
+    assert request.await_args.args[:2] == ("POST", "layouts")
+    assert request.await_args.kwargs["json"]["layout_id"] == "LAYOUT001"
+
+
+@pytest.mark.asyncio
+async def test_layout_update_accepts_keywords():
+    """A layout update's fields passed as keywords are sent as one SubstrateLayoutUpdate."""
+    resource, request = _layout_resource()
+    request.return_value = _layout_payload(name="Renamed")
+
+    await resource.update("LAYOUT001", name="Renamed")
+
+    assert request.await_args.args[:2] == ("PATCH", "layouts/LAYOUT001")
+    assert request.await_args.kwargs["json"] == {"name": "Renamed"}

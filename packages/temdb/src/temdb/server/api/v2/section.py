@@ -18,9 +18,10 @@ from temdb.models import (
     SectionResponse,
     SectionUpdate,
 )
+from temdb.server.api.v2.paging import page
 from temdb.server.config import config
 from temdb.server.dependencies import get_async_session, get_storage_client_manager
-from temdb.server.exception_handlers import BaseError
+from temdb.server.exception_handlers import BaseError, MissingParentError
 from temdb.server.sqlmodels import (
     BlockSQLModel,
     CuttingSessionSQLModel,
@@ -81,6 +82,7 @@ def dump_position(position):
 
 @section_api.get("/sections", response_model=list[SectionResponse])
 async def list_sections(
+    response: Response,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     cutting_session_id: str | None = Query(None, description="Filter by human-readable Cutting Session ID"),
@@ -102,8 +104,10 @@ async def list_sections(
         statement = statement.where(SectionSQLModel.media_id == media_id)
     if quality:
         statement = statement.where(SectionSQLModel.section_metrics["quality"].as_string() == quality.value)
-    statement = statement.order_by(SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
-    return (await session.scalars(statement.offset(skip).limit(limit))).all()
+    statement = statement.order_by(
+        SectionSQLModel.cutting_session_id, SectionSQLModel.section_number, SectionSQLModel.id
+    )
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @section_api.get("/sections/count", response_model=int)
@@ -134,64 +138,63 @@ async def count_sections(
 
 @section_api.get("/sections/sessions/{cutting_session_id}", response_model=list[SectionResponse])
 async def list_cutting_session_sections(
+    response: Response,
     cutting_session_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific cutting session using its human-readable ID."""
-    rows = (
-        await session.execute(
-            select(CuttingSessionSQLModel.id, SectionSQLModel)
-            .select_from(CuttingSessionSQLModel)
-            .outerjoin(
-                SectionSQLModel,
-                SectionSQLModel.cutting_session_id == CuttingSessionSQLModel.cutting_session_id,
-            )
-            .where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
-            .order_by(SectionSQLModel.section_number)
-        )
-    ).all()
-    if not rows:
+    known = await session.scalar(
+        select(CuttingSessionSQLModel.id).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
+    )
+    if known is None:
         raise HTTPException(status_code=404, detail=f"Cutting Session '{cutting_session_id}' not found")
-    sections = [row[1] for row in rows if row[1] is not None]
-    return sections[skip : skip + limit]
+    statement = (
+        select(SectionSQLModel)
+        .where(SectionSQLModel.cutting_session_id == cutting_session_id)
+        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
+    )
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @section_api.get("/sections/blocks/{block_id}", response_model=list[SectionResponse])
 async def list_block_sections(
+    response: Response,
     block_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific block using its human-readable ID."""
-    sections = await session.scalars(
+    statement = (
         select(SectionSQLModel)
         .where(SectionSQLModel.block_id == block_id)
-        .order_by(SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
-        .offset(skip)
-        .limit(limit)
+        .order_by(SectionSQLModel.cutting_session_id, SectionSQLModel.section_number, SectionSQLModel.id)
     )
-    return sections.all()
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @section_api.get("/sections/specimens/{specimen_id}", response_model=list[SectionResponse])
 async def list_specimen_sections(
+    response: Response,
     specimen_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve sections associated with a specific specimen using its human-readable ID."""
-    sections = await session.scalars(
+    statement = (
         select(SectionSQLModel)
         .where(SectionSQLModel.specimen_id == specimen_id)
-        .order_by(SectionSQLModel.block_id, SectionSQLModel.cutting_session_id, SectionSQLModel.section_number)
-        .offset(skip)
-        .limit(limit)
+        .order_by(
+            SectionSQLModel.block_id,
+            SectionSQLModel.cutting_session_id,
+            SectionSQLModel.section_number,
+            SectionSQLModel.id,
+        )
     )
-    return sections.all()
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @section_api.get("/sections/{section_id}", response_model=SectionResponse)
@@ -274,6 +277,7 @@ async def _stored_at_placement(session: AsyncSession, row: SectionSQLModel) -> S
             f"Section '{stored.section_id}' is already at this placement with different {', '.join(differing)}",
             status_code=status.HTTP_409_CONFLICT,
             error_code="KEY_IN_USE",
+            context={"section_id": stored.section_id, "differing": differing},
         )
     return stored
 
@@ -284,7 +288,7 @@ async def lock_substrate(session: AsyncSession, media_id: str) -> SubstrateSQLMo
         select(SubstrateSQLModel).where(SubstrateSQLModel.media_id == media_id).with_for_update(key_share=True)
     )
     if substrate is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Substrate '{media_id}' not found")
+        raise MissingParentError(SubstrateSQLModel, media_id)
     return substrate
 
 
@@ -293,9 +297,7 @@ async def _cutting_session(session: AsyncSession, cutting_session_id: str) -> Cu
         select(CuttingSessionSQLModel).where(CuttingSessionSQLModel.cutting_session_id == cutting_session_id)
     )
     if cut_session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Cutting Session with ID '{cutting_session_id}' not found"
-        )
+        raise MissingParentError(CuttingSessionSQLModel, cutting_session_id)
     return cut_session
 
 
@@ -458,6 +460,7 @@ async def delete_section(
 
 @section_api.get("/sections/media/{media_id}", response_model=list[SectionResponse])
 async def list_sections_by_media(
+    response: Response,
     media_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
@@ -469,8 +472,7 @@ async def list_sections_by_media(
     if relative_position is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_position is not supported")
     statement = statement.order_by(SectionSQLModel.section_number, SectionSQLModel.id)
-    sections = await session.scalars(statement.offset(skip).limit(limit))
-    return sections.all()
+    return await page(session, statement, skip=skip, limit=limit, response=response)
 
 
 @section_api.post("/sections/{section_id}/images/{name}", response_model=FileObjectResponse)

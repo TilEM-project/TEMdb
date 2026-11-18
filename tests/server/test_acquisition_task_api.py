@@ -252,7 +252,8 @@ async def test_create_acquisition_task_invalid_parent(async_client: AsyncClient,
     }
     response = await async_client.post("/api/v2/acquisition-tasks", json=task_data)
     assert response.status_code == 404
-    assert f"ROI '{invalid_roi_id}' not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "ROI", "id": invalid_roi_id}
 
     get_response = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_hr}")
     assert get_response.status_code == 404
@@ -469,7 +470,8 @@ async def test_create_tasks_batch_atomic(async_client: AsyncClient, test_specime
     ]
     response = await async_client.post("/api/v2/acquisition-tasks/batch", json={"tasks": tasks_data})
     assert response.status_code == 404
-    assert f"ROI '{invalid_roi_id}' not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "ROI", "id": invalid_roi_id}
 
     get_resp_1 = await async_client.get(f"/api/v2/acquisition-tasks/{task_id_1}")
     assert get_resp_1.status_code == 404

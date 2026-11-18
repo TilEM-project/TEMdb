@@ -11,8 +11,6 @@ from temdb.models import (
     AcquisitionUpdate,
     Calibration,
     HardwareParams,
-    StorageLocation,
-    StorageLocationCreate,
 )
 
 
@@ -75,28 +73,16 @@ class TestCalibration:
         with pytest.raises(ValidationError):
             Calibration()
 
+    def test_placement_fields_are_optional(self):
+        """The flips and the stage unit can be left out, and are kept when sent."""
+        assert Calibration(pixel_size=4.0, rotation_angle=0.5).flip_x is None
+        placed = Calibration(pixel_size=4.0, rotation_angle=0.5, flip_x=True, flip_y=False, stage_position_unit="nm")
+        assert (placed.flip_x, placed.flip_y, placed.stage_position_unit) == (True, False, "nm")
 
-class TestStorageLocation:
-    def test_valid_storage_location(self):
-        loc = StorageLocation(
-            location_type="local",
-            base_path="/data/acquisitions/ACQ001",
-            is_current=True,
-            date_added=datetime.now(),
-            metadata={"server": "storage1"},
-        )
-        assert loc.location_type == "local"
-        assert loc.is_current is True
-
-
-class TestStorageLocationCreate:
-    def test_valid_storage_location_create(self):
-        loc = StorageLocationCreate(
-            location_type="s3",
-            base_path="s3://bucket/path",
-        )
-        assert loc.location_type == "s3"
-        assert loc.metadata == {}
+    def test_stage_unit_other_than_nm_is_refused(self):
+        """Stage positions are stored in nm, so no other unit can be declared."""
+        with pytest.raises(ValidationError):
+            Calibration(pixel_size=4.0, rotation_angle=0.5, stage_position_unit="um")
 
 
 def _hardware_params() -> HardwareParams:

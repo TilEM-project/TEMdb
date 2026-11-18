@@ -22,7 +22,7 @@ from temdb.models import (
     TileUpdate,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 from .image import BufferedImageWriter, ImageReader, ImageWriter, image_request, open_image, put_image
 
 
@@ -92,24 +92,23 @@ class AcquisitionResource(BaseResource):
 
         With fields, the page is returned as the server sends it: each acquisition holds only those fields.
         """
-        params = {
-            "cursor": cursor,
-            "limit": limit,
-            "sort_by": sort_by,
-            "sort_order": sort_order,
-            "specimen_id": specimen_id,
-            "roi_id": roi_id,
-            "acquisition_task_id": acquisition_task_id,
-            "montage_set_name": montage_set_name,
-            "magnification": magnification,
-            "status": status,
-            "qc_state": qc_state,
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
-            "fields": fields,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
+        params = without_none(
+            cursor=cursor,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            specimen_id=specimen_id,
+            roi_id=roi_id,
+            acquisition_task_id=acquisition_task_id,
+            montage_set_name=montage_set_name,
+            magnification=magnification,
+            status=status,
+            qc_state=qc_state,
+            start_date=start_date.isoformat() if start_date else None,
+            end_date=end_date.isoformat() if end_date else None,
+            fields=fields,
+            **kwargs,
+        )
         response_data = await self._get("acquisitions", params=params)
         return response_data if fields else PaginatedAcquisitionResponse.model_validate(response_data)
 
@@ -152,16 +151,9 @@ class AcquisitionResource(BaseResource):
     ) -> PaginatedTileResponse | dict[str, Any]:
         """Retrieve tiles for an acquisition with pagination."""
         endpoint = f"acquisitions/{acquisition_id}/tiles"
-        params = {
-            "limit": limit,
-            "cursor": cursor,
-            "fields": fields,
-            "x_min": x_min,
-            "x_max": x_max,
-            "y_min": y_min,
-            "y_max": y_max,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
+        params = without_none(
+            limit=limit, cursor=cursor, fields=fields, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max
+        )
         response_data = await self._get(endpoint, params=params)
         return response_data if fields else PaginatedTileResponse.model_validate(response_data)
 
@@ -225,20 +217,10 @@ class AcquisitionResource(BaseResource):
         self, acquisition_id: str, *, page_limit: int = 1000, **kwargs
     ) -> builtins.list[TileResponse] | builtins.list[dict[str, Any]]:
         """Fetch every tile for an acquisition, auto-following cursor pagination."""
-        all_tiles: builtins.list = []
-        cursor: str | None = None
-        while True:
-            page = await self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
-            tiles, metadata = (
-                (page["tiles"], page["metadata"]) if isinstance(page, dict) else (page.tiles, page.metadata)
-            )
-            all_tiles.extend(tiles)
-            if not metadata.get("has_more"):
-                break
-            cursor = metadata.get("next_cursor")
-            if cursor is None:
-                break
-        return all_tiles
+        pages = self._cursor_pages(
+            lambda cursor: self.get_tiles(acquisition_id, cursor=cursor, limit=page_limit, **kwargs)
+        )
+        return [tile async for page in pages for tile in (page["tiles"] if isinstance(page, dict) else page.tiles)]
 
     @accepts_keywords(FileObjectRequest)
     async def put_image_url(
@@ -276,21 +258,15 @@ class AcquisitionResource(BaseResource):
         page_limit: int = 100,
     ) -> ImageURLs:
         """Get upload URLs for the tile/checksum mapping, auto-following cursor pagination."""
-        all_urls: builtins.dict[str, FileObjectResponse] = {}
-        errors: builtins.dict[str, str] = {}
-        cursor: str | None = None
-        while True:
-            page = await self.put_image_urls(
+        result = ImageURLs(urls={}, errors={})
+        async for page in self._cursor_pages(
+            lambda cursor: self.put_image_urls(
                 acquisition_id, image_hashes=image_hashes, expiration=expiration, cursor=cursor, limit=page_limit
             )
-            all_urls.update(page.urls)
-            errors.update(page.metadata.errors)
-            if not page.metadata.has_more:
-                break
-            cursor = page.metadata.next_cursor
-            if cursor is None:
-                break
-        return ImageURLs(urls=all_urls, errors=errors)
+        ):
+            result.urls.update(page.urls)
+            result.errors.update(page.metadata.errors)
+        return result
 
     async def put_image(
         self,
@@ -438,21 +414,15 @@ class AcquisitionResource(BaseResource):
 
         If tile_ids is None, presigned URLs will be generated for all tiles in the acquisition.
         """
-        all_urls: builtins.dict[str, FileObjectResponse] = {}
-        errors: builtins.dict[str, str] = {}
-        cursor: str | None = None
-        while True:
-            page = await self.get_image_urls(
+        result = ImageURLs(urls={}, errors={})
+        async for page in self._cursor_pages(
+            lambda cursor: self.get_image_urls(
                 acquisition_id, tile_ids=tile_ids, expiration=expiration, cursor=cursor, limit=page_limit
             )
-            all_urls.update(page.urls)
-            errors.update(page.metadata.errors)
-            if not page.metadata.has_more:
-                break
-            cursor = page.metadata.next_cursor
-            if cursor is None:
-                break
-        return ImageURLs(urls=all_urls, errors=errors)
+        ):
+            result.urls.update(page.urls)
+            result.errors.update(page.metadata.errors)
+        return result
 
     async def delete_image(self, acquisition_id: str, tile_id: str) -> None:
         """Delete the image for a specific tile."""
@@ -481,19 +451,13 @@ class AcquisitionResource(BaseResource):
 
     async def delete_all_images(self, acquisition_id: str, page_limit: int = 100) -> DeletedImages:
         """Delete images for all tiles in an acquisition, auto-following cursor pagination."""
-        all_deleted: builtins.list[str] = []
-        errors: builtins.dict[str, str] = {}
-        cursor: str | None = None
-        while True:
-            page = await self.delete_images(acquisition_id, cursor=cursor, limit=page_limit)
-            all_deleted.extend(page.deleted_images)
-            errors.update(page.metadata.errors)
-            if not page.metadata.has_more:
-                break
-            cursor = page.metadata.next_cursor
-            if cursor is None:
-                break
-        return DeletedImages(deleted=all_deleted, errors=errors)
+        result = DeletedImages(deleted=[], errors={})
+        async for page in self._cursor_pages(
+            lambda cursor: self.delete_images(acquisition_id, cursor=cursor, limit=page_limit)
+        ):
+            result.deleted.extend(page.deleted_images)
+            result.errors.update(page.metadata.errors)
+        return result
 
     async def get_complete_metadata(self, acquisition_id: str) -> dict[str, Any]:
         """Get complete metadata for an acquisition."""
@@ -520,16 +484,15 @@ class AcquisitionResource(BaseResource):
         status: AcquisitionStatusFilter | None = None,
     ) -> dict[str, Any]:
         """List acquisitions with complete hierarchy metadata."""
-        params = {
-            "cursor": cursor,
-            "limit": limit,
-            "sort_by": sort_by,
-            "sort_order": sort_order,
-            "specimen_id": specimen_id,
-            "roi_id": roi_id,
-            "acquisition_task_id": acquisition_task_id,
-            "substrate_media_id": substrate_media_id,
-            "status": status,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
+        params = without_none(
+            cursor=cursor,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            specimen_id=specimen_id,
+            roi_id=roi_id,
+            acquisition_task_id=acquisition_task_id,
+            substrate_media_id=substrate_media_id,
+            status=status,
+        )
         return await self._get("aggregated/acquisitions", params=params)

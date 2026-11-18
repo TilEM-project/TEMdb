@@ -61,7 +61,9 @@ async def test_resend_returns_stored(async_client: AsyncClient, test_cutting_ses
 
 @pytest.mark.asyncio
 async def test_same_placement_different_values_is_409(async_client: AsyncClient, test_cutting_session, test_substrate):
-    await async_client.post("/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, cut_count=5))
+    created = await async_client.post(
+        "/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, cut_count=5)
+    )
 
     response = await async_client.post(
         "/api/v2/sections", json=_section(test_cutting_session, test_substrate, 0, cut_count=6)
@@ -69,6 +71,7 @@ async def test_same_placement_different_values_is_409(async_client: AsyncClient,
 
     assert response.status_code == 409, response.text
     assert response.json()["error_code"] == "KEY_IN_USE"
+    assert response.json()["context"] == {"section_id": created.json()["section_id"], "differing": ["cut_count"]}
 
 
 @pytest.mark.asyncio

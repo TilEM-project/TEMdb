@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 import uuid
@@ -36,6 +37,7 @@ from temdb.models import (
 )
 from temdb.server.config import config
 from temdb.server.dependencies import get_async_session, get_storage_client_manager
+from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import (
     AcquisitionSQLModel,
     AcquisitionTaskSQLModel,
@@ -289,24 +291,24 @@ async def create_acquisition(
         select(MicroscopeSQLModel).where(MicroscopeSQLModel.microscope_id == acq_data.microscope_id)
     )
     if microscope.first() is None:
-        raise HTTPException(404, f"Microscope '{acq_data.microscope_id}' not found.")
+        raise MissingParentError(MicroscopeSQLModel, acq_data.microscope_id)
     if acq_data.lc_id is not None:
         lens_correction = await session.scalars(
             select(LensCorrectionSQLModel).where(LensCorrectionSQLModel.lc_id == acq_data.lc_id)
         )
         if lens_correction.first() is None:
-            raise HTTPException(404, f"Lens correction '{acq_data.lc_id}' not found.")
+            raise MissingParentError(LensCorrectionSQLModel, str(acq_data.lc_id))
     task_obj = await session.scalar(
         select(AcquisitionTaskSQLModel).where(AcquisitionTaskSQLModel.task_id == acq_data.acquisition_task_id)
     )
     if task_obj is None:
-        raise HTTPException(404, f"Acquisition Task '{acq_data.acquisition_task_id}' not found.")
+        raise MissingParentError(AcquisitionTaskSQLModel, acq_data.acquisition_task_id)
     roi_obj = None
     if acq_data.roi_id is not None:
         roi = await session.scalars(select(ROISQLModel).where(ROISQLModel.roi_id == acq_data.roi_id))
         roi_obj = roi.first()
         if roi_obj is None:
-            raise HTTPException(404, f"ROI '{acq_data.roi_id}' not found.")
+            raise MissingParentError(ROISQLModel, acq_data.roi_id)
         if task_obj.roi_id != roi_obj.roi_id:
             raise HTTPException(
                 400,
@@ -326,10 +328,7 @@ async def create_acquisition(
         )
         replacement_obj = replacement.first()
         if replacement_obj is None:
-            raise HTTPException(
-                404,
-                f"Acquisition to replace ID '{acq_data.replaces_acquisition_id}' not found.",
-            )
+            raise MissingParentError(AcquisitionSQLModel, str(acq_data.replaces_acquisition_id))
         replacement_id = replacement_obj.acquisition_id
     dataset_uuid = None
     if acq_data.dataset_id is not None:
@@ -353,9 +352,6 @@ async def create_acquisition(
         tilt_angle_deg=acq_data.tilt_angle_deg,
         created_at=acq_data.created_at or datetime.now(timezone.utc),
         start_time=acq_data.start_time or datetime.now(timezone.utc),
-        storage_locations=(
-            [loc.model_dump(mode="json") for loc in acq_data.storage_locations] if acq_data.storage_locations else None
-        ),
         montage_set_name=acq_data.montage_set_name,
         sub_region=acq_data.sub_region.model_dump(mode="json") if acq_data.sub_region else None,
         replaces_acquisition_id=replacement_id,
@@ -586,12 +582,18 @@ async def add_tiles_to_acquisition(
                 .offset(0)
                 .lateral("stored")
             )
+            changed = [
+                and_(incoming.c[key].is_not(None), stored.c[key].is_distinct_from(incoming.c[key]))
+                if key == "image"
+                else stored.c[key].is_distinct_from(incoming.c[key])
+                for key in rows[0]
+            ]
             differing = (
                 await session.execute(
                     select(stored.c.row, stored.c.col, stored.c.retake)
                     .select_from(incoming)
                     .join(stored, true())
-                    .where(or_(*(stored.c[key].is_distinct_from(incoming.c[key]) for key in rows[0])))
+                    .where(or_(*changed))
                     .order_by(stored.c.row, stored.c.col, stored.c.retake)
                 )
             ).all()
@@ -873,17 +875,23 @@ async def _image_get_url_page(
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
     urls = {}
     errors = {}
-    for tile in tiles_obj:
-        if tile.image is None:
-            continue
+    with_image = [tile for tile in tiles_obj if tile.image is not None]
+    free = asyncio.Semaphore(config.image_lookup_concurrency)
+
+    async def lookup(tile):
+        async with free:
+            return await storage_client_manager.get_url(FileObject.model_validate(tile.image), expiration)
+
+    found = await asyncio.gather(*(lookup(tile) for tile in with_image), return_exceptions=True)
+    for tile, url_data in zip(with_image, found):
         tile_id = format_tile_id(acq_obj.montage_id, tile.row, tile.col, tile.retake)
-        storage_location = FileObject.model_validate(tile.image)
-        try:
-            url_data = await storage_client_manager.get_url(storage_location, expiration)
+        if isinstance(url_data, HTTPException):
+            logger.warning(f"Error generating presigned URL for tile {tile_id}: {url_data.detail}")
+            errors[tile_id] = url_data.detail
+        elif isinstance(url_data, BaseException):
+            raise url_data
+        else:
             urls[tile_id] = url_data
-        except HTTPException as e:
-            logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
-            errors[tile_id] = e.detail
     next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
     return {
         "urls": urls,

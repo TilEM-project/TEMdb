@@ -5,12 +5,17 @@ import typing
 
 import tests.integration.client as package
 from temdb.client import TEMdbClient
+from temdb.client.resources.base import BaseResource
+
+
+def client_resources() -> dict[str, type]:
+    hints = typing.get_type_hints(TEMdbClient)
+    return {name: hint for name, hint in hints.items() if isinstance(hint, type) and issubclass(hint, BaseResource)}
 
 
 def client_methods() -> list[str]:
     names = []
-    for resource_name, prop in inspect.getmembers(TEMdbClient, lambda member: isinstance(member, property)):
-        resource_class = typing.get_type_hints(prop.fget)["return"]
+    for resource_name, resource_class in client_resources().items():
         names += [
             f"{resource_name}.{name}"
             for name, _ in inspect.getmembers(resource_class, inspect.iscoroutinefunction)
@@ -29,7 +34,7 @@ def integration_test_names() -> set[str]:
 
 
 def test_discovery_finds_methods_on_every_resource():
-    resources = {name for name, _ in inspect.getmembers(TEMdbClient, lambda member: isinstance(member, property))}
+    resources = set(client_resources())
     assert resources
     assert {name.split(".")[0] for name in client_methods()} == resources
 

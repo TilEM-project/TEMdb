@@ -1,5 +1,6 @@
 import os
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from temdb.models import StorageDefault
@@ -9,6 +10,7 @@ class BaseConfig(BaseSettings):
     app_name: str = "TEMDB"
     database_url: str | None = None
     default_storage: StorageDefault | None = None
+    image_lookup_concurrency: int = Field(10, ge=1, description="How many images to look up at once")
     model_config = SettingsConfigDict(
         case_sensitive=False,
         extra="allow",

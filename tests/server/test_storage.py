@@ -176,8 +176,18 @@ def test_finalize_normalizes_key_without_changing_expiration(key):
 @pytest.mark.parametrize("metadata", [{}, {"ChecksumSHA256": ""}])
 async def test_get_url_rejects_missing_checksum(storage_client_manager, s3, location, metadata):
     s3[0].head_object.return_value = metadata
-    with pytest.raises(HTTPException, match="SHA 256 hash not in S3 object metadata"):
+    with pytest.raises(HTTPException, match="has no SHA-256 checksum") as refused:
         await storage_client_manager.get_url(location)
+    assert refused.value.status_code == 409
+
+
+@pytest.mark.parametrize("code", ["404", "NoSuchKey"])
+async def test_get_url_absent_object_is_not_found(storage_client_manager, s3, location, code):
+    """An image whose object is not in storage is a 404, not a server error."""
+    s3[0].head_object.side_effect = ClientError({"Error": {"Code": code}}, "HeadObject")
+    with pytest.raises(HTTPException, match="not in storage") as missing:
+        await storage_client_manager.get_url(location)
+    assert missing.value.status_code == 404
 
 
 async def test_get_url_handles_checksum_lookup_failure(storage_client_manager, s3, location):

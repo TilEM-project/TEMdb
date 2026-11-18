@@ -32,10 +32,9 @@
 | `tilt_angle_deg` | float | Tilt angle of acquisition in degrees |
 | `start_time` | datetime | Start time of acquisition |
 | `end_time` | datetime | End time of acquisition |
-| `storage_locations` | object | Storage locations of acquisition |
 | `montage_set_name` | string | Name of montage set |
 | `sub_region` | object | Sub region of acquisition |
 | `replaces_acquisition_id` | string | Business ID (acquisition_id) of acquisition this acquisition replaces |
 | `created_at` | datetime | Creation timestamp; server-generated if omitted |
 | `updated_at` | datetime |  |
-| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |
+| `extra` | object | Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole |

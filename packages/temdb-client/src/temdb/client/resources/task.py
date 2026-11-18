@@ -8,7 +8,7 @@ from temdb.models import (
     AcquisitionTaskUpdate,
 )
 
-from .base import BaseResource, accepts_keywords
+from .base import BaseResource, accepts_keywords, without_none
 
 
 class AcquisitionTaskResource(BaseResource):
@@ -16,8 +16,8 @@ class AcquisitionTaskResource(BaseResource):
 
     async def list(
         self,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int | None = None,
+        limit: int | None = None,
         specimen_id: str | None = None,
         block_id: str | None = None,
         roi_id: str | None = None,
@@ -36,29 +36,21 @@ class AcquisitionTaskResource(BaseResource):
         Work fetch is list(imageable=True, loaded_media_ids=[...]) —
         only tasks the scope can physically image right now are returned.
         """
-        params = {
-            "skip": skip,
-            "limit": limit,
-            "specimen_id": specimen_id,
-            "block_id": block_id,
-            "roi_id": roi_id,
-            "kind": kind,
-            "media_id": media_id,
-            "task_group_id": str(task_group_id) if task_group_id is not None else None,
-            "current_only": current_only,
-            "skip_destroyed": skip_destroyed,
-            "skip_completed": skip_completed,
-            "imageable": imageable,
-            "loaded_media_id": loaded_media_ids,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        params.update(kwargs)
-        response_data = await self._get("acquisition-tasks", params=params)
-        return (
-            [AcquisitionTaskResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
+        params = without_none(
+            specimen_id=specimen_id,
+            block_id=block_id,
+            roi_id=roi_id,
+            kind=kind,
+            media_id=media_id,
+            task_group_id=str(task_group_id) if task_group_id is not None else None,
+            current_only=current_only,
+            skip_destroyed=skip_destroyed,
+            skip_completed=skip_completed,
+            imageable=imageable,
+            loaded_media_id=loaded_media_ids,
+            **kwargs,
         )
+        return await self._list("acquisition-tasks", AcquisitionTaskResponse, params, skip=skip, limit=limit)
 
     @accepts_keywords(AcquisitionTaskCreate)
     async def create(self, task_data: AcquisitionTaskCreate) -> AcquisitionTaskResponse:
@@ -96,17 +88,11 @@ class AcquisitionTaskResource(BaseResource):
         await self._delete(endpoint)
 
     async def list_related_acquisitions(
-        self, task_id: str, skip: int = 0, limit: int = 100
+        self, task_id: str, skip: int | None = None, limit: int | None = None
     ) -> builtins.list[AcquisitionResponse]:
         """List acquisitions related to a specific acquisition task."""
         endpoint = f"acquisition-tasks/{task_id}/acquisitions"
-        params = {"skip": skip, "limit": limit}
-        response_data = await self._get(endpoint, params=params)
-        return (
-            [AcquisitionResponse.model_validate(item) for item in response_data]
-            if isinstance(response_data, list)
-            else []
-        )
+        return await self._list(endpoint, AcquisitionResponse, {}, skip=skip, limit=limit)
 
     async def create_batch(
         self, tasks_data: builtins.list[AcquisitionTaskCreate], group: bool = False

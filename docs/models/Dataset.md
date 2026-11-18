@@ -19,4 +19,4 @@
 | `metadata_json` | object | Free-form metadata |
 | `created_at` | datetime | Creation timestamp; server-generated if omitted |
 | `updated_at` | datetime |  |
-| `extra` | object | Free-form fields outside the schema; an update merges keys and null removes one |
+| `extra` | object | Free-form fields outside the schema; an update merges top-level keys and null removes one. A nested object is replaced whole |

@@ -197,8 +197,8 @@ async def test_create_sections_batch_invalid_session(async_client: AsyncClient, 
 
     response = await async_client.post("/api/v2/sections/batch", json=sections_data)
     assert response.status_code == 404
-    assert "Cutting Session" in response.json()["detail"]
-    assert "not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "cutting session", "id": "NON_EXISTENT_SESSION_ID"}
 
 
 @pytest.mark.asyncio
@@ -223,8 +223,8 @@ async def test_create_sections_batch_invalid_substrate(async_client: AsyncClient
 
     response = await async_client.post("/api/v2/sections/batch", json=sections_data)
     assert response.status_code == 404
-    assert "Substrate" in response.json()["detail"]
-    assert "not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "substrate", "id": "NON_EXISTENT_MEDIA_ID"}
 
 
 @pytest.mark.asyncio
@@ -238,8 +238,8 @@ async def test_unknown_substrate_is_404(async_client: AsyncClient, test_cutting_
 
     response = await async_client.post("/api/v2/sections", json=section_data)
     assert response.status_code == 404
-    assert "Substrate" in response.json()["detail"]
-    assert "not found" in response.json()["detail"]
+    assert response.json()["error_code"] == "MISSING_PARENT"
+    assert response.json()["context"] == {"parent": "substrate", "id": "NON_EXISTENT_MEDIA_ID"}
 
 
 @pytest.mark.asyncio

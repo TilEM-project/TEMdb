@@ -50,7 +50,6 @@ erDiagram
         float tilt_angle_deg
         datetime start_time
         datetime end_time
-        object storage_locations
         string montage_set_name
         object sub_region
         string replaces_acquisition_id

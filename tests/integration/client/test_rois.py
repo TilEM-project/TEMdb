@@ -52,7 +52,8 @@ async def test_roi_get_children(client, records):
         parent_created_at=parent.created_at,
         payload={"vertices": [[0, 0], [5, 0], [5, 5]], "rotation_angle": 0.0},
     )
-    assert [r.roi_id for r in (await client.roi.get_children(parent.roi_id)).children] == [child.roi_id]
+    assert [r.roi_id for r in await client.roi.get_children(parent.roi_id)] == [child.roi_id]
+    assert (await client.roi.get_children(parent.roi_id, limit=1)).has_more is False
 
 
 async def test_roi_list_acquisitions(client, records):

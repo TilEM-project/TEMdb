@@ -16,7 +16,11 @@ class TEMDBRecord(TEMDBModel):
     """A stored record that also carries free-form fields outside its schema."""
 
     extra: dict[str, Any] | None = Field(
-        None, description="Free-form fields outside the schema; an update merges keys and null removes one"
+        None,
+        description=(
+            "Free-form fields outside the schema; an update merges top-level keys and null removes one. "
+            "A nested object is replaced whole"
+        ),
     )
 
     @field_validator("extra")
