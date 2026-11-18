@@ -2124,51 +2124,53 @@ async def test_bulk_delete_missing_credentials_skips_tile(async_client, test_acq
     assert "Unable to locate credentials" in caplog.text
 
 
+def _storage_call(calls: list[bool], result=None):
+    """A fake S3 call that records, for each call, whether it ran on the event loop."""
+
+    def call(*_, **__):
+        try:
+            asyncio.get_running_loop()
+            calls.append(True)
+        except RuntimeError:
+            calls.append(False)
+        return result
+
+    return call
+
+
 async def test_image_delete_keeps_server_responsive(async_client, test_acquisition, monkeypatch):
     await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 4)
+    on_event_loop = []
     client = Mock()
-    client.delete_object.side_effect = lambda **_: time.sleep(0.5)
+    client.delete_object.side_effect = _storage_call(on_event_loop)
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
 
-    async def health_wait():
-        due = time.perf_counter() + 0.6
-        await asyncio.sleep(0.6)
-        await async_client.get("/health")
-        return time.perf_counter() - due
-
-    response, waited = await asyncio.gather(
-        async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"), health_wait()
-    )
+    response = await async_client.delete(f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images")
 
     assert response.status_code == 200, response.text
-    assert waited < 0.3
+    assert on_event_loop == [False] * 4
 
 
 @pytest.mark.parametrize(("method", "single"), [("POST", False), ("GET", False), ("POST", True), ("GET", True)])
 async def test_presign_keeps_server_responsive(async_client, test_acquisition, monkeypatch, method, single):
     tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 1 if single else 4)
+    on_event_loop = []
     client = Mock()
-    client.generate_presigned_url.side_effect = lambda *_, **__: time.sleep(1.0 if single else 0.5) or "https://signed"
-    client.head_object.return_value = {"ChecksumSHA256": _checksum(b"image")}
+    client.generate_presigned_url.side_effect = _storage_call(on_event_loop, "https://signed")
+    client.head_object.side_effect = _storage_call(on_event_loop, {"ChecksumSHA256": _checksum(b"image")})
     monkeypatch.setattr("boto3.client", Mock(return_value=client))
     base = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles"
     path = f"{base}/{tile_ids[0]}/image" if single else f"{base}/images"
-
-    async def health_wait():
-        due = time.perf_counter() + 0.6
-        await asyncio.sleep(0.6)
-        await async_client.get("/health")
-        return time.perf_counter() - due
-
     body = (
         ({"hash": _checksum(b"image")} if single else {tile_id: _checksum(b"image") for tile_id in tile_ids})
         if method == "POST"
         else None
     )
-    response, waited = await asyncio.gather(async_client.request(method, path, json=body), health_wait())
+
+    response = await async_client.request(method, path, json=body)
 
     assert response.status_code == 200, response.text
-    assert waited < 0.3
+    assert on_event_loop and not any(on_event_loop)
 
 
 async def test_concurrent_uploads_keep_one_location(async_client, test_db_manager, test_acquisition, monkeypatch):
