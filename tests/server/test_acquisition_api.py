@@ -269,6 +269,72 @@ async def test_get_acquisition_not_found(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_returns_sub_region(async_client: AsyncClient, test_roi, test_acquisition_task, test_microscope):
+    """An acquisition created with a sub_region stores it and returns it."""
+    sub_region = {"x": 0, "y": 0, "width": 100, "height": 100}
+    response = await async_client.post(
+        "/api/v2/acquisitions",
+        json={
+            "acquisition_id": "ACQ_SUB_REGION",
+            "montage_id": "MONTAGE_SUB_REGION",
+            "roi_id": test_roi.roi_id,
+            "acquisition_task_id": test_acquisition_task.task_id,
+            "microscope_id": test_microscope.microscope_id,
+            "hardware_settings": {
+                "camera_model": "Test Camera",
+                "camera_serial": "SR12345",
+                "camera_bit_depth": 16,
+                "media_type": "tape",
+            },
+            "acquisition_settings": {
+                "magnification": 1500,
+                "spot_size": 3,
+                "exposure_time": 150,
+                "tile_size": [4000, 4000],
+                "tile_overlap": 0.15,
+                "saved_bit_depth": 8,
+            },
+            "sub_region": sub_region,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["sub_region"] == sub_region
+
+
+@pytest.mark.asyncio
+async def test_patch_returns_calibration(async_client: AsyncClient, test_acquisition):
+    """A calibration sent by PATCH is stored and returned with its matrix."""
+    matrix = {"x_per_x": -0.2051, "x_per_y": 0.1436, "y_per_x": 0.1436, "y_per_y": 0.2051}
+    calibration = {"pixel_size": 4.0, "rotation_angle": 0.5, "stage_nm_to_px_matrix": matrix}
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}"
+    assert (await async_client.patch(path, json={"calibration_info": calibration})).status_code == 200
+    assert (await async_client.get(path)).json()["calibration_info"]["stage_nm_to_px_matrix"] == matrix
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "calibration",
+    [
+        pytest.param({"pixel_size": 4.0, "rotation_angle": 0.5, "anything": 1}, id="unknown_key"),
+        pytest.param(
+            {
+                "pixel_size": 4.0,
+                "rotation_angle": 0.5,
+                "stage_nm_to_px_matrix": {"x_per_x": 0, "x_per_y": 0, "y_per_x": 0, "y_per_y": 0},
+            },
+            id="zero_determinant",
+        ),
+    ],
+)
+async def test_bad_calibration_patch_is_refused(async_client: AsyncClient, test_acquisition, calibration):
+    """A bad calibration sent by PATCH is refused and the stored calibration is unchanged."""
+    path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}"
+    before = (await async_client.get(path)).json()["calibration_info"]
+    assert (await async_client.patch(path, json={"calibration_info": calibration})).status_code == 422
+    assert (await async_client.get(path)).json()["calibration_info"] == before
+
+
+@pytest.mark.asyncio
 async def test_update_acquisition(async_client: AsyncClient, test_acquisition):
     """Test writing the terminal status (old qc-passed maps to status=complete + qc_state=qc_pass)."""
     assert test_acquisition.status is None

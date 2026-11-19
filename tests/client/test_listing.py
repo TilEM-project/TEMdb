@@ -186,6 +186,21 @@ async def test_iterate_follows_cursors_and_passes_filters(client):
     assert all(params["limit"] == 1 and params["fields"] == ["tile_id"] for params in sent)
 
 
+async def test_iterate_reaches_every_acquisition_page(client):
+    """Acquisition pages carry next_cursor without has_more; iterate still fetches the page after the first."""
+    request = AsyncMock(
+        side_effect=[
+            {"acquisitions": [{"acquisition_id": "A1"}], "metadata": {"total_count": 2, "next_cursor": "7"}},
+            {"acquisitions": [{"acquisition_id": "A2"}], "metadata": {"total_count": 2, "next_cursor": None}},
+        ]
+    )
+    acquisitions = AcquisitionResource(request, "http://test/api/v2")
+
+    listed = [a async for a in client.iterate(acquisitions.list, page_size=1, fields=["acquisition_id"])]
+
+    assert listed == [{"acquisition_id": "A1"}, {"acquisition_id": "A2"}]
+
+
 async def test_iterate_refuses_a_method_that_does_not_page(client):
     rois = ROIResource(AsyncMock(), "http://test/api/v2")
 

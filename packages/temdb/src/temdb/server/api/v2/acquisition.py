@@ -353,7 +353,7 @@ async def create_acquisition(
         created_at=acq_data.created_at or datetime.now(timezone.utc),
         start_time=acq_data.start_time or datetime.now(timezone.utc),
         montage_set_name=acq_data.montage_set_name,
-        sub_region=acq_data.sub_region.model_dump(mode="json") if acq_data.sub_region else None,
+        sub_region=acq_data.sub_region,
         replaces_acquisition_id=replacement_id,
         extra=drop_null_keys(acq_data.extra),
     )

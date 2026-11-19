@@ -443,6 +443,30 @@
             "title": "Tile Overlap",
             "type": "number"
           },
+          "tile_overlap_x": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pixel overlap to the neighboring tile along image x",
+            "title": "Tile Overlap X"
+          },
+          "tile_overlap_y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pixel overlap to the neighboring tile along image y",
+            "title": "Tile Overlap Y"
+          },
           "tile_size": {
             "description": "Shape of the image tile in pixels",
             "items": {
@@ -1273,15 +1297,12 @@
           "calibration_info": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/Calibration"
               },
               {
                 "type": "null"
               }
-            ],
-            "description": "Calibration information of acquisition",
-            "title": "Calibration Info"
+            ]
           },
           "end_time": {
             "anyOf": [
@@ -1855,9 +1876,20 @@
             "type": "number"
           },
           "rotation_angle": {
-            "description": "Rotation angle in degrees",
+            "description": "Rotation angle in radians",
             "title": "Rotation Angle",
             "type": "number"
+          },
+          "stage_nm_to_px_matrix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageNmToPxMatrix"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A tile's mosaic position in px (x right, y down) = this matrix @ its stage position in nm"
           },
           "stage_position_unit": {
             "anyOf": [
@@ -3478,9 +3510,16 @@
             "type": "number"
           },
           "match_quality": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Quality of the match",
-            "title": "Match Quality",
-            "type": "number"
+            "title": "Match Quality"
           },
           "pX": {
             "description": "X position of the points in the template tile",
@@ -3538,7 +3577,6 @@
           "dYsd",
           "distance",
           "rotation",
-          "match_quality",
           "position",
           "pX",
           "pY",
@@ -4085,7 +4123,7 @@
             "title": "Scale Y"
           },
           "vertices": {
-            "description": "Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid",
+            "description": "ROI polygon vertices as [x, y] in nm from the aperture centroid, on the substrate layout's axes",
             "items": {
               "maxItems": 2,
               "minItems": 2,
@@ -4653,7 +4691,7 @@
             "title": "Scale Y"
           },
           "vertices": {
-            "description": "Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid",
+            "description": "ROI polygon vertices as [x, y] in nm from the aperture centroid, on the substrate layout's axes",
             "items": {
               "maxItems": 2,
               "minItems": 2,
@@ -5827,6 +5865,39 @@
           }
         },
         "title": "SpecimenUpdate",
+        "type": "object"
+      },
+      "StageNmToPxMatrix": {
+        "additionalProperties": false,
+        "properties": {
+          "x_per_x": {
+            "description": "Mosaic x px per nm of stage x",
+            "title": "X Per X",
+            "type": "number"
+          },
+          "x_per_y": {
+            "description": "Mosaic x px per nm of stage y",
+            "title": "X Per Y",
+            "type": "number"
+          },
+          "y_per_x": {
+            "description": "Mosaic y px per nm of stage x",
+            "title": "Y Per X",
+            "type": "number"
+          },
+          "y_per_y": {
+            "description": "Mosaic y px per nm of stage y",
+            "title": "Y Per Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x_per_x",
+          "x_per_y",
+          "y_per_x",
+          "y_per_y"
+        ],
+        "title": "StageNmToPxMatrix",
         "type": "object"
       },
       "StagePosition": {

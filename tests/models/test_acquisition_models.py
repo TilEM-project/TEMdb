@@ -11,6 +11,7 @@ from temdb.models import (
     AcquisitionUpdate,
     Calibration,
     HardwareParams,
+    StageNmToPxMatrix,
 )
 
 
@@ -58,6 +59,12 @@ class TestAcquisitionParams:
         with pytest.raises(ValidationError):
             AcquisitionParams()
 
+    def test_params_accept_overlap_per_axis(self):
+        params = _acquisition_params().model_copy(update={"tile_overlap_x": 1483.0, "tile_overlap_y": 1201.0})
+        again = AcquisitionParams.model_validate(params.model_dump())
+        assert (again.tile_overlap_x, again.tile_overlap_y) == (1483.0, 1201.0)
+        assert _acquisition_params().tile_overlap_x is None
+
 
 class TestCalibration:
     def test_valid_calibration(self):
@@ -74,10 +81,34 @@ class TestCalibration:
             Calibration()
 
     def test_placement_fields_are_optional(self):
-        """The flips and the stage unit can be left out, and are kept when sent."""
+        """The flips and the stage unit can be left out, and are returned when sent."""
         assert Calibration(pixel_size=4.0, rotation_angle=0.5).flip_x is None
         placed = Calibration(pixel_size=4.0, rotation_angle=0.5, flip_x=True, flip_y=False, stage_position_unit="nm")
         assert (placed.flip_x, placed.flip_y, placed.stage_position_unit) == (True, False, "nm")
+
+    def test_calibration_accepts_matrix(self):
+        """A calibration holds the four px-per-nm entries of the stage-to-mosaic matrix."""
+        matrix = {"x_per_x": -0.2051, "x_per_y": 0.1436, "y_per_x": 0.1436, "y_per_y": 0.2051}
+        cal = Calibration.model_validate({"pixel_size": 4.0, "rotation_angle": 0.5, "stage_nm_to_px_matrix": matrix})
+        assert cal.stage_nm_to_px_matrix.model_dump() == matrix
+        assert Calibration(pixel_size=4.0, rotation_angle=0.5).stage_nm_to_px_matrix is None
+
+    def test_stage_nm_to_px_matrix_needs_all_entries(self):
+        """A matrix missing an entry is refused."""
+        with pytest.raises(ValidationError):
+            StageNmToPxMatrix(x_per_x=0.25, x_per_y=0.0, y_per_x=0.0)
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf")])
+    def test_stage_nm_to_px_matrix_must_be_finite(self, value):
+        """A matrix holding NaN or infinity is refused instead of being stored as null."""
+        with pytest.raises(ValidationError):
+            StageNmToPxMatrix(x_per_x=value, x_per_y=0.0, y_per_x=0.0, y_per_y=0.25)
+
+    @pytest.mark.parametrize("entries", [(1.0, 2.0, 2.0, 4.0), (0.0, 0.0, 0.0, 0.0)])
+    def test_zero_determinant_matrix_is_refused(self, entries):
+        """A matrix that puts two stage positions on the same mosaic position is refused."""
+        with pytest.raises(ValidationError):
+            StageNmToPxMatrix(**dict(zip(("x_per_x", "x_per_y", "y_per_x", "y_per_y"), entries)))
 
     def test_stage_unit_other_than_nm_is_refused(self):
         """Stage positions are stored in nm, so no other unit can be declared."""

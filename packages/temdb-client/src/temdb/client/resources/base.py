@@ -108,7 +108,7 @@ def without_none(**values: Any) -> dict[str, Any]:
 def _next_cursor(page: Any, cursor: str | None) -> str | None:
     metadata = page["metadata"] if isinstance(page, dict) else page.metadata
     if isinstance(metadata, dict):
-        return metadata.get("next_cursor") if metadata.get("has_more") else None
+        return metadata.get("next_cursor") if metadata.get("has_more", True) else None
     return metadata.next_cursor if metadata.has_more else None
 
 

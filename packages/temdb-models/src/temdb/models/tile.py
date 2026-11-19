@@ -27,7 +27,7 @@ class Matcher(TEMDBModel):
     dYsd: float = Field(..., description="Y offset standard deviation of the tile")
     distance: float = Field(..., description="Distance between the tiles")
     rotation: float = Field(..., description="Rotation of the tile")
-    match_quality: float = Field(..., description="Quality of the match")
+    match_quality: float | None = Field(None, description="Quality of the match")
     position: MatchPosition = Field(..., description="Position of the match")
     pX: list[float] = Field(..., description="X position of the points in the template tile")
     pY: list[float] = Field(..., description="Y position of the points in the template tile")

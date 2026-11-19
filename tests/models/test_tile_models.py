@@ -38,6 +38,25 @@ class TestMatcher:
         assert matcher.col == 1
         assert matcher.match_quality == 0.95
 
+    def test_match_quality_is_optional(self):
+        """A matcher without a match_quality, as HoloTEM produces, validates with it unset."""
+        matcher = Matcher(
+            row=0,
+            col=1,
+            dX=5.0,
+            dY=3.0,
+            dXsd=0.1,
+            dYsd=0.1,
+            distance=5.83,
+            rotation=0.5,
+            position="top",
+            pX=[100.0],
+            pY=[100.0],
+            qX=[105.0],
+            qY=[103.0],
+        )
+        assert matcher.match_quality is None
+
 
 class TestTileCreate:
     def test_valid_tile_create(self):
