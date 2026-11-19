@@ -35,7 +35,9 @@ class SectionMetric(TEMDBModel):
 
     confidence: float | None = Field(None, description="The confidence value of this metric.", ge=0, le=1)
     label: Any | None = Field(None, description="")
-    pass_status: bool = Field(True, description="Should be True if the section is of good quality by this metric.")
+    pass_status: bool | None = Field(
+        None, description="True if the section passes by this metric; null when the metric has no pass/fail"
+    )
     message: str | None = Field(None, description="Additional human readable infomation about this metric.")
 
 

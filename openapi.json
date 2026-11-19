@@ -5557,10 +5557,16 @@
             "title": "Message"
           },
           "pass_status": {
-            "default": true,
-            "description": "Should be True if the section is of good quality by this metric.",
-            "title": "Pass Status",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True if the section passes by this metric; null when the metric has no pass/fail",
+            "title": "Pass Status"
           }
         },
         "title": "SectionMetric",
