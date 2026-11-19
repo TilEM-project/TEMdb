@@ -1,5 +1,6 @@
 import base64
 import json
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -45,7 +46,7 @@ async def page(
     columns = [_column(item) for item in key]
     names = [f"{column.table.name}.{column.key}{' desc' if descending else ''}" for column, descending in columns]
     total = None
-    if count:
+    if count and cursor is None:
         total = await session.scalar(select(func.count()).select_from(statement.order_by(None).subquery()))
     statement = statement.order_by(*key)
     if cursor is not None:
@@ -92,12 +93,25 @@ def _decode(cursor: str, names: list[str], columns: list[tuple[ColumnElement, bo
         token = json.loads(base64.urlsafe_b64decode(cursor.encode()))
         if token["key"] != names or len(token["values"]) != len(names):
             raise ValueError
-        return [_typed(value, column.type.python_type) for value, (column, _) in zip(token["values"], columns)]
-    except (ValueError, TypeError, KeyError):
+        return [_typed(value, column) for value, (column, _) in zip(token["values"], columns)]
+    except (ValueError, TypeError, KeyError, AttributeError):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "cursor is not from this listing")
 
 
-def _typed(value: Any, python_type: type) -> Any:
-    if value is None:
-        return None
-    return datetime.fromisoformat(value) if python_type is datetime else python_type(value)
+def _typed(value: Any, column: ColumnElement) -> Any:
+    """The cursor value as the column's Python type; ValueError when it has another type."""
+    try:
+        python_type = column.type.python_type
+    except NotImplementedError:
+        return value
+    if value is None or python_type is object:
+        return value
+    if python_type is datetime:
+        return datetime.fromisoformat(value)
+    if python_type is uuid.UUID:
+        return uuid.UUID(value)
+    if python_type is float and type(value) is int:
+        return float(value)
+    if type(value) is not python_type:
+        raise ValueError
+    return value

@@ -15,7 +15,7 @@ T = TypeVar("T")
 class Page(list):
     """One page of records: a list that also carries the next page's cursor and the number of matching records."""
 
-    def __init__(self, items=(), next_cursor: str | None = None, total: int = 0):
+    def __init__(self, items=(), next_cursor: str | None = None, total: int | None = None):
         super().__init__(items)
         self.next_cursor = next_cursor
         self.total = total

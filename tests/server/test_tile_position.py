@@ -94,10 +94,11 @@ async def test_tile_list_pages_in_position_order(async_client: AsyncClient, test
     tiles = [_tile(1, 0), _tile(0, 1, retake=1), _tile(0, 0), _tile(0, 1)]
     await async_client.post(f"{_tiles_url(test_acquisition)}/bulk", json=tiles)
 
-    names, cursor = [], None
+    names, totals, cursor = [], [], None
     while True:
         ids, page = await _tile_ids(async_client, test_acquisition, limit=3, **({"cursor": cursor} if cursor else {}))
         names += ids
+        totals.append(page["total"])
         cursor = page["next_cursor"]
         if cursor is None:
             break
@@ -108,7 +109,7 @@ async def test_tile_list_pages_in_position_order(async_client: AsyncClient, test
         "TEST_MONTAGE_001_r000_c001_a1",
         "TEST_MONTAGE_001_r001_c000",
     ]
-    assert page["total"] == 4
+    assert totals == [4, None]
 
 
 @pytest.mark.asyncio

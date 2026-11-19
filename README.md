@@ -87,7 +87,7 @@ before any request is sent.
 #### Listing
 
 A list method returns every matching record. Pass `limit`, `cursor` or `offset` to get one `Page`: a list of that
-page's records with `next_cursor` (`None` on the last page) and `total`.
+page's records with `next_cursor` (`None` on the last page) and `total` (`None` on pages fetched by `cursor`).
 
 ```python
 sections = await client.section.list_by_media("1008")                     # every record
@@ -293,8 +293,8 @@ different case: **409** `FOREIGN_KEY_VIOLATION`.
 
 ### Paged lists
 
-List routes return `{"items": [...], "next_cursor": ..., "total": ...}`. `next_cursor` is `null` on the last page and
-`total` counts every row that matches the filters.
+List routes return `{"items": [...], "next_cursor": ..., "total": ...}`. `next_cursor` is `null` on the last page.
+`total` counts every row that matches the filters; it is `null` on pages fetched by `cursor`.
 
 ```text
 GET /api/v2/sections?media_id=1008&limit=100                        first page

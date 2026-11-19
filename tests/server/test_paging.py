@@ -1,24 +1,34 @@
+import base64
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import Column, MetaData, Table
+from sqlalchemy.dialects.postgresql import JSONB
+
+from temdb.server.api.v2.paging import _decode
 
 LIMIT = 3
 COUNTS = [LIMIT - 1, LIMIT, LIMIT + 1, 2 * LIMIT]
 
 
-async def _all_pages(async_client: AsyncClient, path: str, key: str, **params) -> tuple[list[str], set[int]]:
-    seen, totals, cursor = [], set(), None
+async def _all_pages(async_client: AsyncClient, path: str, key: str, **params) -> tuple[list[str], list]:
+    seen, totals, cursor = [], [], None
     while True:
         query = {"limit": LIMIT, **params, **({"cursor": cursor} if cursor else {})}
         response = await async_client.get(path, params=query)
         assert response.status_code == 200, response.text
         body = response.json()
         seen += [row[key] for row in body["items"]]
-        totals.add(body["total"])
+        totals.append(body["total"])
         cursor = body["next_cursor"]
         if cursor is None:
             return seen, totals
+
+
+def _token(names: list[str], values: list) -> str:
+    return base64.urlsafe_b64encode(json.dumps({"key": names, "values": values}).encode()).decode()
 
 
 async def _create_specimens(async_client: AsyncClient, specimen_ids):
@@ -36,7 +46,7 @@ async def test_specimen_pages_cover_every_row_once(async_client: AsyncClient, in
     seen, totals = await _all_pages(async_client, "/api/v2/specimens", "specimen_id")
 
     assert seen == expected
-    assert totals == {count}
+    assert totals == [count] + [None] * (len(totals) - 1)
 
 
 async def test_offset_jump_then_cursor_covers_rest(async_client: AsyncClient, init_db):
@@ -97,7 +107,26 @@ async def test_foreign_cursor_is_refused(async_client: AsyncClient, init_db, pat
         assert response.json()["detail"] == "cursor is not from this listing"
 
 
-async def test_after_with_offset_is_refused(async_client: AsyncClient, init_db):
+@pytest.mark.parametrize("values", [["S1", 1.9], ["S1", "7"], [{"a": 1}, 1], ["S1", True]])
+async def test_forged_cursor_value_is_refused(async_client: AsyncClient, init_db, values):
+    """A cursor whose values do not have the types of the sort columns is refused."""
+    response = await async_client.get(
+        "/api/v2/specimens", params={"cursor": _token(["specimens.specimen_id", "specimens.id"], values)}
+    )
+
+    assert response.status_code == 422, response.text
+
+
+def test_json_sort_value_decodes_as_sent():
+    """A cursor value for a JSON column, which has no Python type, is kept as sent."""
+    column = Table("probe", MetaData(), Column("shape", JSONB)).c.shape
+
+    assert _decode(_token(["probe.shape"], [{"kind": "slot"}]), ["probe.shape"], [(column, False)]) == [
+        {"kind": "slot"}
+    ]
+
+
+async def test_cursor_with_offset_is_refused(async_client: AsyncClient, init_db):
     """Sending both cursor and offset is refused."""
     await _create_specimens(async_client, ["S1", "S2"])
     token = (await async_client.get("/api/v2/specimens", params={"limit": 1})).json()["next_cursor"]
@@ -151,4 +180,4 @@ async def test_tied_section_pages_cover_every_row_once(
 
     assert sorted(seen) == sorted(expected)
     assert len(seen) == len(expected)
-    assert totals == {count}
+    assert totals == [count] + [None] * (len(totals) - 1)

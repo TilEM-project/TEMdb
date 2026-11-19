@@ -3870,14 +3870,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[AcquisitionResponse]",
         "type": "object"
@@ -3906,14 +3912,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[AcquisitionTaskResponse]",
         "type": "object"
@@ -3942,14 +3954,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[BlockResponse]",
         "type": "object"
@@ -3978,14 +3996,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[CuttingSessionResponse]",
         "type": "object"
@@ -4014,14 +4038,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[DatasetResponse]",
         "type": "object"
@@ -4050,14 +4080,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[LensCorrectionResponse]",
         "type": "object"
@@ -4086,14 +4122,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[MicroscopeResponse]",
         "type": "object"
@@ -4122,14 +4164,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[ROIResponse]",
         "type": "object"
@@ -4158,14 +4206,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[SectionResponse]",
         "type": "object"
@@ -4194,14 +4248,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[SpecimenResponse]",
         "type": "object"
@@ -4230,14 +4290,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[SubstrateLayoutResponse]",
         "type": "object"
@@ -4266,14 +4332,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[SubstrateResponse]",
         "type": "object"
@@ -4303,14 +4375,20 @@
             "title": "Next Cursor"
           },
           "total": {
-            "description": "Rows matching the filters, over all pages",
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+            "title": "Total"
           }
         },
         "required": [
-          "items",
-          "total"
+          "items"
         ],
         "title": "Page[dict[str, Any]]",
         "type": "object"
