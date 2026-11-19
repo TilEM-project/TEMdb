@@ -22,7 +22,7 @@ async def test_microscope_list(client, records):
     await records.microscope()
     await client.microscope.create(MicroscopeCreate(microscope_id="scope-2"))
     assert {m.microscope_id for m in await client.microscope.list()} == {"scope-1", "scope-2"}
-    assert len(await client.microscope.list(limit=1)) == 1
+    assert len((await client.microscope.list(limit=1)).items) == 1
 
 
 async def test_microscope_update(client, records):

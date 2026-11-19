@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +11,9 @@ from temdb.models import (
     AcquisitionTaskCreate,
     AcquisitionTaskResponse,
     AcquisitionTaskUpdate,
+    Page,
 )
-from temdb.server.api.v2.paging import page
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
@@ -144,10 +145,9 @@ def _task_from_create(
     )
 
 
-@acquisition_task_api.get("/acquisition-tasks", response_model=list[AcquisitionTaskResponse])
+@acquisition_task_api.get("/acquisition-tasks", response_model=Page[AcquisitionTaskResponse])
 async def list_tasks(
-    response: Response,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
@@ -203,8 +203,9 @@ async def list_tasks(
         filters.append(ROISQLModel.substrate_media_id == media_id)
     if task_group_id is not None:
         filters.append(AcquisitionTaskSQLModel.task_group_id == task_group_id)
-        statement = statement.order_by(AcquisitionTaskSQLModel.tilt_angle_deg)
-    statement = statement.order_by(AcquisitionTaskSQLModel.task_id, AcquisitionTaskSQLModel.id)
+    key = [AcquisitionTaskSQLModel.task_id, AcquisitionTaskSQLModel.id]
+    if task_group_id is not None:
+        key.insert(0, AcquisitionTaskSQLModel.tilt_angle_deg)
     if current_only or imageable:
         filters.append(AcquisitionTaskSQLModel.superseded_by.is_(None))
     if skip_destroyed or imageable:
@@ -247,12 +248,11 @@ async def list_tasks(
     if filters:
         statement = statement.where(and_(*filters))
 
-    rows = await page(session, statement, skip=skip, limit=limit, response=response, scalars=False)
-    if not rows:
-        return []
-    tasks = [row[0] for row in rows]
+    result = await page(session, statement, key=key, at=at, limit=limit, scalars=False)
+    tasks = [row[0] for row in result["items"]]
     runs_map = await _runs_by_task(session, [task.task_id for task in tasks])
-    return [_task_response(task, derive_task_state(runs_map[task.task_id])) for task in tasks]
+    result["items"] = [_task_response(task, derive_task_state(runs_map[task.task_id])) for task in tasks]
+    return result
 
 
 @acquisition_task_api.post(
@@ -344,11 +344,10 @@ async def delete_task(task_id: str, session: AsyncSession = Depends(get_async_se
     return None
 
 
-@acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=list[AcquisitionResponse])
+@acquisition_task_api.get("/acquisition-tasks/{task_id}/acquisitions", response_model=Page[AcquisitionResponse])
 async def get_task_acquisitions(
-    response: Response,
     task_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -357,12 +356,9 @@ async def get_task_acquisitions(
         is None
     ):
         raise HTTPException(404, f"Task ID '{task_id}' not found")
-    statement = (
-        select(AcquisitionSQLModel)
-        .where(AcquisitionSQLModel.acquisition_task_id == task_id)
-        .order_by(AcquisitionSQLModel.start_time, AcquisitionSQLModel.id)
-    )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = select(AcquisitionSQLModel).where(AcquisitionSQLModel.acquisition_task_id == task_id)
+    key = [AcquisitionSQLModel.start_time, AcquisitionSQLModel.id]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @acquisition_task_api.post(

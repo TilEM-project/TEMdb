@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import BlockResponse, SpecimenCreate, SpecimenResponse, SpecimenUpdate
-from temdb.server.api.v2.paging import page
+from temdb.models import BlockResponse, Page, SpecimenCreate, SpecimenResponse, SpecimenUpdate
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import BlockSQLModel, SpecimenSQLModel
 
@@ -17,11 +17,10 @@ specimen_api = APIRouter(
 )
 
 
-@specimen_api.get("/specimens", response_model=list[SpecimenResponse])
+@specimen_api.get("/specimens", response_model=Page[SpecimenResponse])
 async def list_specimens(
-    response: Response,
     search: str | None = Query(None, description="Search term for specimen ID or description"),
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -34,13 +33,7 @@ async def list_specimens(
                 SpecimenSQLModel.description.ilike(like_pattern),
             )
         )
-    return await page(
-        session,
-        statement.order_by(SpecimenSQLModel.specimen_id, SpecimenSQLModel.id),
-        skip=skip,
-        limit=limit,
-        response=response,
-    )
+    return await page(session, statement, key=[SpecimenSQLModel.specimen_id, SpecimenSQLModel.id], at=at, limit=limit)
 
 
 @specimen_api.get("/specimens/count", response_model=int)
@@ -60,11 +53,10 @@ async def count_specimens(
     return (await session.scalars(statement)).one()
 
 
-@specimen_api.get("/specimens/{specimen_id}/blocks", response_model=list[BlockResponse])
+@specimen_api.get("/specimens/{specimen_id}/blocks", response_model=Page[BlockResponse])
 async def get_specimen_blocks(
-    response: Response,
     specimen_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -73,12 +65,9 @@ async def get_specimen_blocks(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Specimen with ID '{specimen_id}' not found",
         )
-    statement = (
-        select(BlockSQLModel)
-        .where(BlockSQLModel.specimen_id == specimen_id)
-        .order_by(BlockSQLModel.block_id, BlockSQLModel.id)
-    )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = select(BlockSQLModel).where(BlockSQLModel.specimen_id == specimen_id)
+    key = [BlockSQLModel.block_id, BlockSQLModel.id]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @specimen_api.post("/specimens", status_code=status.HTTP_201_CREATED, response_model=SpecimenResponse)

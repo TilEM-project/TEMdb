@@ -41,11 +41,15 @@ async def test_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_list_by_specimen_uses_scoped_path():
     res, request = _resource()
-    request.return_value = ([_block_payload(), _block_payload(block_id="BLOCK002")], {})
-    out = await res.list_by_specimen("SPEC001", skip=3, limit=2)
+    request.return_value = {
+        "items": [_block_payload(), _block_payload(block_id="BLOCK002")],
+        "next_cursor": None,
+        "total": 2,
+    }
+    out = await res.list_by_specimen("SPEC001", offset=3, limit=2)
     assert request.await_args.args[:2] == ("GET", "blocks/specimens/SPEC001/blocks")
-    assert request.await_args.kwargs["params"] == {"skip": 3, "limit": 2}
-    assert [b.block_id for b in out] == ["BLOCK001", "BLOCK002"]
+    assert request.await_args.kwargs["params"] == {"offset": 3, "limit": 2}
+    assert [b.block_id for b in out.items] == ["BLOCK001", "BLOCK002"]
 
 
 @pytest.mark.asyncio

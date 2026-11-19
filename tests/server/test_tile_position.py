@@ -83,18 +83,23 @@ async def test_unknown_tile_id_is_404(async_client: AsyncClient, test_acquisitio
     assert response.status_code == 404, response.text
 
 
+async def _tile_ids(async_client: AsyncClient, acquisition, **params) -> tuple[list[str], dict]:
+    page = (await async_client.get(_tiles_url(acquisition), params=params)).json()
+    return [tile["tile_id"] for tile in page["items"]], page
+
+
 @pytest.mark.asyncio
 async def test_tile_list_pages_in_position_order(async_client: AsyncClient, test_acquisition):
+    """Following next_cursor lists every tile and retake once, in (row, col, retake) order."""
     tiles = [_tile(1, 0), _tile(0, 1, retake=1), _tile(0, 0), _tile(0, 1)]
     await async_client.post(f"{_tiles_url(test_acquisition)}/bulk", json=tiles)
 
     names, cursor = [], None
     while True:
-        params = {"limit": 3} | ({"cursor": cursor} if cursor else {})
-        page = (await async_client.get(_tiles_url(test_acquisition), params=params)).json()
-        names += [tile["tile_id"] for tile in page["tiles"]]
-        cursor = page["metadata"]["next_cursor"]
-        if not page["metadata"]["has_more"]:
+        ids, page = await _tile_ids(async_client, test_acquisition, limit=3, **({"cursor": cursor} if cursor else {}))
+        names += ids
+        cursor = page["next_cursor"]
+        if cursor is None:
             break
 
     assert names == [
@@ -103,11 +108,31 @@ async def test_tile_list_pages_in_position_order(async_client: AsyncClient, test
         "TEST_MONTAGE_001_r000_c001_a1",
         "TEST_MONTAGE_001_r001_c000",
     ]
+    assert page["total"] == 4
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cursor", ["7", "0,1", "a,b,c", "0,1,2,3"])
+async def test_tile_retake_is_not_repeated(async_client: AsyncClient, test_acquisition):
+    """A retake written into the already-read rows between two pages does not repeat a tile."""
+    tiles = [_tile(0, 0), _tile(0, 1), _tile(0, 2), _tile(1, 0)]
+    await async_client.post(f"{_tiles_url(test_acquisition)}/bulk", json=tiles)
+
+    first, page = await _tile_ids(async_client, test_acquisition, limit=3)
+    await async_client.post(_tiles_url(test_acquisition), json=_tile(0, 1, retake=1))
+    rest, _ = await _tile_ids(async_client, test_acquisition, limit=3, cursor=page["next_cursor"])
+
+    assert first + rest == [
+        "TEST_MONTAGE_001_r000_c000",
+        "TEST_MONTAGE_001_r000_c001",
+        "TEST_MONTAGE_001_r000_c002",
+        "TEST_MONTAGE_001_r001_c000",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cursor", ["7", "0,1,2", "not-base64!"])
 async def test_malformed_tile_cursor_is_422(async_client: AsyncClient, test_acquisition, cursor: str):
+    """A tile cursor that is not one this listing produced is refused."""
     response = await async_client.get(_tiles_url(test_acquisition), params={"cursor": cursor})
 
     assert response.status_code == 422, response.text
@@ -134,7 +159,7 @@ async def test_bulk_conflict_is_409_and_stores_nothing(async_client: AsyncClient
 
     assert response.status_code == 409, response.text
     assert "TEST_MONTAGE_001_r000_c000" in response.json()["detail"]
-    stored = (await async_client.get(_tiles_url(test_acquisition))).json()["tiles"]
+    stored = (await async_client.get(_tiles_url(test_acquisition))).json()["items"]
     assert [(tile["tile_id"], tile["focus_score"]) for tile in stored] == [
         ("TEST_MONTAGE_001_r000_c000", pytest.approx(0.8))
     ]
@@ -209,7 +234,7 @@ async def test_stage_position_z_is_optional(async_client: AsyncClient, test_acqu
     with_z["stage_position"]["z"] = -1250.5
     await async_client.post(f"{_tiles_url(test_acquisition)}/bulk", json=[with_z, _tile(0, 1)])
 
-    stored = (await async_client.get(_tiles_url(test_acquisition))).json()["tiles"]
+    stored = (await async_client.get(_tiles_url(test_acquisition))).json()["items"]
 
     assert [tile["stage_position"] for tile in stored] == [
         {"x": 0.0, "y": 0.0, "z": -1250.5},

@@ -10,7 +10,7 @@ from temdb.server.sqlmodels import SectionSQLModel
 async def test_list_substrates(async_client: AsyncClient, test_substrate):
     response = await async_client.get("/api/v2/substrates")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert any(sub["media_id"] == test_substrate.media_id for sub in response_data)
 
@@ -19,7 +19,7 @@ async def test_list_substrates(async_client: AsyncClient, test_substrate):
 async def test_list_substrates_filtered_by_layout_type(async_client: AsyncClient, test_substrate, test_layout):
     response = await async_client.get("/api/v2/substrates?media_type=tape")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert all(sub["substrate_layout_id"] == test_layout.layout_id for sub in response_data)
     assert any(sub["media_id"] == test_substrate.media_id for sub in response_data)
@@ -205,7 +205,7 @@ async def test_delete_substrate_with_sections(async_client: AsyncClient, test_su
 async def test_get_substrate_sections(async_client: AsyncClient, test_substrate, test_section):
     response = await async_client.get(f"/api/v2/substrates/{test_substrate.media_id}/sections")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     found_section = next((sec for sec in response_data if sec["section_id"] == test_section.section_id), None)
@@ -273,11 +273,11 @@ async def test_list_substrates_filters_by_layout_and_available_apertures_in_medi
         assert (await async_client.post("/api/v2/substrates", json=body)).status_code == 201
 
     async def ids(query: str = "limit=100") -> list[str]:
-        return [s["media_id"] for s in (await async_client.get(f"/api/v2/substrates?{query}")).json()]
+        return [s["media_id"] for s in (await async_client.get(f"/api/v2/substrates?{query}")).json()["items"]]
 
     assert await ids() == ["SUB001", "SUB002", "SUB003"]
     assert await ids("available=true") == ["SUB001", "SUB002"]
     assert await ids("available=false") == ["SUB003"]
     assert await ids(f"layout_id={test_layout.layout_id}") == ["SUB001", "SUB003"]
     assert await ids("layout_id=TEST_LAYOUT_OTHER&available=true") == ["SUB002"]
-    assert await ids("skip=1&limit=1") == ["SUB002"]
+    assert await ids("offset=1&limit=1") == ["SUB002"]

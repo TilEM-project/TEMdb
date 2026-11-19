@@ -15,12 +15,17 @@ class ROIResource(BaseResource):
     """Resource class for interacting with ROI endpoints."""
 
     async def list_by_section(
-        self, section_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
+        self,
+        section_id: str,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
     ) -> list[ROIResponse]:
         """List ROIs associated with a specific section."""
         endpoint = f"sections/{section_id}/rois"
         params = dict(kwargs)
-        return await self._list(endpoint, ROIResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, ROIResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     async def list_all(
         self,
@@ -29,7 +34,8 @@ class ROIResource(BaseResource):
         cutting_session_id: str | None = None,
         section_id: str | None = None,
         is_parent_roi: bool | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[ROIResponse]:
@@ -43,7 +49,7 @@ class ROIResource(BaseResource):
             is_parent_roi=is_parent_roi,
             **kwargs,
         )
-        return await self._list(endpoint, ROIResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, ROIResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(ROICreate)
     async def create(self, roi_data: ROICreate) -> ROIResponse:
@@ -68,17 +74,14 @@ class ROIResource(BaseResource):
         await self._delete(f"rois/{roi_id}")
 
     async def get_children(
-        self, roi_id: str, skip: int | None = None, limit: int | None = None
+        self, roi_id: str, cursor: str | None = None, offset: int | None = None, limit: int | None = None
     ) -> list[ROIResponse] | Page:
         """Get the child ROIs of a parent ROI."""
-        return await self._list(f"rois/{roi_id}/children", ROIResponse, {}, skip=skip, limit=limit)
+        return await self._list(f"rois/{roi_id}/children", ROIResponse, {}, cursor=cursor, offset=offset, limit=limit)
 
     async def list_acquisitions(
         self, roi_id: str, *, status: AcquisitionStatusFilter | None = None, qc_state: str | None = None
     ) -> list[AcquisitionResponse]:
         """List every acquisition of an ROI (optionally filtered by status / qc_state)."""
-        params = without_none(roi_id=roi_id, status=status, qc_state=qc_state, limit=100)
-        pages = self._cursor_pages(
-            lambda cursor: self._get("acquisitions", params=without_none(cursor=cursor, **params))
-        )
-        return [AcquisitionResponse.model_validate(item) async for page in pages for item in page["acquisitions"]]
+        params = without_none(roi_id=roi_id, status=status, qc_state=qc_state)
+        return await self._list("acquisitions", AcquisitionResponse, params, cursor=None, offset=None, limit=None)

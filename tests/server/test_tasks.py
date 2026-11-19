@@ -94,12 +94,12 @@ async def test_supersede_lifecycle(
     after = (await async_client.get(f"/api/v2/acquisition-tasks/{old_id}")).json()
     assert after["superseded_by"] == new_task["task_id"]
 
-    current = (await async_client.get("/api/v2/acquisition-tasks", params={"current_only": True})).json()
+    current = (await async_client.get("/api/v2/acquisition-tasks", params={"current_only": True})).json()["items"]
     current_ids = [t["task_id"] for t in current]
     assert old_id not in current_ids
     assert new_task["task_id"] in current_ids
 
-    everything = (await async_client.get("/api/v2/acquisition-tasks", params={"current_only": False})).json()
+    everything = (await async_client.get("/api/v2/acquisition-tasks", params={"current_only": False})).json()["items"]
     assert old_id in [t["task_id"] for t in everything]
 
     again = await async_client.post(
@@ -193,7 +193,7 @@ async def test_imageable_work_fetch(
 ):
     task_id = test_acquisition_task.task_id
 
-    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()
+    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()["items"]
     assert task_id in [t["task_id"] for t in pool]
 
     acq_payload = {
@@ -209,13 +209,13 @@ async def test_imageable_work_fetch(
     assert create_response.status_code == 201
     acquisition_id = create_response.json()["acquisition_id"]
 
-    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()
+    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()["items"]
     assert task_id not in [t["task_id"] for t in pool]
 
     patch_response = await async_client.patch(f"/api/v2/acquisitions/{acquisition_id}", json={"status": "failed"})
     assert patch_response.status_code == 200
 
-    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()
+    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()["items"]
     assert task_id in [t["task_id"] for t in pool]
 
 
@@ -242,13 +242,13 @@ async def test_imageable_blocked_by_complete_run_pending_qc(
     patch_response = await async_client.patch(f"/api/v2/acquisitions/{acquisition_id}", json={"status": "complete"})
     assert patch_response.status_code == 200
 
-    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()
+    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()["items"]
     assert task_id not in [t["task_id"] for t in pool]
 
     qc_response = await async_client.patch(f"/api/v2/acquisitions/{acquisition_id}", json={"qc_state": "qc_fail"})
     assert qc_response.status_code == 200
 
-    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()
+    pool = (await async_client.get("/api/v2/acquisition-tasks", params={"imageable": True})).json()["items"]
     assert task_id in [t["task_id"] for t in pool]
 
 
@@ -272,7 +272,7 @@ async def test_imageable_filters_by_loaded_substrates(
             "/api/v2/acquisition-tasks",
             params={"imageable": True, "loaded_media_id": ["SOME_OTHER_SUBSTRATE"]},
         )
-    ).json()
+    ).json()["items"]
     pool_ids = [t["task_id"] for t in pool]
     assert task_id not in pool_ids
     assert "TEST_TASK_LC_LOADED" in pool_ids
@@ -282,7 +282,7 @@ async def test_imageable_filters_by_loaded_substrates(
             "/api/v2/acquisition-tasks",
             params={"imageable": True, "loaded_media_id": [media_id]},
         )
-    ).json()
+    ).json()["items"]
     assert task_id in [t["task_id"] for t in pool]
 
 
@@ -310,7 +310,9 @@ async def test_tilt_series_batch_groups(
     assert len(group_ids) == 1
     assert None not in group_ids
 
-    series = (await async_client.get("/api/v2/acquisition-tasks", params={"task_group_id": group_ids.pop()})).json()
+    series = (await async_client.get("/api/v2/acquisition-tasks", params={"task_group_id": group_ids.pop()})).json()[
+        "items"
+    ]
     assert [t["tilt_angle_deg"] for t in series] == [-15.0, 0.0, 15.0]
 
 

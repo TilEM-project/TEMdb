@@ -14,7 +14,7 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 from httpx import AsyncClient
 from minio.error import S3Error
-from sqlalchemy import and_, null, or_, select, update
+from sqlalchemy import and_, event, null, or_, select, update
 
 from temdb.server.config import config
 from temdb.server.sqlmodels.acquisition import AcquisitionSQLModel
@@ -47,8 +47,8 @@ async def test_list_acquisitions(async_client: AsyncClient):
     """Test retrieving a list of acquisitions."""
     response = await async_client.get("/api/v2/acquisitions")
     assert response.status_code == 200
-    assert "acquisitions" in response.json()
-    assert "metadata" in response.json()
+    assert "items" in response.json()
+    assert "total" in response.json()
 
 
 @pytest.mark.asyncio
@@ -63,26 +63,26 @@ async def test_list_acquisitions_filtered(
     # Filter by specimen_id
     resp_spec = await async_client.get(f"/api/v2/acquisitions?specimen_id={test_specimen.specimen_id}")
     assert resp_spec.status_code == 200
-    assert all(a["specimen_id"] == test_specimen.specimen_id for a in resp_spec.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_spec.json()["acquisitions"])
+    assert all(a["specimen_id"] == test_specimen.specimen_id for a in resp_spec.json()["items"])
+    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_spec.json()["items"])
 
     # Filter by roi_id
     resp_roi = await async_client.get(f"/api/v2/acquisitions?roi_id={test_roi.roi_id}")
     assert resp_roi.status_code == 200
-    assert all(a["roi_id"] == test_roi.roi_id for a in resp_roi.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_roi.json()["acquisitions"])
+    assert all(a["roi_id"] == test_roi.roi_id for a in resp_roi.json()["items"])
+    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_roi.json()["items"])
 
     # Filter by acquisition_task_id
     resp_task = await async_client.get(f"/api/v2/acquisitions?acquisition_task_id={test_acquisition_task.task_id}")
     assert resp_task.status_code == 200
-    assert all(a["acquisition_task_id"] == test_acquisition_task.task_id for a in resp_task.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_task.json()["acquisitions"])
+    assert all(a["acquisition_task_id"] == test_acquisition_task.task_id for a in resp_task.json()["items"])
+    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_task.json()["items"])
 
     # Filter by status: the seeded acquisition is in flight (status NULL)
     resp_status = await async_client.get("/api/v2/acquisitions?status=in_flight")
     assert resp_status.status_code == 200
-    assert all(a["status"] is None for a in resp_status.json()["acquisitions"])
-    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_status.json()["acquisitions"])
+    assert all(a["status"] is None for a in resp_status.json()["items"])
+    assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in resp_status.json()["items"])
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ def list_path(request):
 
 
 def listed_ids(body: dict) -> list[str]:
-    return [item.get("acquisition", item)["acquisition_id"] for item in body["acquisitions"]]
+    return [item.get("acquisition", item)["acquisition_id"] for item in body["items"]]
 
 
 @pytest.mark.asyncio
@@ -125,7 +125,7 @@ async def test_list_acquisitions_cursor(async_client: AsyncClient, acquisitions,
     for _ in acquisitions:
         body = (await async_client.get(list_path, params=params)).json()
         seen += listed_ids(body)
-        params["cursor"] = body["metadata"]["next_cursor"]
+        params["cursor"] = body["next_cursor"]
         if params["cursor"] is None:
             break
 
@@ -135,11 +135,33 @@ async def test_list_acquisitions_cursor(async_client: AsyncClient, acquisitions,
 
 
 @pytest.mark.asyncio
+async def test_sort_by_switch_refuses_cursor(async_client: AsyncClient, acquisitions, list_path):
+    """A cursor from a listing sorted by start_time is refused by one sorted by acquisition_id."""
+    first = (await async_client.get(list_path, params={"limit": 1, "sort_by": "start_time"})).json()
+
+    response = await async_client.get(
+        list_path, params={"limit": 1, "sort_by": "acquisition_id", "cursor": first["next_cursor"]}
+    )
+
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
+async def test_sort_order_switch_refuses_cursor(async_client: AsyncClient, acquisitions, list_path):
+    """A cursor from a newest-first listing is refused by the oldest-first one."""
+    first = (await async_client.get(list_path, params={"limit": 1, "sort_order": -1})).json()
+
+    response = await async_client.get(list_path, params={"limit": 1, "sort_order": 1, "cursor": first["next_cursor"]})
+
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
 async def test_list_acquisitions_total_count(async_client: AsyncClient, acquisitions, list_path):
-    """total_count counts every match, not just the page."""
+    """total counts every match, not just the page."""
     response = await async_client.get(list_path, params={"limit": 1})
     assert response.status_code == 200
-    assert response.json()["metadata"]["total_count"] == len(acquisitions)
+    assert response.json()["total"] == len(acquisitions)
 
 
 @pytest.mark.asyncio
@@ -159,7 +181,7 @@ async def test_list_aggregated_acquisitions_by_substrate(async_client: AsyncClie
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("params", [{"sort_by": "end_time"}, {"cursor": 999999}, {"cursor": "x"}])
+@pytest.mark.parametrize("params", [{"sort_by": "end_time"}, {"cursor": "x"}, {"cursor": "x", "offset": 1}])
 async def test_list_acquisitions_invalid_page(async_client: AsyncClient, acquisitions, list_path, params):
     response = await async_client.get(list_path, params=params)
     assert response.status_code == 422
@@ -406,7 +428,7 @@ async def test_acquisition_extra_fields_round_trip(
 
     list_response = await async_client.get(f"/api/v2/acquisitions?acquisition_task_id={test_acquisition_task.task_id}")
     assert list_response.status_code == 200
-    listed = next(acq for acq in list_response.json()["acquisitions"] if acq["acquisition_id"] == acq_id_hr)
+    listed = next(acq for acq in list_response.json()["items"] if acq["acquisition_id"] == acq_id_hr)
     assert listed["extra"]["unknown_create_key"] == {"create": "acq"}
     assert listed["extra"]["unknown_patch_key"] == "acq-patch"
 
@@ -562,24 +584,21 @@ async def test_get_tiles_from_acquisition(async_client: AsyncClient, test_acquis
     response1 = await async_client.get(f"/api/v2/acquisitions/{acq_id}/tiles?limit=1")
     assert response1.status_code == 200
     data1 = response1.json()
-    assert "tiles" in data1
-    assert "metadata" in data1
-    assert isinstance(data1["tiles"], list)
-    assert len(data1["tiles"]) <= 1
-    assert data1["metadata"]["limit"] == 1
-    next_cursor = data1["metadata"]["next_cursor"]
+    assert isinstance(data1["items"], list)
+    assert len(data1["items"]) <= 1
+    next_cursor = data1["next_cursor"]
 
-    if len(data1["tiles"]) == 1:
-        assert data1["tiles"][0]["tile_id"] == "TEST_MONTAGE_001_r000_c000"
-        assert data1["tiles"][0]["acquisition_id"] == acq_id
-
-        assert next_cursor == f"{test_tile.row},{test_tile.col},{test_tile.retake}"
+    if len(data1["items"]) == 1:
+        assert data1["items"][0]["tile_id"] == "TEST_MONTAGE_001_r000_c000"
+        assert data1["items"][0]["acquisition_id"] == acq_id
 
     if next_cursor is not None:
-        response2 = await async_client.get(f"/api/v2/acquisitions/{acq_id}/tiles?limit=1&cursor={next_cursor}")
+        response2 = await async_client.get(
+            f"/api/v2/acquisitions/{acq_id}/tiles", params={"limit": 1, "cursor": next_cursor}
+        )
         assert response2.status_code == 200
         data2 = response2.json()
-        assert len(data2["tiles"]) <= 1
+        assert len(data2["items"]) <= 1
 
 
 @pytest.mark.asyncio
@@ -616,7 +635,7 @@ async def test_get_tiles_from_acquisition_bbox_filter(async_client: AsyncClient,
         f"/api/v2/acquisitions/{acq_id}/tiles?x_min=20&x_max=45&y_min=15&y_max=35&limit=10"
     )
     assert response.status_code == 200
-    tiles = response.json()["tiles"]
+    tiles = response.json()["items"]
     returned_ids = {tile["tile_id"] for tile in tiles}
     assert returned_ids == {tile_specs[1][0], tile_specs[2][0]}
 
@@ -861,12 +880,10 @@ async def test_list_acquisitions_with_full_metadata(
     response = await async_client.get("/api/v2/aggregated/acquisitions")
     assert response.status_code == 200
     response_data = response.json()
-    assert "acquisitions" in response_data
-    assert "metadata" in response_data
-    assert isinstance(response_data["acquisitions"], list)
+    assert isinstance(response_data["items"], list)
 
     test_acq_found = None
-    for acq in response_data["acquisitions"]:
+    for acq in response_data["items"]:
         if acq["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id:
             test_acq_found = acq
             break
@@ -887,17 +904,17 @@ async def test_list_acquisitions_with_full_metadata(
     )
     assert response_filtered.status_code == 200
     filtered_data = response_filtered.json()
-    assert len(filtered_data["acquisitions"]) >= 1
+    assert len(filtered_data["items"]) >= 1
 
-    for acq in filtered_data["acquisitions"]:
+    for acq in filtered_data["items"]:
         assert acq["specimen"]["specimen_id"] == test_specimen.specimen_id
 
     response_roi_filtered = await async_client.get(f"/api/v2/aggregated/acquisitions?roi_id={test_roi.roi_id}")
     assert response_roi_filtered.status_code == 200
     roi_filtered_data = response_roi_filtered.json()
-    assert len(roi_filtered_data["acquisitions"]) >= 1
+    assert len(roi_filtered_data["items"]) >= 1
 
-    for acq in roi_filtered_data["acquisitions"]:
+    for acq in roi_filtered_data["items"]:
         assert acq["roi"]["roi_id"] == test_roi.roi_id
 
 
@@ -907,12 +924,10 @@ async def test_list_acquisitions_aggregated_pagination(async_client: AsyncClient
     response = await async_client.get("/api/v2/aggregated/acquisitions?limit=1")
     assert response.status_code == 200
     response_data = response.json()
-    assert len(response_data["acquisitions"]) <= 1
+    assert len(response_data["items"]) <= 1
 
-    # Verify metadata contains expected pagination info (cursor-based, not offset-based)
-    assert "total_count" in response_data["metadata"]
-    assert "limit" in response_data["metadata"]
-    assert "next_cursor" in response_data["metadata"]
+    assert "total" in response_data
+    assert "next_cursor" in response_data
 
 
 @pytest.mark.asyncio
@@ -928,9 +943,9 @@ async def test_acquisition_metadata_endpoints_status_filter(async_client: AsyncC
     filtered_data = response_filtered.json()
 
     assert any(
-        acq["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id for acq in filtered_data["acquisitions"]
+        acq["acquisition"]["acquisition_id"] == test_acquisition.acquisition_id for acq in filtered_data["items"]
     )
-    for acq in filtered_data["acquisitions"]:
+    for acq in filtered_data["items"]:
         assert acq["acquisition"]["status"] is None
 
 
@@ -1829,8 +1844,6 @@ async def test_tile_bulk_images_are_scoped_and_skip_missing_images(
     result = body["deleted_images"] if method == "DELETE" else body["urls"]
     assert set(result) == set(expected)
     if method == "DELETE":
-        assert body["metadata"]["returned_count"] == len(expected)
-    if method == "DELETE":
         async with test_db_manager.async_session_factory() as session:
             tiles = {
                 format_tile_id(
@@ -1942,7 +1955,7 @@ async def test_bulk_tile_images_multiple_servers_and_errors(
         }
     expected = set(requested) - ({failed_id} if failure is not None else set())
     assert set(result) == expected
-    assert set(body["metadata"]["errors"]) == ({failed_id} if failure is not None else set())
+    assert set(body["errors"]) == ({failed_id} if failure is not None else set())
     assert {call.kwargs["endpoint_url"] for call in factory.call_args_list} == {
         images[tile_id]["server"] for tile_id in requested if images[tile_id]["protocol"] == "s3"
     }
@@ -1983,7 +1996,7 @@ async def test_bulk_tile_images_cursor_pagination(async_client, test_db_manager,
     path = f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images"
     params = {"limit": 1}
     seen = []
-    has_more = []
+    more = []
     for page_index in range(len(tile_ids)):
         response = await async_client.request(
             method,
@@ -1993,15 +2006,40 @@ async def test_bulk_tile_images_cursor_pagination(async_client, test_db_manager,
         )
         assert response.status_code == 200, response.text
         body = response.json()
-        metadata = body["metadata"]
         result = body["deleted_images"] if method == "DELETE" else body["urls"]
         seen.extend(result)
-        has_more.append(metadata["has_more"])
-        if metadata["has_more"]:
-            params["cursor"] = metadata["next_cursor"]
+        more.append(body["next_cursor"] is not None)
+        params["cursor"] = body["next_cursor"]
 
     assert seen == tile_ids
-    assert has_more == [True, True, False]
+    assert more == [True, True, False]
+
+
+@pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
+async def test_image_pages_run_no_count(async_client, test_db_manager, test_acquisition, minio_s3, method):
+    """An image page does not count the matching tiles, since it returns no total."""
+    tile_ids = await _seed_image_tiles(async_client, test_acquisition.acquisition_id, 2)
+    for tile_id in tile_ids:
+        await _store_tile_image(test_db_manager, minio_s3, tile_id)
+    statements = []
+
+    def record(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    engine = test_db_manager.sql_engine.sync_engine
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        response = await async_client.request(
+            method,
+            f"/api/v2/acquisitions/{test_acquisition.acquisition_id}/tiles/images",
+            params={"limit": 1},
+            json={tile_id: _checksum(b"image") for tile_id in tile_ids} if method == "POST" else None,
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert response.status_code == 200, response.text
+    assert not [statement for statement in statements if "count(" in statement.lower()]
 
 
 @pytest.mark.parametrize("method", ["POST", "GET", "DELETE"])
@@ -2115,7 +2153,7 @@ async def test_bulk_get_urls_look_up_together(
     assert response.status_code == 200, response.text
     body = response.json()
     assert set(body["urls"]) == set(tile_ids) - {tile_ids[2]}
-    assert body["metadata"]["errors"] == {tile_ids[2]: "The image is not in storage"}
+    assert body["errors"] == {tile_ids[2]: "The image is not in storage"}
     assert peak == concurrency
 
 
@@ -2160,13 +2198,11 @@ async def test_bulk_missing_credentials_skips_tile(async_client, test_acquisitio
 
     assert response.status_code == 200, response.text
     urls = response.json().get("urls")
-    metadata = response.json().get("metadata")
     assert len(urls) == 2
     assert len(set(tile_ids) - set(urls)) == 1
-    assert metadata["returned_count"] == 2
-    assert len(metadata["errors"])
-    assert tile_ids[0] in metadata["errors"]
-    assert "Unable to locate credentials" not in metadata["errors"][tile_ids[0]]
+    assert len(response.json()["errors"])
+    assert tile_ids[0] in response.json()["errors"]
+    assert "Unable to locate credentials" not in response.json()["errors"][tile_ids[0]]
     assert "Unable to locate credentials" in caplog.text
 
 
@@ -2180,13 +2216,11 @@ async def test_bulk_delete_missing_credentials_skips_tile(async_client, test_acq
 
     assert response.status_code == 200, response.text
     deleted = response.json().get("deleted_images")
-    metadata = response.json().get("metadata")
     assert len(deleted) == 2
     assert len(set(tile_ids) - set(deleted)) == 1
-    assert metadata["returned_count"] == 2
-    assert len(metadata["errors"])
-    assert tile_ids[0] in metadata["errors"]
-    assert "Unable to locate credentials" not in metadata["errors"][tile_ids[0]]
+    assert len(response.json()["errors"])
+    assert tile_ids[0] in response.json()["errors"]
+    assert "Unable to locate credentials" not in response.json()["errors"][tile_ids[0]]
     assert "Unable to locate credentials" in caplog.text
 
 

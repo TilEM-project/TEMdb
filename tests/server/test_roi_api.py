@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import AsyncClient
 
-from temdb.models import HAS_MORE_HEADER
 from temdb.server.sqlmodels import AcquisitionTaskSQLModel
 
 drawn = datetime(2026, 10, 23, 10, 0, tzinfo=timezone.utc)
@@ -23,7 +22,7 @@ async def test_list_rois_unfiltered(async_client: AsyncClient):
     """Test retrieving a list of all ROIs."""
     response = await async_client.get("/api/v2/rois")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json()["items"], list)
 
 
 @pytest.mark.asyncio
@@ -38,7 +37,7 @@ async def test_list_rois_filtered(
     """Test filtering ROIs by parent IDs."""
     response_sec = await async_client.get(f"/api/v2/rois?section_id={test_section.section_id}")
     assert response_sec.status_code == 200
-    res_sec_data = response_sec.json()
+    res_sec_data = response_sec.json()["items"]
     assert isinstance(res_sec_data, list)
     assert len(res_sec_data) >= 1
     assert all(roi["section_id"] == test_section.section_id for roi in res_sec_data)
@@ -56,8 +55,8 @@ async def test_list_filters_parents(async_client: AsyncClient, test_roi, test_se
     parents = await async_client.get("/api/v2/rois", params={"is_parent_roi": True})
     others = await async_client.get("/api/v2/rois", params={"is_parent_roi": False})
 
-    assert [roi["roi_id"] for roi in parents.json()] == [test_roi.roi_id]
-    assert [roi["roi_id"] for roi in others.json()] == [child.json()["roi_id"]]
+    assert [roi["roi_id"] for roi in parents.json()["items"]] == [test_roi.roi_id]
+    assert [roi["roi_id"] for roi in others.json()["items"]] == [child.json()["roi_id"]]
 
 
 @pytest.mark.asyncio
@@ -248,7 +247,7 @@ async def test_list_section_rois(async_client: AsyncClient, test_section, test_r
     """Test retrieving ROIs associated with a specific section."""
     response = await async_client.get(f"/api/v2/sections/{test_section.section_id}/rois")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert any(roi["roi_id"] == test_roi.roi_id for roi in response_data)
@@ -266,10 +265,10 @@ async def test_get_child_rois(async_client: AsyncClient, test_roi, test_section)
 
     response = await async_client.get(f"/api/v2/rois/{parent_roi_id}/children")
     assert response.status_code == 200
-    children = response.json()
+    children = response.json()["items"]
     assert [child["roi_id"] for child in children] == [child_roi_id]
     assert children[0]["parent_roi_id"] == test_roi.roi_id
-    assert response.headers[HAS_MORE_HEADER] == "false"
+    assert response.json()["next_cursor"] is None
 
     await async_client.delete(f"/api/v2/rois/{child_roi_id}")
 
@@ -285,10 +284,10 @@ async def test_child_rois_page_with_has_more(async_client: AsyncClient, test_roi
 
     path = f"/api/v2/rois/{test_roi.roi_id}/children"
     first = await async_client.get(path, params={"limit": 1})
-    second = await async_client.get(path, params={"skip": 1, "limit": 1})
+    second = await async_client.get(path, params={"offset": 1, "limit": 1})
 
-    assert [first.headers[HAS_MORE_HEADER], second.headers[HAS_MORE_HEADER]] == ["true", "false"]
-    assert sorted(row["roi_id"] for row in first.json() + second.json()) == sorted(created)
+    assert (first.json()["next_cursor"] is None, second.json()["next_cursor"] is None) == (False, True)
+    assert sorted(row["roi_id"] for row in first.json()["items"] + second.json()["items"]) == sorted(created)
     for roi_id in created:
         await async_client.delete(f"/api/v2/rois/{roi_id}")
 
@@ -298,7 +297,7 @@ async def test_get_child_rois_no_children(async_client: AsyncClient, test_roi):
     """Test retrieving children for an ROI that has none."""
     response = await async_client.get(f"/api/v2/rois/{test_roi.roi_id}/children")
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json()["items"] == []
 
 
 @pytest.mark.asyncio

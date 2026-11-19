@@ -112,13 +112,16 @@ async def test_lc_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_lc_list_filters_and_returns_models():
     res, request = _lc_resource()
-    request.return_value = ([_lc_payload(), _lc_payload(lc_id=str(uuid.uuid4()))], {})
+    request.return_value = {
+        "items": [_lc_payload(), _lc_payload(lc_id=str(uuid.uuid4()))],
+        "next_cursor": None,
+        "total": 2,
+    }
     out = await res.list(microscope_id=SCOPE_ID, magnification=20000)
     assert request.await_args.args[1] == "lens-corrections"
     assert request.await_args.kwargs["params"] == {
         "microscope_id": SCOPE_ID,
         "magnification": 20000,
-        "skip": 0,
         "limit": inspect.signature(BaseResource._list).parameters["page_size"].default,
     }
     assert len(out) == 2

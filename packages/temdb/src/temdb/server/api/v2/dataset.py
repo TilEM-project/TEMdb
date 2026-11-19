@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate
-from temdb.server.api.v2.paging import page
+from temdb.models import DatasetCreate, DatasetResponse, DatasetUpdate, Page
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
@@ -68,13 +68,12 @@ async def create_dataset(data: DatasetCreate, session: AsyncSession = Depends(ge
     return ds
 
 
-@dataset_api.get("/datasets", response_model=list[DatasetResponse])
+@dataset_api.get("/datasets", response_model=Page[DatasetResponse])
 async def list_datasets(
-    response: Response,
     specimen_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     parent_dataset_id: uuid.UUID | None = Query(None),
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -85,13 +84,8 @@ async def list_datasets(
         stmt = stmt.where(DatasetSQLModel.status == status_filter)
     if parent_dataset_id is not None:
         stmt = stmt.where(DatasetSQLModel.parent_dataset_id == parent_dataset_id)
-    return await page(
-        session,
-        stmt.order_by(DatasetSQLModel.created_at, DatasetSQLModel.dataset_id),
-        skip=skip,
-        limit=limit,
-        response=response,
-    )
+    key = [DatasetSQLModel.created_at, DatasetSQLModel.dataset_id]
+    return await page(session, stmt, key=key, at=at, limit=limit)
 
 
 @dataset_api.get("/datasets/by-name/{name}", response_model=DatasetResponse)

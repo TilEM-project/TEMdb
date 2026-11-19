@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate
-from temdb.server.api.v2.paging import page
+from temdb.models import LensCorrectionCreate, LensCorrectionResponse, LensCorrectionUpdate, Page
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import MissingParentError
 from temdb.server.ids import uuid7
@@ -59,12 +59,11 @@ async def create_lens_correction(data: LensCorrectionCreate, session: AsyncSessi
     return lc
 
 
-@lens_correction_api.get("/lens-corrections", response_model=list[LensCorrectionResponse])
+@lens_correction_api.get("/lens-corrections", response_model=Page[LensCorrectionResponse])
 async def list_lens_corrections(
-    response: Response,
     microscope_id: str | None = Query(None),
     magnification: int | None = Query(None),
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -73,8 +72,9 @@ async def list_lens_corrections(
         stmt = stmt.where(LensCorrectionSQLModel.microscope_id == microscope_id)
     if magnification is not None:
         stmt = stmt.where(LensCorrectionSQLModel.magnification == magnification)
-    statement = stmt.order_by(LensCorrectionSQLModel.started_at.desc(), LensCorrectionSQLModel.lc_id.desc())
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = stmt
+    key = [LensCorrectionSQLModel.started_at.desc(), LensCorrectionSQLModel.lc_id.desc()]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 # NOTE: /current must be declared before /{lc_id} so the literal path wins.

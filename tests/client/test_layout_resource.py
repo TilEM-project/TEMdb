@@ -30,13 +30,13 @@ def _layout_payload(**extra):
 @pytest.mark.asyncio
 async def test_layout_list_filters_and_returns_models():
     resource, request = _layout_resource()
-    request.return_value = ([_layout_payload()], {})
+    request.return_value = {"items": [_layout_payload()], "next_cursor": None, "total": 1}
 
-    layouts = await resource.list(media_type="wafer", skip=2, limit=5)
+    layouts = await resource.list(media_type="wafer", offset=2, limit=5)
 
     assert request.await_args.args[:2] == ("GET", "layouts")
-    assert request.await_args.kwargs["params"] == {"media_type": "wafer", "skip": 2, "limit": 5}
-    assert layouts[0].media_type == "wafer"
+    assert request.await_args.kwargs["params"] == {"media_type": "wafer", "offset": 2, "limit": 5}
+    assert layouts.items[0].media_type == "wafer"
 
 
 @pytest.mark.asyncio

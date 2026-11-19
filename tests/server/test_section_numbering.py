@@ -56,7 +56,7 @@ async def test_resend_returns_stored(async_client: AsyncClient, test_cutting_ses
     assert resent.status_code == 200, resent.text
     assert resent.json()["section_id"] == created.json()["section_id"]
     listed = await async_client.get("/api/v2/sections", params={"media_id": test_substrate.media_id})
-    assert len(listed.json()) == 1
+    assert len(listed.json()["items"]) == 1
 
 
 @pytest.mark.asyncio

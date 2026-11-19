@@ -11,7 +11,7 @@ async def test_list_blocks(async_client: AsyncClient):
     """Test retrieving a list of all blocks."""
     response = await async_client.get("/api/v2/blocks")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json()["items"], list)
 
 
 @pytest.mark.asyncio
@@ -19,7 +19,7 @@ async def test_list_blocks_filtered_by_specimen(async_client: AsyncClient, test_
     """Test retrieving blocks filtered by specimen ID."""
     response = await async_client.get(f"/api/v2/blocks?specimen_id={test_specimen.specimen_id}")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     for block in response_data:
@@ -112,7 +112,7 @@ async def test_block_extra_fields_round_trip(async_client: AsyncClient, test_spe
 
     list_response = await async_client.get(f"/api/v2/blocks?specimen_id={test_specimen.specimen_id}")
     assert list_response.status_code == 200
-    listed = next(block for block in list_response.json() if block["block_id"] == block_id_hr)
+    listed = next(block for block in list_response.json()["items"] if block["block_id"] == block_id_hr)
     assert listed["extra"]["unknown_create_key"] == "create-extra"
     assert listed["extra"]["unknown_patch_key"] == {"patched": True}
 
@@ -155,7 +155,7 @@ async def test_list_specimen_blocks(async_client: AsyncClient, test_specimen, te
     """Test retrieving blocks associated with a specific specimen via path."""
     response = await async_client.get(f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert response_data[0]["specimen_id"] == test_specimen.specimen_id
@@ -168,7 +168,7 @@ async def test_get_block_cut_sessions(async_client: AsyncClient, test_specimen, 
         f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{test_block.block_id}/cut-sessions"
     )
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert response_data[0]["block_id"] == test_block.block_id
@@ -236,7 +236,7 @@ async def test_get_block_cut_sessions_newest_first(
     response = await async_client.get(
         f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{test_block.block_id}/cut-sessions"
     )
-    ids = [cutting_session["cutting_session_id"] for cutting_session in response.json()]
+    ids = [cutting_session["cutting_session_id"] for cutting_session in response.json()["items"]]
     assert ids == [later["cutting_session_id"], test_cutting_session.cutting_session_id]
 
 
@@ -245,7 +245,7 @@ async def test_get_block_cut_sessions_without_sessions(async_client: AsyncClient
     url = f"/api/v2/blocks/specimens/{test_specimen.specimen_id}/blocks/{test_block.block_id}/cut-sessions"
     response = await async_client.get(url)
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json()["items"] == []
 
 
 @pytest.mark.asyncio

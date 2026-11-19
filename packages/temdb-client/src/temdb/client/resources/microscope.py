@@ -16,9 +16,14 @@ class MicroscopeResource(BaseResource):
         """Get a microscope by its microscope_id."""
         return MicroscopeResponse.model_validate(await self._get(f"microscopes/{microscope_id}"))
 
-    async def list(self, skip: int | None = None, limit: int | None = None) -> list[MicroscopeResponse]:
+    async def list(
+        self,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> list[MicroscopeResponse]:
         """List microscopes."""
-        return await self._list("microscopes", MicroscopeResponse, {}, skip=skip, limit=limit)
+        return await self._list("microscopes", MicroscopeResponse, {}, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(MicroscopeUpdate)
     async def update(self, microscope_id: str, data: MicroscopeUpdate) -> MicroscopeResponse:

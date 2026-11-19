@@ -11,7 +11,7 @@ async def test_list_cutting_sessions(async_client: AsyncClient):
     """Test retrieving a list of all cutting sessions."""
     response = await async_client.get("/api/v2/cutting-sessions")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json()["items"], list)
 
 
 @pytest.mark.asyncio
@@ -21,7 +21,7 @@ async def test_list_cutting_sessions_filtered(
     """Test retrieving cutting sessions filtered by parent IDs."""
     response_block = await async_client.get(f"/api/v2/cutting-sessions?block_id={test_block.block_id}")
     assert response_block.status_code == 200
-    response_block_data = response_block.json()
+    response_block_data = response_block.json()["items"]
     assert isinstance(response_block_data, list)
     assert len(response_block_data) >= 1
     for session in response_block_data:
@@ -29,7 +29,7 @@ async def test_list_cutting_sessions_filtered(
 
     response_specimen = await async_client.get(f"/api/v2/cutting-sessions?specimen_id={test_specimen.specimen_id}")
     assert response_specimen.status_code == 200
-    response_specimen_data = response_specimen.json()
+    response_specimen_data = response_specimen.json()["items"]
     assert isinstance(response_specimen_data, list)
     assert len(response_specimen_data) >= 1
     for session in response_specimen_data:
@@ -78,7 +78,8 @@ async def test_shared_block_is_ambiguous(async_client: AsyncClient, test_block):
         },
     )
     assert response.status_code == 409, response.text
-    assert (await async_client.get("/api/v2/cutting-sessions", params={"block_id": test_block.block_id})).json() == []
+    listed = await async_client.get("/api/v2/cutting-sessions", params={"block_id": test_block.block_id})
+    assert listed.json()["items"] == []
 
 
 async def test_specimen_id_picks_shared_block(async_client: AsyncClient, test_block):
@@ -235,7 +236,9 @@ async def test_cutting_session_extra_fields_round_trip(async_client: AsyncClient
 
     list_response = await async_client.get(f"/api/v2/cutting-sessions?block_id={test_block.block_id}")
     assert list_response.status_code == 200
-    listed = next(session for session in list_response.json() if session["cutting_session_id"] == cutting_session_id)
+    listed = next(
+        session for session in list_response.json()["items"] if session["cutting_session_id"] == cutting_session_id
+    )
     assert listed["extra"]["unknown_create_key"] == {"roundtrip": "create"}
     assert listed["extra"]["unknown_patch_key"] == "patch-roundtrip"
 
@@ -291,7 +294,7 @@ async def test_get_cutting_session_sections(
     )
     response = await async_client.get(path)
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert response_data[0]["cutting_session_id"] == test_cutting_session.cutting_session_id

@@ -22,7 +22,7 @@ async def test_list_sections_unfiltered(async_client: AsyncClient):
     """Test retrieving a list of all sections."""
     response = await async_client.get("/api/v2/sections")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json()["items"], list)
 
 
 @pytest.mark.asyncio
@@ -36,25 +36,27 @@ async def test_list_sections_filtered(
     """Test filtering sections by various criteria."""
     response_spec = await async_client.get(f"/api/v2/sections?specimen_id={test_specimen.specimen_id}")
     assert response_spec.status_code == 200
-    assert all(s["specimen_id"] == test_specimen.specimen_id for s in response_spec.json())
-    assert any(s["section_id"] == test_section.section_id for s in response_spec.json())
+    assert all(s["specimen_id"] == test_specimen.specimen_id for s in response_spec.json()["items"])
+    assert any(s["section_id"] == test_section.section_id for s in response_spec.json()["items"])
 
     response_block = await async_client.get(f"/api/v2/sections?block_id={test_block.block_id}")
     assert response_block.status_code == 200
-    assert all(s["block_id"] == test_block.block_id for s in response_block.json())
-    assert any(s["section_id"] == test_section.section_id for s in response_block.json())
+    assert all(s["block_id"] == test_block.block_id for s in response_block.json()["items"])
+    assert any(s["section_id"] == test_section.section_id for s in response_block.json()["items"])
 
     response_session = await async_client.get(
         f"/api/v2/sections?cutting_session_id={test_cutting_session.cutting_session_id}"
     )
     assert response_session.status_code == 200
-    assert all(s["cutting_session_id"] == test_cutting_session.cutting_session_id for s in response_session.json())
-    assert any(s["section_id"] == test_section.section_id for s in response_session.json())
+    assert all(
+        s["cutting_session_id"] == test_cutting_session.cutting_session_id for s in response_session.json()["items"]
+    )
+    assert any(s["section_id"] == test_section.section_id for s in response_session.json()["items"])
 
     response_media = await async_client.get(f"/api/v2/sections?media_id={test_section.media_id}")
     assert response_media.status_code == 200
-    assert all(s["media_id"] == test_section.media_id for s in response_media.json())
-    assert any(s["section_id"] == test_section.section_id for s in response_media.json())
+    assert all(s["media_id"] == test_section.media_id for s in response_media.json()["items"])
+    assert any(s["section_id"] == test_section.section_id for s in response_media.json()["items"])
 
 
 @pytest.mark.asyncio
@@ -389,7 +391,7 @@ async def test_list_cutting_session_sections(async_client: AsyncClient, test_cut
     path = f"/api/v2/sections/sessions/{test_cutting_session.cutting_session_id}"
     response = await async_client.get(path)
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert any(s["section_id"] == test_section.section_id for s in response_data)
@@ -402,7 +404,7 @@ async def test_list_block_sections(async_client: AsyncClient, test_block, test_s
     path = f"/api/v2/sections/blocks/{test_block.block_id}"
     response = await async_client.get(path)
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert any(s["section_id"] == test_section.section_id for s in response_data)
@@ -415,7 +417,7 @@ async def test_list_specimen_sections(async_client: AsyncClient, test_specimen, 
     path = f"/api/v2/sections/specimens/{test_specimen.specimen_id}"
     response = await async_client.get(path)
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert any(s["section_id"] == test_section.section_id for s in response_data)
@@ -428,7 +430,7 @@ async def test_list_sections_by_media(async_client: AsyncClient, test_section):
     path = f"/api/v2/sections/media/{test_section.media_id}"
     response = await async_client.get(path)
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) >= 1
     assert any(s["section_id"] == test_section.section_id for s in response_data)
@@ -579,7 +581,7 @@ async def test_list_sections_by_quality_pages_matches(async_client: AsyncClient,
         await session.commit()
 
     response = await async_client.get("/api/v2/sections", params={"quality": SectionQuality.BROKEN.value, "limit": 1})
-    assert [section["section_id"] for section in response.json()] == [broken.section_id]
+    assert [section["section_id"] for section in response.json()["items"]] == [broken.section_id]
 
 
 @pytest.mark.asyncio

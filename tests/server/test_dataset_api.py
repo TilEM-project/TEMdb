@@ -86,7 +86,7 @@ async def test_dataset_extra_fields_round_trip(async_client, test_specimen):
 
     list_response = await async_client.get(f"/api/v2/datasets?specimen_id={test_specimen.specimen_id}")
     assert list_response.status_code == 200
-    listed = next(ds for ds in list_response.json() if ds["dataset_id"] == created["dataset_id"])
+    listed = next(ds for ds in list_response.json()["items"] if ds["dataset_id"] == created["dataset_id"])
     assert listed["extra"]["unknown_create_key"] == {"created": True}
     assert listed["extra"]["unknown_patch_key"] == "patched-extra"
 
@@ -111,7 +111,7 @@ async def test_list_datasets_filters_by_status(async_client):
     await async_client.patch(f"/api/v2/datasets/{created['dataset_id']}", json={"status": "collected"})
 
     listed = await async_client.get("/api/v2/datasets", params={"status": "collected"})
-    names = [d["name"] for d in listed.json()]
+    names = [d["name"] for d in listed.json()["items"]]
     assert names == ["ds_done"]
 
 
@@ -161,7 +161,8 @@ async def test_list_datasets_pages_through_created_at_ties(init_db, async_client
         await session.commit()
 
     pages = [
-        (await async_client.get("/api/v2/datasets", params={"skip": skip, "limit": 1})).json() for skip in range(3)
+        (await async_client.get("/api/v2/datasets", params={"offset": offset, "limit": 1})).json()["items"]
+        for offset in range(3)
     ]
     expected = sorted(datasets, key=lambda dataset: dataset.dataset_id)
     assert [dataset["name"] for page in pages for dataset in page] == [dataset.name for dataset in expected]

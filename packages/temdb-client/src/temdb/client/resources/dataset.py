@@ -28,13 +28,14 @@ class DatasetResource(BaseResource):
         self,
         specimen_id: str | None = None,
         status: str | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[DatasetResponse]:
         """List datasets, optionally filtered by specimen_id and/or status."""
         params = without_none(specimen_id=specimen_id, status=status, **kwargs)
-        return await self._list("datasets", DatasetResponse, params, skip=skip, limit=limit)
+        return await self._list("datasets", DatasetResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(DatasetUpdate)
     async def update(self, dataset_id: str, dataset_data: DatasetUpdate) -> DatasetResponse:

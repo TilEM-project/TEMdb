@@ -14,24 +14,30 @@ class BlockResource(BaseResource):
     """Resource class for interacting with Block endpoints."""
 
     async def list_by_specimen(
-        self, specimen_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
+        self,
+        specimen_id: str,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
     ) -> list[BlockResponse]:
         """List blocks associated with a specific specimen."""
         endpoint = f"blocks/specimens/{specimen_id}/blocks"
         params = dict(kwargs)
-        return await self._list(endpoint, BlockResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, BlockResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     async def list_all(
         self,
         specimen_id: str | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[BlockResponse]:
         """List all blocks, optionally filtering by specimen_id."""
         endpoint = "blocks"
         params = without_none(specimen_id=specimen_id, **kwargs)
-        return await self._list(endpoint, BlockResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, BlockResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(BlockCreate)
     async def create(self, block_data: BlockCreate) -> BlockResponse:
@@ -59,8 +65,13 @@ class BlockResource(BaseResource):
         await self._delete(endpoint)
 
     async def get_cut_sessions(
-        self, specimen_id: str, block_id: str, skip: int | None = None, limit: int | None = None
+        self,
+        specimen_id: str,
+        block_id: str,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
     ) -> list[CuttingSessionResponse]:
         """Get cutting sessions related to a specific block."""
         endpoint = f"blocks/specimens/{specimen_id}/blocks/{block_id}/cut-sessions"
-        return await self._list(endpoint, CuttingSessionResponse, {}, skip=skip, limit=limit)
+        return await self._list(endpoint, CuttingSessionResponse, {}, cursor=cursor, offset=offset, limit=limit)

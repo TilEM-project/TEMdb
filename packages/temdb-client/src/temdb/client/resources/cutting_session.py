@@ -17,28 +17,30 @@ class CuttingSessionResource(BaseResource):
         self,
         specimen_id: str,
         block_id: str,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[CuttingSessionResponse]:
         """List cutting sessions associated with a specific block."""
         endpoint = f"cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions"
         params = dict(kwargs)
-        return await self._list(endpoint, CuttingSessionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, CuttingSessionResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     async def list_all(
         self,
         specimen_id: str | None = None,
         block_id: str | None = None,
         operator: str | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[CuttingSessionResponse]:
         """List all cutting sessions, optionally filtering."""
         endpoint = "cutting-sessions"
         params = without_none(specimen_id=specimen_id, block_id=block_id, operator=operator, **kwargs)
-        return await self._list(endpoint, CuttingSessionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, CuttingSessionResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(CuttingSessionCreate)
     async def create(self, session_data: CuttingSessionCreate) -> CuttingSessionResponse:
@@ -73,9 +75,10 @@ class CuttingSessionResource(BaseResource):
         specimen_id: str,
         block_id: str,
         cutting_session_id: str,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
     ) -> list[SectionResponse]:
         """List sections associated with a specific cutting session."""
         endpoint = f"cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions/{cutting_session_id}/sections"
-        return await self._list(endpoint, SectionResponse, {}, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, {}, cursor=cursor, offset=offset, limit=limit)

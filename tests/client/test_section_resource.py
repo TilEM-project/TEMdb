@@ -61,11 +61,15 @@ async def test_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_list_by_session_uses_expected_path():
     res, request = _resource()
-    request.return_value = ([_section_payload(), _section_payload(section_id="MEDIA001_S00002", section_number=2)], {})
+    request.return_value = {
+        "items": [_section_payload(), _section_payload(section_id="MEDIA001_S00002", section_number=2)],
+        "next_cursor": None,
+        "total": 2,
+    }
     out = await res.list_by_session("CUT001", limit=2)
     assert request.await_args.args[:2] == ("GET", "sections/sessions/CUT001")
-    assert request.await_args.kwargs["params"] == {"skip": 0, "limit": 2}
-    assert [s.section_number for s in out] == [1, 2]
+    assert request.await_args.kwargs["params"] == {"limit": 2}
+    assert [s.section_number for s in out.items] == [1, 2]
 
 
 @pytest.mark.asyncio

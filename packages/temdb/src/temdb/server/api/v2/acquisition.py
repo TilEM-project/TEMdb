@@ -29,12 +29,14 @@ from temdb.models import (
     FileObject,
     FileObjectRequest,
     FileObjectResponse,
+    Page,
     TileBulkDeleteResult,
     TileCreate,
     TileDeleteAllResult,
     TileResponse,
     TileUpdate,
 )
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.config import config
 from temdb.server.dependencies import get_async_session, get_storage_client_manager
 from temdb.server.exception_handlers import MissingParentError
@@ -143,32 +145,16 @@ def _tile_sql_kwargs(tile_data: TileCreate, dataset_id: uuid.UUID, run_id: uuid.
     }
 
 
-async def acquisition_page(
-    session: AsyncSession, statement, conditions: list, sort_by: str, sort_order: int, cursor: int | None, limit: int
-) -> tuple[list, int, str | None]:
-    """Return one page of the statement's rows, the number of acquisitions matching the conditions, and the next cursor.
-
-    Rows are ordered by the sort column and then by id. The cursor is the id of the last acquisition on the previous
-    page, and the next cursor is None on the last page.
-    """
-    total_count = await session.scalar(select(func.count()).select_from(AcquisitionSQLModel).where(*conditions))
-    keys = (getattr(AcquisitionSQLModel, sort_by), AcquisitionSQLModel.id)
-    ascending = sort_order == 1
-    if cursor is not None:
-        last = (await session.execute(select(*keys).where(AcquisitionSQLModel.id == cursor))).first()
-        if last is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"cursor {cursor} is not an acquisition")
-        statement = statement.where(tuple_(*keys) > tuple(last) if ascending else tuple_(*keys) < tuple(last))
-    order = [key.asc() if ascending else key.desc() for key in keys]
-    rows = (await session.execute(statement.where(*conditions).order_by(*order).limit(limit + 1))).all()
-    next_cursor = str(rows[limit - 1][0].id) if len(rows) > limit else None
-    return rows[:limit], total_count, next_cursor
+def acquisition_key(sort_by: str, sort_order: int) -> list:
+    """The acquisition listing's sort key: the sort column, then id, both descending unless sort_order is 1."""
+    key = [getattr(AcquisitionSQLModel, sort_by), AcquisitionSQLModel.id]
+    return key if sort_order == 1 else [column.desc() for column in key]
 
 
-@acquisition_api.get("/acquisitions", response_model=dict[str, Any])
+@acquisition_api.get("/acquisitions", response_model=Page[dict[str, Any]])
 async def list_acquisitions(
     response: Response,
-    cursor: int | None = Query(None, description="next_cursor of the previous page"),
+    at: Position = Depends(Position),
     limit: int = Query(50, ge=1, le=1000),
     sort_by: Literal["start_time", "acquisition_id"] = Query("start_time", description="Field to sort by"),
     sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
@@ -247,28 +233,25 @@ async def list_acquisitions(
             param_tile_dy_gt,
         )
 
-    rows, total_count, next_cursor = await acquisition_page(
-        session, select(AcquisitionSQLModel), conditions, sort_by, sort_order, cursor, limit
+    result = await page(
+        session,
+        select(AcquisitionSQLModel).where(*conditions),
+        key=acquisition_key(sort_by, sort_order),
+        at=at,
+        limit=limit,
+        scalars=False,
     )
     payloads = []
-    for (acq,) in rows:
+    for (acq,) in result["items"]:
         payload = AcquisitionResponse.model_validate(acq).model_dump(mode="json")
         if fields:
             kept = {field: payload.get(field) for field in fields}
             kept["id"] = payload["id"]
             payload = kept
         payloads.append(payload)
-    metadata = {
-        "total_count": total_count,
-        "returned_count": len(payloads),
-        "limit": limit,
-        "sort_by": sort_by,
-        "sort_order": sort_order if sort_order in [-1, 1] else -1,
-        "next_cursor": next_cursor,
-    }
     response.headers["Cache-Control"] = "private, max-age=300"
-    response.headers["X-Total-Count"] = str(total_count)
-    return {"acquisitions": payloads, "metadata": metadata}
+    result["items"] = payloads
+    return result
 
 
 @acquisition_api.post("/acquisitions", response_model=AcquisitionResponse, status_code=status.HTTP_201_CREATED)
@@ -610,10 +593,10 @@ async def add_tiles_to_acquisition(
     }
 
 
-@acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=dict[str, Any])
+@acquisition_api.get("/acquisitions/{acquisition_id}/tiles", response_model=Page[dict[str, Any]])
 async def get_tiles_from_acquisition(
     acquisition_id: str,
-    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    at: Position = Depends(Position),
     limit: int = Query(100, ge=1, le=1000),
     fields: list[str] | None = Query(None),
     x_min: float | None = Query(
@@ -641,39 +624,25 @@ async def get_tiles_from_acquisition(
         raise HTTPException(422, "Invalid bounding box: x_min must be <= x_max")
     if y_min is not None and y_max is not None and y_min > y_max:
         raise HTTPException(422, "Invalid bounding box: y_min must be <= y_max")
-    after = None
-    if cursor is not None:
-        try:
-            after = tuple(int(part) for part in cursor.split(","))
-        except ValueError:
-            after = ()
-        if len(after) != 3:
-            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     if acq_obj.dataset_id is None:
-        rows = []
-    else:
-        bbox = []
-        if x_min is not None:
-            bbox.append(TileSQLModel.stage_x_nm >= x_min)
-        if x_max is not None:
-            bbox.append(TileSQLModel.stage_x_nm <= x_max)
-        if y_min is not None:
-            bbox.append(TileSQLModel.stage_y_nm >= y_min)
-        if y_max is not None:
-            bbox.append(TileSQLModel.stage_y_nm <= y_max)
-        query = select(TileSQLModel).where(
-            TileSQLModel.dataset_id == acq_obj.dataset_id,
-            TileSQLModel.run_id == acq_obj.run_id,
-            *bbox,
-        )
-        key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
-        if after is not None:
-            query = query.where(tuple_(*key) > tuple_(*after))
-        query = query.order_by(*key).limit(limit + 1)
-        rows = (await session.scalars(query)).all()
-    has_more = len(rows) > limit
-    tiles = rows[:limit]
-    payloads = [_tile_payload(tile, acq_obj) for tile in tiles]
+        return {"items": [], "next_cursor": None, "total": 0}
+    bbox = []
+    if x_min is not None:
+        bbox.append(TileSQLModel.stage_x_nm >= x_min)
+    if x_max is not None:
+        bbox.append(TileSQLModel.stage_x_nm <= x_max)
+    if y_min is not None:
+        bbox.append(TileSQLModel.stage_y_nm >= y_min)
+    if y_max is not None:
+        bbox.append(TileSQLModel.stage_y_nm <= y_max)
+    query = select(TileSQLModel).where(
+        TileSQLModel.dataset_id == acq_obj.dataset_id,
+        TileSQLModel.run_id == acq_obj.run_id,
+        *bbox,
+    )
+    key = [TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake]
+    result = await page(session, query, key=key, at=at, limit=limit)
+    payloads = [_tile_payload(tile, acq_obj) for tile in result["items"]]
     if fields:
         trimmed = []
         for payload in payloads:
@@ -681,17 +650,8 @@ async def get_tiles_from_acquisition(
             entry["tile_id"] = payload["tile_id"]
             trimmed.append(entry)
         payloads = trimmed
-    next_cursor = f"{tiles[-1].row},{tiles[-1].col},{tiles[-1].retake}" if tiles else None
-    return {
-        "tiles": payloads,
-        "metadata": {
-            "returned_count": len(payloads),
-            "limit": limit,
-            "current_cursor": cursor,
-            "next_cursor": next_cursor,
-            "has_more": has_more,
-        },
-    }
+    result["items"] = payloads
+    return result
 
 
 def _where_tile(acq_obj: AcquisitionSQLModel, tile_id: str) -> list:
@@ -736,7 +696,7 @@ def _where_tiles(acq_obj: AcquisitionSQLModel, tile_ids: list[str]) -> list:
 async def image_put_urls(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
-    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(100, ge=1, le=1000),
     image_hashes: dict[str, str] = Body(..., description="A mapping of tile ids to hashes"),
     session: AsyncSession = Depends(get_async_session),
@@ -754,23 +714,10 @@ async def image_put_urls(
         TileSQLModel.run_id == acq_obj.run_id,
         TileSQLModel.image.isnot(None),
     )
-    after = None
-    if cursor is not None:
-        try:
-            after = tuple(int(part) for part in cursor.split(","))
-        except ValueError:
-            after = ()
-        if len(after) != 3:
-            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     tile_query = tile_query.where(*_where_tiles(acq_obj, image_hashes.keys()))
-    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
-    if after is not None:
-        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
-    tile_query = tile_query.order_by(*key).limit(limit + 1)
-    tiles = await session.scalars(tile_query)
-    tiles_obj = tiles.all()
-    has_more = len(tiles_obj) > limit
-    tiles_obj = tiles_obj[:limit]
+    key = [TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake]
+    result = await page(session, tile_query, key=key, at=Position(cursor, None), limit=limit, count=False)
+    tiles_obj = result["items"]
     if not tiles_obj:
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
     urls = {}
@@ -790,17 +737,10 @@ async def image_put_urls(
         except HTTPException as e:
             logger.error(f"Error generating presigned URL for tile {tile_id}: {e.detail}")
             errors[tile_id] = e.detail
-    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
     return {
         "urls": urls,
-        "metadata": {
-            "returned_count": len(urls),
-            "limit": limit,
-            "current_cursor": cursor,
-            "next_cursor": next_cursor,
-            "has_more": has_more,
-            "errors": errors,
-        },
+        "errors": errors,
+        "next_cursor": result["next_cursor"],
     }
 
 
@@ -808,7 +748,7 @@ async def image_put_urls(
 async def image_get_urls(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
-    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(100, ge=1, le=1000),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
@@ -821,7 +761,7 @@ async def image_get_urls(
 async def image_get_urls_for_tiles(
     acquisition_id: str,
     expiration: int | None = Query(3600, description="Expiration time in seconds for the presigned URL"),
-    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(100, ge=1, le=1000),
     tile_ids: list[str] = Body(..., description="The tiles to generate presigned GET URLs for"),
     session: AsyncSession = Depends(get_async_session),
@@ -848,14 +788,6 @@ async def _image_get_url_page(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    after = None
-    if cursor is not None:
-        try:
-            after = tuple(int(part) for part in cursor.split(","))
-        except ValueError:
-            after = ()
-        if len(after) != 3:
-            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     tile_query = select(TileSQLModel).where(
         TileSQLModel.dataset_id == acq_obj.dataset_id,
         TileSQLModel.run_id == acq_obj.run_id,
@@ -863,14 +795,9 @@ async def _image_get_url_page(
     )
     if tile_ids is not None:
         tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
-    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
-    if after is not None:
-        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
-    tile_query = tile_query.order_by(*key).limit(limit + 1)
-    tiles = await session.scalars(tile_query)
-    tiles_obj = tiles.all()
-    has_more = len(tiles_obj) > limit
-    tiles_obj = tiles_obj[:limit]
+    key = [TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake]
+    result = await page(session, tile_query, key=key, at=Position(cursor, None), limit=limit, count=False)
+    tiles_obj = result["items"]
     if not tiles_obj:
         raise HTTPException(404, f"No tiles found for acquisition '{acquisition_id}'")
     urls = {}
@@ -892,17 +819,10 @@ async def _image_get_url_page(
             raise url_data
         else:
             urls[tile_id] = url_data
-    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
     return {
         "urls": urls,
-        "metadata": {
-            "returned_count": len(urls),
-            "limit": limit,
-            "current_cursor": cursor,
-            "next_cursor": next_cursor,
-            "has_more": has_more,
-            "errors": errors,
-        },
+        "errors": errors,
+        "next_cursor": result["next_cursor"],
     }
 
 
@@ -910,7 +830,7 @@ async def _image_get_url_page(
 async def delete_tile_images(
     acquisition_id: str,
     tile_ids: list[str] | None = Body(None),
-    cursor: str | None = Query(None, description="next_cursor of the previous page, as 'row,col,retake'"),
+    cursor: str | None = Query(None, description="next_cursor of the previous page"),
     limit: int = Query(100, ge=1, le=1000),
     session: AsyncSession = Depends(get_async_session),
     storage_client_manager: StorageClientManager = Depends(get_storage_client_manager),
@@ -925,14 +845,6 @@ async def delete_tile_images(
     acq_obj = acquisition.one_or_none()
     if acq_obj is None:
         raise HTTPException(404, f"Acquisition ID '{acquisition_id}' not found")
-    after = None
-    if cursor is not None:
-        try:
-            after = tuple(int(part) for part in cursor.split(","))
-        except ValueError:
-            after = ()
-        if len(after) != 3:
-            raise HTTPException(422, f"cursor must be 'row,col,retake', got '{cursor}'")
     tile_query = select(TileSQLModel).where(
         TileSQLModel.dataset_id == acq_obj.dataset_id,
         TileSQLModel.run_id == acq_obj.run_id,
@@ -940,14 +852,9 @@ async def delete_tile_images(
     )
     if tile_ids is not None:
         tile_query = tile_query.where(*_where_tiles(acq_obj, tile_ids))
-    key = (TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake)
-    if after is not None:
-        tile_query = tile_query.where(tuple_(*key) > tuple_(*after))
-    tile_query = tile_query.order_by(*key).limit(limit + 1)
-    tiles = await session.scalars(tile_query)
-    tiles_obj = tiles.all()
-    has_more = len(tiles_obj) > limit
-    tiles_obj = tiles_obj[:limit]
+    key = [TileSQLModel.row, TileSQLModel.col, TileSQLModel.retake]
+    result = await page(session, tile_query, key=key, at=Position(cursor, None), limit=limit, count=False)
+    tiles_obj = result["items"]
     if not tiles_obj:
         raise HTTPException(404, f"No tile images to delete for acquisition '{acquisition_id}'")
     deleted_tiles = []
@@ -967,17 +874,10 @@ async def delete_tile_images(
             logger.error(f"Error deleting image for tile {tile_id}: {e.detail}")
             errors[tile_id] = e.detail
     await session.commit()
-    next_cursor = f"{tiles_obj[-1].row},{tiles_obj[-1].col},{tiles_obj[-1].retake}" if tiles_obj else None
     return {
         "deleted_images": deleted_tiles,
-        "metadata": {
-            "returned_count": len(deleted_tiles),
-            "limit": limit,
-            "current_cursor": cursor,
-            "next_cursor": next_cursor,
-            "has_more": has_more,
-            "errors": errors,
-        },
+        "errors": errors,
+        "next_cursor": result["next_cursor"],
     }
 
 
@@ -1367,10 +1267,10 @@ async def get_acquisition_with_full_metadata(
     )
 
 
-@acquisition_api.get("/aggregated/acquisitions", response_model=dict[str, Any])
+@acquisition_api.get("/aggregated/acquisitions", response_model=Page[dict[str, Any]])
 async def list_acquisitions_with_hierarchy(
     response: Response,
-    cursor: int | None = Query(None, description="next_cursor of the previous page"),
+    at: Position = Depends(Position),
     limit: int = Query(50, ge=1, le=100),
     sort_by: Literal["start_time", "acquisition_id"] = Query("start_time", description="Field to sort by"),
     sort_order: int = Query(-1, description="Sort order (-1=desc, 1=asc)"),
@@ -1446,8 +1346,13 @@ async def list_acquisitions_with_hierarchy(
             SpecimenSQLModel.specimen_id == AcquisitionSQLModel.specimen_id,
         )
     )
-    rows, total_count, next_cursor = await acquisition_page(
-        session, statement, conditions, sort_by, sort_order, cursor, limit
+    result = await page(
+        session,
+        statement.where(*conditions),
+        key=acquisition_key(sort_by, sort_order),
+        at=at,
+        limit=limit,
+        scalars=False,
     )
 
     formatted_results = []
@@ -1460,7 +1365,7 @@ async def list_acquisitions_with_hierarchy(
         cutting_obj,
         block_obj,
         specimen_obj,
-    ) in rows:
+    ) in result["items"]:
         formatted_results.append(
             AcquisitionFullMetadata(
                 acquisition=AcquisitionResponse.model_validate(acq),
@@ -1473,14 +1378,6 @@ async def list_acquisitions_with_hierarchy(
                 specimen=specimen_obj.model_dump() if specimen_obj else None,
             ).model_dump(mode="json", by_alias=True)
         )
-    metadata = {
-        "total_count": total_count,
-        "returned_count": len(formatted_results),
-        "limit": limit,
-        "sort_by": sort_by,
-        "sort_order": sort_order if sort_order in [-1, 1] else -1,
-        "next_cursor": next_cursor,
-    }
     response.headers["Cache-Control"] = "private, max-age=300"
-    response.headers["X-Total-Count"] = str(total_count)
-    return {"acquisitions": formatted_results, "metadata": metadata}
+    result["items"] = formatted_results
+    return result

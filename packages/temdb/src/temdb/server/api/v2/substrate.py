@@ -1,19 +1,20 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import any_, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
     ApertureState,
     ApertureStatus,
+    Page,
     SectionResponse,
     SubstrateApertures,
     SubstrateCreate,
     SubstrateResponse,
     SubstrateUpdate,
 )
-from temdb.server.api.v2.paging import page
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import SectionSQLModel, SubstrateLayoutSQLModel, SubstrateSQLModel
@@ -26,15 +27,14 @@ substrate_api = APIRouter(
 )
 
 
-@substrate_api.get("/substrates", response_model=list[SubstrateResponse])
+@substrate_api.get("/substrates", response_model=Page[SubstrateResponse])
 async def list_substrates(
-    response: Response,
     media_type: str | None = Query(None, description="Filter by substrate media type (e.g., 'wafer', 'tape')"),
     layout_id: str | None = Query(None, description="Filter by substrate layout"),
     available: bool | None = Query(
         None, description="true: substrates with at least one available aperture; false: substrates with none"
     ),
-    skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -47,13 +47,8 @@ async def list_substrates(
     if available is not None:
         has_available = literal(ApertureStatus.AVAILABLE.value) == any_(SubstrateSQLModel.aperture_status)
         statement = statement.where(has_available if available else ~has_available)
-    return await page(
-        session,
-        statement.order_by(SubstrateSQLModel.media_id, SubstrateSQLModel.id),
-        skip=skip,
-        limit=limit,
-        response=response,
-    )
+    key = [SubstrateSQLModel.media_id, SubstrateSQLModel.id]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @substrate_api.post("/substrates", status_code=status.HTTP_201_CREATED, response_model=SubstrateResponse)
@@ -173,11 +168,10 @@ async def delete_substrate(media_id: str, session: AsyncSession = Depends(get_as
     return None
 
 
-@substrate_api.get("/substrates/{media_id}/sections", response_model=list[SectionResponse])
+@substrate_api.get("/substrates/{media_id}/sections", response_model=Page[SectionResponse])
 async def get_substrate_sections(
-    response: Response,
     media_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -189,12 +183,9 @@ async def get_substrate_sections(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate with media_id '{media_id}' not found",
         )
-    statement = (
-        select(SectionSQLModel)
-        .where(SectionSQLModel.media_id == media_id)
-        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
-    )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = select(SectionSQLModel).where(SectionSQLModel.media_id == media_id)
+    key = [SectionSQLModel.section_number, SectionSQLModel.id]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @substrate_api.get("/substrates/{media_id}/apertures", response_model=SubstrateApertures)

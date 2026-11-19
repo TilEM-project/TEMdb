@@ -20,13 +20,14 @@ class SubstrateResource(BaseResource):
         media_type: str | None = None,
         layout_id: str | None = None,
         available: bool | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[SubstrateResponse]:
         """List substrates with optional filtering and pagination."""
         params = without_none(media_type=media_type, layout_id=layout_id, available=available, **kwargs)
-        return await self._list("substrates", SubstrateResponse, params, skip=skip, limit=limit)
+        return await self._list("substrates", SubstrateResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(SubstrateCreate)
     async def create(self, substrate_data: SubstrateCreate) -> SubstrateResponse:
@@ -56,8 +57,8 @@ class SubstrateResource(BaseResource):
         await self._delete(f"substrates/{media_id}")
 
     async def list_related_sections(
-        self, media_id: str, skip: int | None = None, limit: int | None = None
+        self, media_id: str, cursor: str | None = None, offset: int | None = None, limit: int | None = None
     ) -> builtins.list[SectionResponse]:
         """List sections related to a specific substrate."""
         endpoint = f"substrates/{media_id}/sections"
-        return await self._list(endpoint, SectionResponse, {}, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, {}, cursor=cursor, offset=offset, limit=limit)

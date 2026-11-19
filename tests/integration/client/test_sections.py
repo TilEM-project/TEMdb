@@ -34,7 +34,7 @@ async def test_section_list_by_media_returns_more_than_one_page(client, records)
 
     assert len(everything) == PAGE + 5
     assert len({section.section_id for section in everything}) == PAGE + 5
-    assert len(first_page) == PAGE and first_page.has_more is True
+    assert len(first_page.items) == PAGE and first_page.next_cursor is not None
 
 
 async def test_section_create(client, records):
