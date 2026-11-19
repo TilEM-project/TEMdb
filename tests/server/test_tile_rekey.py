@@ -46,7 +46,7 @@ async def test_tiles_keyed_by_run_id_wire_unchanged(async_client: AsyncClient, t
 
     listed = await async_client.get(f"/api/v2/acquisitions/{acq_id}/tiles")
     assert listed.status_code == 200
-    tiles = listed.json()["tiles"]
+    tiles = listed.json()["items"]
     assert len(tiles) == 1
     assert tiles[0]["acquisition_id"] == acq_id
     assert tiles[0]["tile_id"] == "TEST_MONTAGE_001_r000_c007"

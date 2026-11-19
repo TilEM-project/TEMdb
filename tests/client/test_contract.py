@@ -17,7 +17,7 @@ def server(models_version: str, seen: list[str]):
         seen.append(request.url.path)
         if request.url.path == "/api/v2/contract":
             return httpx.Response(200, json={"api": "v2", "server_version": "9.9.9", "models_version": models_version})
-        return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"items": [], "next_cursor": None, "total": 0})
 
     return handler
 

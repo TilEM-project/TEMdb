@@ -38,7 +38,7 @@ def _tile(raster_index: int) -> dict:
 async def test_get_tiles_passes_bbox_params():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {"tiles": [], "metadata": {"has_more": False, "next_cursor": None}}
+    request.return_value = {"items": [], "next_cursor": None, "total": 0}
 
     await res.get_tiles("ACQ1", x_min=1.0, x_max=2.0, y_min=3.0, y_max=4.0, limit=10)
 
@@ -58,8 +58,8 @@ async def test_get_all_tiles_forwards_bbox_params():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
     request.side_effect = [
-        {"tiles": [_tile(0)], "metadata": {"has_more": True, "next_cursor": 1}},
-        {"tiles": [_tile(1)], "metadata": {"has_more": False, "next_cursor": None}},
+        {"items": [_tile(0)], "next_cursor": "c1", "total": 2},
+        {"items": [_tile(1)], "next_cursor": None, "total": 2},
     ]
 
     await res.get_all_tiles("ACQ1", page_limit=1, x_min=10.0, x_max=20.0)
@@ -87,7 +87,7 @@ async def test_get_all_tiles_rejects_unknown_keyword():
 async def test_get_all_tiles_returns_requested_fields():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {"tiles": [{"tile_id": "M_r000_c000"}], "metadata": {"has_more": False}}
+    request.return_value = {"items": [{"tile_id": "M_r000_c000"}], "next_cursor": None, "total": 1}
 
     tiles = await res.get_all_tiles("ACQ1", fields=["tile_id"])
 
@@ -100,7 +100,7 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
     request = AsyncMock()
     res = ROIResource(request, API)
     request.return_value = {
-        "acquisitions": [
+        "items": [
             {
                 "id": 1,
                 "acquisition_id": "ACQ1",
@@ -133,7 +133,8 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
                 "end_time": "2026-06-09T01:00:00Z",
             }
         ],
-        "metadata": {},
+        "next_cursor": None,
+        "total": 1,
     }
     out = await res.list_acquisitions("R", status="complete")
     assert request.await_args.args[1] == "acquisitions"
@@ -147,8 +148,8 @@ async def test_roi_list_acquisitions_filters_by_roi_and_status():
 async def test_roi_list_acquisitions_follows_every_cursor_with_the_filters():
     request = AsyncMock(
         side_effect=[
-            {"acquisitions": [], "metadata": {"has_more": True, "next_cursor": "c2"}},
-            {"acquisitions": [], "metadata": {"has_more": False, "next_cursor": None}},
+            {"items": [], "next_cursor": "c2", "total": 0},
+            {"items": [], "next_cursor": None, "total": 0},
         ]
     )
     res = ROIResource(request, API)
@@ -164,7 +165,7 @@ async def test_roi_list_acquisitions_follows_every_cursor_with_the_filters():
 async def test_acquisition_list_passes_status_and_qc_state():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {"acquisitions": [], "metadata": {}}
+    request.return_value = {"items": [], "next_cursor": None, "total": 0}
     await res.list(status="in_flight", qc_state="pending")
     assert request.await_args.args[1] == "acquisitions"
     params = request.await_args.kwargs["params"]
@@ -176,7 +177,7 @@ async def test_acquisition_list_passes_status_and_qc_state():
 async def test_acquisition_list_with_full_metadata_passes_status():
     request = AsyncMock()
     res = AcquisitionResource(request, API)
-    request.return_value = {"acquisitions": [], "metadata": {}}
+    request.return_value = {"items": [], "next_cursor": None, "total": 0}
     await res.list_with_full_metadata(status="failed")
     params = request.await_args.kwargs["params"]
     assert params["status"] == "failed"

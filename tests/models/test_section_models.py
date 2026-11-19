@@ -34,6 +34,10 @@ class TestSectionMetrics:
         assert metrics.knife_marks.confidence == 0.8
         assert metrics.coverage is None
 
+    def test_unjudged_metric_has_no_pass_status(self):
+        assert SectionMetric(label=0.12).pass_status is None
+        assert SectionMetric(label=0.12, pass_status=False).pass_status is False
+
     def test_thickness_label_allows_any_type(self):
         metrics = SectionMetrics(thickness_um={"label": {"value": 50.0, "units": "um"}, "confidence": 0.9})
         assert metrics.thickness_um.label == {"value": 50.0, "units": "um"}

@@ -16,7 +16,8 @@ class AcquisitionTaskResource(BaseResource):
 
     async def list(
         self,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         specimen_id: str | None = None,
         block_id: str | None = None,
@@ -50,7 +51,9 @@ class AcquisitionTaskResource(BaseResource):
             loaded_media_id=loaded_media_ids,
             **kwargs,
         )
-        return await self._list("acquisition-tasks", AcquisitionTaskResponse, params, skip=skip, limit=limit)
+        return await self._list(
+            "acquisition-tasks", AcquisitionTaskResponse, params, cursor=cursor, offset=offset, limit=limit
+        )
 
     @accepts_keywords(AcquisitionTaskCreate)
     async def create(self, task_data: AcquisitionTaskCreate) -> AcquisitionTaskResponse:
@@ -88,11 +91,11 @@ class AcquisitionTaskResource(BaseResource):
         await self._delete(endpoint)
 
     async def list_related_acquisitions(
-        self, task_id: str, skip: int | None = None, limit: int | None = None
+        self, task_id: str, cursor: str | None = None, offset: int | None = None, limit: int | None = None
     ) -> builtins.list[AcquisitionResponse]:
         """List acquisitions related to a specific acquisition task."""
         endpoint = f"acquisition-tasks/{task_id}/acquisitions"
-        return await self._list(endpoint, AcquisitionResponse, {}, skip=skip, limit=limit)
+        return await self._list(endpoint, AcquisitionResponse, {}, cursor=cursor, offset=offset, limit=limit)
 
     async def create_batch(
         self, tasks_data: builtins.list[AcquisitionTaskCreate], group: bool = False

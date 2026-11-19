@@ -7,8 +7,8 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from temdb.models import APIErrorResponse, ROICreate, ROIResponse, ROIUpdate
-from temdb.server.api.v2.paging import page
+from temdb.models import APIErrorResponse, Page, ROICreate, ROIResponse, ROIUpdate
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import BaseError, MissingParentError
 from temdb.server.sqlmodels import (
@@ -57,9 +57,8 @@ def _to_response(roi: ROISQLModel, is_parent: bool = False) -> ROIResponse:
     return response
 
 
-@roi_api.get("/rois", response_model=list[ROIResponse])
+@roi_api.get("/rois", response_model=Page[ROIResponse])
 async def list_rois(
-    response: Response,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     cutting_session_id: str | None = Query(None, description="Filter by human-readable Cutting Session ID"),
@@ -67,7 +66,7 @@ async def list_rois(
     substrate_media_id: str | None = Query(None, description="Filter by substrate media ID"),
     aperture_index: int | None = Query(None, ge=0, description="Filter by layout aperture index"),
     is_parent_roi: bool | None = Query(None, description="Filter ROIs that are parents (have children)"),
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -94,11 +93,11 @@ async def list_rois(
         conditions.append(has_child if is_parent_roi else ~has_child)
     if conditions:
         statement = statement.where(and_(*conditions))
-    rois = await page(
-        session, statement.order_by(ROISQLModel.roi_id, ROISQLModel.id), skip=skip, limit=limit, response=response
-    )
-    parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in rois))
-    return [_to_response(roi, roi.roi_id in parents_with_children) for roi in rois]
+    key = [ROISQLModel.roi_id, ROISQLModel.id]
+    result = await page(session, statement, key=key, at=at, limit=limit)
+    parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in result["items"]))
+    result["items"] = [_to_response(roi, roi.roi_id in parents_with_children) for roi in result["items"]]
+    return result
 
 
 async def _chain(session: AsyncSession, roi: ROISQLModel) -> list[ROISQLModel]:
@@ -334,32 +333,31 @@ async def delete_roi(roi_id: str, session: AsyncSession = Depends(get_async_sess
     return None
 
 
-@roi_api.get("/sections/{section_id}/rois", response_model=list[ROIResponse])
+@roi_api.get("/sections/{section_id}/rois", response_model=Page[ROIResponse])
 async def list_section_rois(
-    response: Response,
     section_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve ROIs associated with a specific section using its human-readable ID."""
-    statement = (
-        select(ROISQLModel).where(ROISQLModel.section_id == section_id).order_by(ROISQLModel.roi_id, ROISQLModel.id)
-    )
-    roi_items = await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = select(ROISQLModel).where(ROISQLModel.section_id == section_id)
+    key = [ROISQLModel.roi_id, ROISQLModel.id]
+    result = await page(session, statement, key=key, at=at, limit=limit)
+    roi_items = result["items"]
     if not roi_items:
         section = await session.scalars(select(SectionSQLModel).where(SectionSQLModel.section_id == section_id))
         if section.one_or_none() is None:
             raise HTTPException(status_code=404, detail=f"Section '{section_id}' not found")
     parents_with_children = await _parents_with_children(session, (roi.roi_id for roi in roi_items))
-    return [_to_response(roi, roi.roi_id in parents_with_children) for roi in roi_items]
+    result["items"] = [_to_response(roi, roi.roi_id in parents_with_children) for roi in roi_items]
+    return result
 
 
-@roi_api.get("/rois/{roi_id}/children", response_model=list[ROIResponse])
+@roi_api.get("/rois/{roi_id}/children", response_model=Page[ROIResponse])
 async def get_child_rois(
     roi_id: str,
-    response: Response,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -368,8 +366,8 @@ async def get_child_rois(
     if parent_roi.one_or_none() is None:
         raise HTTPException(status_code=404, detail=f"Parent ROI with ID '{roi_id}' not found")
     statement = select(ROISQLModel).where(ROISQLModel.parent_roi_id == roi_id)
-    children = await page(
-        session, statement.order_by(ROISQLModel.roi_id, ROISQLModel.id), skip=skip, limit=limit, response=response
-    )
-    parents_with_children = await _parents_with_children(session, (child.roi_id for child in children))
-    return [_to_response(child, child.roi_id in parents_with_children) for child in children]
+    key = [ROISQLModel.roi_id, ROISQLModel.id]
+    result = await page(session, statement, key=key, at=at, limit=limit)
+    parents_with_children = await _parents_with_children(session, (child.roi_id for child in result["items"]))
+    result["items"] = [_to_response(child, child.roi_id in parents_with_children) for child in result["items"]]
+    return result

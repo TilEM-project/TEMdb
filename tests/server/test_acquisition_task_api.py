@@ -11,7 +11,7 @@ async def test_list_acquisition_tasks_unfiltered(async_client: AsyncClient, test
     """Test retrieving a list of all acquisition tasks."""
     response = await async_client.get("/api/v2/acquisition-tasks")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert any(task["task_id"] == test_acquisition_task.task_id for task in response_data)
 
@@ -29,7 +29,7 @@ async def test_list_acquisition_tasks_filtered(
     response_roi = await async_client.get(f"/api/v2/acquisition-tasks?roi_id={test_roi.roi_id}")
 
     assert response_roi.status_code == 200
-    res_roi_data = response_roi.json()
+    res_roi_data = response_roi.json()["items"]
     assert isinstance(res_roi_data, list)
 
     assert len(res_roi_data) >= 1, (
@@ -41,21 +41,21 @@ async def test_list_acquisition_tasks_filtered(
 
     response_block = await async_client.get(f"/api/v2/acquisition-tasks?block_id={test_block.block_id}")
     assert response_block.status_code == 200
-    res_block_data = response_block.json()
+    res_block_data = response_block.json()["items"]
     assert isinstance(res_block_data, list)
     assert len(res_block_data) >= 1
     assert all(task["block_id"] == test_block.block_id for task in res_block_data)
 
     response_spec = await async_client.get(f"/api/v2/acquisition-tasks?specimen_id={test_specimen.specimen_id}")
     assert response_spec.status_code == 200
-    res_spec_data = response_spec.json()
+    res_spec_data = response_spec.json()["items"]
     assert isinstance(res_spec_data, list)
     assert len(res_spec_data) >= 1
     assert all(task["specimen_id"] == test_specimen.specimen_id for task in res_spec_data)
 
     response_kind = await async_client.get("/api/v2/acquisition-tasks?kind=montage")
     assert response_kind.status_code == 200
-    res_kind_data = response_kind.json()
+    res_kind_data = response_kind.json()["items"]
     assert isinstance(res_kind_data, list)
     assert all(task["kind"] == "montage" for task in res_kind_data)
     assert all(task["status"] == "pending" for task in res_kind_data)
@@ -118,13 +118,13 @@ async def test_list_acquisition_tasks_skip_destroyed(
 
     default_response = await async_client.get("/api/v2/acquisition-tasks")
     assert default_response.status_code == 200
-    default_ids = {task["task_id"] for task in default_response.json()}
+    default_ids = {task["task_id"] for task in default_response.json()["items"]}
     assert test_acquisition_task.task_id in default_ids
     assert destroyed_task.task_id not in default_ids
 
     include_response = await async_client.get("/api/v2/acquisition-tasks?skip_destroyed=false")
     assert include_response.status_code == 200
-    include_ids = {task["task_id"] for task in include_response.json()}
+    include_ids = {task["task_id"] for task in include_response.json()["items"]}
     assert destroyed_task.task_id in include_ids
 
 
@@ -198,17 +198,17 @@ async def test_list_acquisition_tasks_skip_completed(
 
     default_response = await async_client.get("/api/v2/acquisition-tasks")
     assert default_response.status_code == 200
-    default_ids = {task["task_id"] for task in default_response.json()}
+    default_ids = {task["task_id"] for task in default_response.json()["items"]}
     assert test_acquisition_task.task_id not in default_ids
 
     include_response = await async_client.get("/api/v2/acquisition-tasks?skip_completed=false")
     assert include_response.status_code == 200
-    include_ids = {task["task_id"] for task in include_response.json()}
+    include_ids = {task["task_id"] for task in include_response.json()["items"]}
     assert test_acquisition_task.task_id in include_ids
 
     response_media = await async_client.get(f"/api/v2/acquisition-tasks?media_id={test_roi2.substrate_media_id}")
     assert response_media.status_code == 200
-    res_media_data = response_media.json()
+    res_media_data = response_media.json()["items"]
     assert isinstance(res_media_data, list)
     assert len(res_media_data) >= 1
     assert all(task["roi_id"] == test_roi2.roi_id for task in res_media_data)
@@ -330,7 +330,7 @@ async def test_acquisition_task_extra_fields_round_trip(async_client: AsyncClien
 
     list_response = await async_client.get(f"/api/v2/acquisition-tasks?roi_id={test_roi.roi_id}")
     assert list_response.status_code == 200
-    listed = next(task for task in list_response.json() if task["task_id"] == task_id_hr)
+    listed = next(task for task in list_response.json()["items"] if task["task_id"] == task_id_hr)
     assert listed["extra"]["unknown_create_key"] == {"create": "task"}
     assert listed["extra"]["unknown_patch_key"] == "task-patch"
 

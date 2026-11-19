@@ -56,7 +56,7 @@ async def test_list_datasets_filters_by_parent(async_client: AsyncClient):
 
     listed = await async_client.get("/api/v2/datasets", params={"parent_dataset_id": parent["dataset_id"]})
     assert listed.status_code == 200
-    assert [d["dataset_id"] for d in listed.json()] == [child["dataset_id"]]
+    assert [d["dataset_id"] for d in listed.json()["items"]] == [child["dataset_id"]]
 
 
 @pytest.mark.asyncio

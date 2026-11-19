@@ -214,15 +214,15 @@ async def test_rollups_settable_via_patch(async_client: AsyncClient, test_acquis
 async def test_list_in_flight_and_qc_state_filters(async_client: AsyncClient, test_acquisition):
     r = await async_client.get("/api/v2/acquisitions?status=in_flight")
     assert r.status_code == 200
-    acqs = r.json()["acquisitions"]
+    acqs = r.json()["items"]
     assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in acqs)
     assert all(a["status"] is None for a in acqs)
 
     r = await async_client.get("/api/v2/acquisitions?qc_state=pending&kind=montage")
     assert r.status_code == 200
-    acqs = r.json()["acquisitions"]
+    acqs = r.json()["items"]
     assert any(a["acquisition_id"] == test_acquisition.acquisition_id for a in acqs)
 
     r = await async_client.get("/api/v2/acquisitions?qc_state=qc_fail")
     assert r.status_code == 200
-    assert all(a["acquisition_id"] != test_acquisition.acquisition_id for a in r.json()["acquisitions"])
+    assert all(a["acquisition_id"] != test_acquisition.acquisition_id for a in r.json()["items"])

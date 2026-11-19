@@ -9,7 +9,6 @@ from temdb.client.resources.acquisition import AcquisitionResource
 from temdb.client.resources.base import BaseResource
 from temdb.client.resources.roi import ROIResource
 from temdb.client.resources.section import SectionResource
-from temdb.models import HAS_MORE_HEADER
 
 PAGE = inspect.signature(BaseResource._list).parameters["page_size"].default
 NOW = datetime(2026, 8, 4, tzinfo=timezone.utc)
@@ -32,8 +31,8 @@ def rows(start: int, stop: int) -> list[dict]:
     ]
 
 
-def more(value: bool) -> dict:
-    return {HAS_MORE_HEADER: "true" if value else "false"}
+def body(items: list, next_cursor: str | None, total: int = 0) -> dict:
+    return {"items": items, "next_cursor": next_cursor, "total": total}
 
 
 @pytest.fixture
@@ -42,112 +41,89 @@ def section_resource():
     return SectionResource(request, "http://test/api/v2"), request
 
 
-def skips(request) -> list[int]:
-    return [call.kwargs["params"]["skip"] for call in request.await_args_list]
+def sent(request) -> list[dict]:
+    return [call.kwargs["params"] for call in request.await_args_list]
 
 
-async def test_no_limit_follows_every_page(section_resource):
+async def test_list_follows_next_cursor(section_resource):
+    """Without paging arguments a list method follows next_cursor and returns every row."""
     resource, request = section_resource
-    request.side_effect = [(rows(0, PAGE), more(True)), (rows(PAGE, PAGE + 1), more(False))]
+    request.side_effect = [body(rows(0, 2), "c1"), body(rows(2, 4), "c2"), body(rows(4, 5), None)]
 
     result = await resource.list_by_media("MEDIA001")
 
-    assert [section.id for section in result] == list(range(PAGE + 1))
-    assert skips(request) == [0, PAGE]
-    assert all(call.kwargs["params"]["limit"] == PAGE for call in request.await_args_list)
-    assert all(call.kwargs["with_headers"] is True for call in request.await_args_list)
+    assert [section.id for section in result] == list(range(5))
+    assert [params.get("cursor") for params in sent(request)] == [None, "c1", "c2"]
+    assert all(params["limit"] == PAGE for params in sent(request))
 
 
-async def test_limit_returns_one_page_with_has_more(section_resource):
+async def test_one_page_returns_page(section_resource):
+    """A limit returns that one page with its next_cursor and total."""
     resource, request = section_resource
-    request.return_value = (rows(0, 2), more(True))
+    request.return_value = body(rows(0, 2), "tok", total=9)
 
     result = await resource.list_by_media("MEDIA001", limit=2)
 
-    assert isinstance(result, Page) and result.has_more is True
-    assert len(result) == 2
-    assert request.await_args.kwargs["params"] == {"skip": 0, "limit": 2}
+    assert isinstance(result, Page)
+    assert (len(result.items), result.next_cursor, result.total) == (2, "tok", 9)
+    assert request.await_args.kwargs["params"] == {"limit": 2}
 
 
-async def test_skip_alone_returns_one_page(section_resource):
+async def test_page_iterates_its_items(section_resource):
+    """A page loops and measures like the list of its records."""
     resource, request = section_resource
-    request.return_value = (rows(5, 7), more(False))
+    request.return_value = body(rows(0, 2), "tok", total=9)
 
-    result = await resource.list_by_media("MEDIA001", skip=5)
+    page = await resource.list_by_media("MEDIA001", limit=2)
 
-    assert isinstance(result, Page) and result.has_more is False
-    assert request.await_count == 1
-    assert request.await_args.kwargs["params"] == {"skip": 5, "limit": PAGE}
+    assert [section.id for section in page] == [0, 1]
+    assert len(page) == 2
+    assert page.items == list(page)
 
 
-async def test_exact_multiple_of_page_size_stops_on_header(section_resource):
+async def test_offset_is_sent(section_resource):
+    """An offset alone returns one page fetched at that offset."""
     resource, request = section_resource
-    request.side_effect = [(rows(0, PAGE), more(True)), (rows(PAGE, 2 * PAGE), more(False))]
+    request.return_value = body(rows(40, 42), None, total=42)
 
-    result = await resource.list_by_media("MEDIA001")
+    result = await resource.list_by_media("MEDIA001", offset=40)
 
-    assert len(result) == 2 * PAGE
-    assert request.await_count == 2
+    assert result.items[0].id == 40
+    assert request.await_args.kwargs["params"] == {"offset": 40, "limit": PAGE}
 
 
-async def test_server_ignoring_skip_raises(section_resource):
+async def test_repeated_cursor_raises(section_resource):
+    """A server that hands back the cursor it was sent raises instead of looping."""
     resource, request = section_resource
-    request.side_effect = [(rows(0, PAGE), more(True)), (rows(0, PAGE), more(True))]
+    request.side_effect = [body(rows(0, 1), "c1"), body(rows(0, 1), "c1")]
 
-    with pytest.raises(TEMdbClientError, match="ignored skip"):
+    with pytest.raises(TEMdbClientError, match="same page again"):
         await resource.list_by_media("MEDIA001")
 
 
-async def test_missing_header_falls_back_to_short_page(section_resource):
-    resource, request = section_resource
-    request.side_effect = [(rows(0, PAGE), {}), (rows(PAGE, PAGE + 3), {})]
-
-    result = await resource.list_by_media("MEDIA001")
-
-    assert len(result) == PAGE + 3
-    assert request.await_count == 2
-
-
 async def test_too_many_pages_raises(section_resource):
+    """A listing longer than max_pages raises."""
     resource, request = section_resource
-    request.side_effect = lambda *args, params, **kwargs: (
-        rows(params["skip"], params["skip"] + PAGE),
-        more(True),
-    )
+    request.side_effect = lambda *args, params, **kwargs: body(rows(0, 1), f"c{params.get('cursor')}")
 
     with pytest.raises(TEMdbClientError, match="pages"):
-        await resource._list("sections/media/MEDIA001", dict, {}, skip=None, limit=None, max_pages=3)
+        await resource._list("sections/media/MEDIA001", dict, {}, cursor=None, offset=None, limit=None, max_pages=3)
 
 
-async def test_an_empty_page_ends_the_listing_even_if_the_server_says_more(section_resource):
-    resource, request = section_resource
-    request.side_effect = [(rows(0, PAGE), more(True)), ([], more(True)), AssertionError("asked again")]
-
-    result = await resource.list_by_media("MEDIA001")
-
-    assert len(result) == PAGE
-    assert request.await_count == 2
-
-
-async def test_a_cursor_that_never_moves_raises_instead_of_looping():
-    page = {
-        "urls": {},
-        "metadata": {
-            "returned_count": 0,
-            "limit": 1,
-            "current_cursor": "c1",
-            "next_cursor": "c1",
-            "has_more": True,
-            "errors": {},
-        },
-    }
-    request = AsyncMock(return_value=page)
+async def test_image_pages_follow_next_cursor():
+    """The all-pages image helper follows next_cursor and joins the urls and errors."""
+    request = AsyncMock(
+        side_effect=[
+            {"urls": {}, "errors": {"t1": "missing"}, "next_cursor": "c1"},
+            {"urls": {}, "errors": {"t2": "missing"}, "next_cursor": None},
+        ]
+    )
     acquisitions = AcquisitionResource(request, "http://test/api/v2")
 
-    with pytest.raises(TEMdbClientError, match="same page again"):
-        await acquisitions.all_get_image_urls("A1", ["t1"])
+    result = await acquisitions.all_get_image_urls("A1", ["t1", "t2"])
 
-    assert request.await_count == 2
+    assert result.errors == {"t1": "missing", "t2": "missing"}
+    assert [call.kwargs["params"].get("cursor") for call in request.await_args_list] == [None, "c1"]
 
 
 @pytest.fixture
@@ -155,9 +131,10 @@ def client():
     return TEMdbClient("http://test")
 
 
-async def test_iterate_yields_each_record_and_fetches_a_page_only_when_needed(client, section_resource):
+async def test_iterate_streams_every_row(client, section_resource):
+    """iterate yields each record and fetches the next page only when it is needed."""
     resource, request = section_resource
-    request.side_effect = [(rows(0, 2), more(True)), (rows(2, 3), more(False))]
+    request.side_effect = [body(rows(0, 2), "c1"), body(rows(2, 3), None)]
 
     records = client.iterate(resource.list_by_media, "MEDIA001", page_size=2)
     first = await anext(records)
@@ -165,36 +142,41 @@ async def test_iterate_yields_each_record_and_fetches_a_page_only_when_needed(cl
     assert first.section_number == 1
     assert request.await_count == 1
     assert [section.section_number async for section in records] == [2, 3]
-    assert skips(request) == [0, 2]
-    assert {call.kwargs["params"]["limit"] for call in request.await_args_list} == {2}
+    assert [params.get("cursor") for params in sent(request)] == [None, "c1"]
+    assert {params["limit"] for params in sent(request)} == {2}
 
 
-async def test_iterate_follows_cursors_and_passes_filters(client):
-    request = AsyncMock(
-        side_effect=[
-            {"tiles": [{"tile_id": "t1"}], "metadata": {"has_more": True, "next_cursor": "c2"}},
-            {"tiles": [{"tile_id": "t2"}], "metadata": {"has_more": False, "next_cursor": None}},
-        ]
-    )
+async def test_iterate_passes_filters(client):
+    """iterate sends the method's filters with every page."""
+    request = AsyncMock(side_effect=[body([{"tile_id": "t1"}], "c2"), body([{"tile_id": "t2"}], None)])
     acquisitions = AcquisitionResource(request, "http://test/api/v2")
 
     tiles = [tile async for tile in client.iterate(acquisitions.get_tiles, "A1", page_size=1, fields=["tile_id"])]
 
     assert tiles == [{"tile_id": "t1"}, {"tile_id": "t2"}]
-    sent = [call.kwargs["params"] for call in request.await_args_list]
-    assert [params.get("cursor") for params in sent] == [None, "c2"]
-    assert all(params["limit"] == 1 and params["fields"] == ["tile_id"] for params in sent)
+    assert all(params["limit"] == 1 and params["fields"] == ["tile_id"] for params in sent(request))
 
 
 async def test_iterate_refuses_a_method_that_does_not_page(client):
+    """iterate refuses a method without a cursor parameter."""
     rois = ROIResource(AsyncMock(), "http://test/api/v2")
 
-    with pytest.raises(TypeError, match="list_acquisitions doesn't page"):
-        await anext(client.iterate(rois.list_acquisitions, "R1"))
+    with pytest.raises(TypeError, match="get doesn't page"):
+        await anext(client.iterate(rois.get, "R1"))
 
 
-@pytest.mark.parametrize("argument", ["skip", "limit", "cursor"])
-async def test_iterate_refuses_the_paging_arguments_it_sets_itself(client, section_resource, argument):
+async def test_iterate_refuses_image_methods(client):
+    """iterate refuses a method whose pages are not record listings."""
+    request = AsyncMock(return_value={"urls": {}, "errors": {}, "next_cursor": None})
+    acquisitions = AcquisitionResource(request, "http://test/api/v2")
+
+    with pytest.raises(TypeError, match="get_image_urls doesn't page"):
+        await anext(client.iterate(acquisitions.get_image_urls, "A1"))
+
+
+@pytest.mark.parametrize("argument", ["cursor", "offset", "limit"])
+async def test_iterate_refuses_its_own_arguments(client, section_resource, argument):
+    """iterate refuses the paging arguments it sets itself."""
     resource, _ = section_resource
 
     with pytest.raises(TypeError, match=f"iterate sets {argument}"):

@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSessionUpdate, SectionResponse
-from temdb.server.api.v2.paging import page
+from temdb.models import CuttingSessionCreate, CuttingSessionResponse, CuttingSessionUpdate, Page, SectionResponse
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.exception_handlers import MissingParentError
 from temdb.server.sqlmodels import BlockSQLModel, CuttingSessionSQLModel, SectionSQLModel
@@ -19,13 +19,12 @@ cutting_session_api = APIRouter(
 )
 
 
-@cutting_session_api.get("/cutting-sessions", response_model=list[CuttingSessionResponse])
+@cutting_session_api.get("/cutting-sessions", response_model=Page[CuttingSessionResponse])
 async def list_cutting_sessions(
-    response: Response,
     specimen_id: str | None = Query(None, description="Filter by human-readable Specimen ID"),
     block_id: str | None = Query(None, description="Filter by human-readable Block ID"),
     operator: str | None = Query(None, description="Filter by operator name"),
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -37,22 +36,23 @@ async def list_cutting_sessions(
         statement = statement.where(CuttingSessionSQLModel.block_id == block_id)
     if operator:
         statement = statement.where(CuttingSessionSQLModel.operator == operator)
-    statement = statement.order_by(
-        CuttingSessionSQLModel.start_time.desc(), CuttingSessionSQLModel.cutting_session_id, CuttingSessionSQLModel.id
-    )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    key = [
+        CuttingSessionSQLModel.start_time.desc(),
+        CuttingSessionSQLModel.cutting_session_id,
+        CuttingSessionSQLModel.id,
+    ]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @cutting_session_api.get(
     "/cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions/{cutting_session_id}/sections",
-    response_model=list[SectionResponse],
+    response_model=Page[SectionResponse],
 )
 async def get_cutting_session_sections(
-    response: Response,
     specimen_id: str,
     block_id: str,
     cutting_session_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -70,12 +70,9 @@ async def get_cutting_session_sections(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cutting Session '{cutting_session_id}' not found or does not match specimen/block.",
         )
-    statement = (
-        select(SectionSQLModel)
-        .where(SectionSQLModel.cutting_session_id == cutting_session_id)
-        .order_by(SectionSQLModel.section_number, SectionSQLModel.id)
-    )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = select(SectionSQLModel).where(SectionSQLModel.cutting_session_id == cutting_session_id)
+    key = [SectionSQLModel.section_number, SectionSQLModel.id]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @cutting_session_api.post(
@@ -212,27 +209,23 @@ async def delete_cutting_session(
 
 @cutting_session_api.get(
     "/cutting-sessions/specimens/{specimen_id}/blocks/{block_id}/sessions",
-    response_model=list[CuttingSessionResponse],
+    response_model=Page[CuttingSessionResponse],
 )
 async def list_block_cutting_sessions(
-    response: Response,
     specimen_id: str,
     block_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve cutting sessions associated with a specific block using human-readable IDs."""
-    statement = (
-        select(CuttingSessionSQLModel)
-        .where(
-            CuttingSessionSQLModel.block_id == block_id,
-            CuttingSessionSQLModel.specimen_id == specimen_id,
-        )
-        .order_by(
-            CuttingSessionSQLModel.start_time.desc(),
-            CuttingSessionSQLModel.cutting_session_id,
-            CuttingSessionSQLModel.id,
-        )
+    statement = select(CuttingSessionSQLModel).where(
+        CuttingSessionSQLModel.block_id == block_id,
+        CuttingSessionSQLModel.specimen_id == specimen_id,
     )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    key = [
+        CuttingSessionSQLModel.start_time.desc(),
+        CuttingSessionSQLModel.cutting_session_id,
+        CuttingSessionSQLModel.id,
+    ]
+    return await page(session, statement, key=key, at=at, limit=limit)

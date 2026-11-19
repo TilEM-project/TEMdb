@@ -164,7 +164,7 @@ async def test_resend_returns_stored_roi(async_client: AsyncClient, test_section
 
     assert (created.status_code, resent.status_code) == (201, 200), resent.text
     assert resent.json()["roi_id"] == created.json()["roi_id"]
-    assert len(listed.json()) == 1
+    assert len(listed.json()["items"]) == 1
 
 
 @pytest.mark.asyncio
@@ -227,7 +227,7 @@ async def test_list_by_aperture(async_client: AsyncClient, test_section, test_cu
     response = await async_client.get("/api/v2/rois", params={"substrate_media_id": "SUB001", "aperture_index": 2})
 
     assert response.status_code == 200, response.text
-    assert [roi["roi_id"] for roi in response.json()] == ["SUB001.A0002.R001"]
+    assert [roi["roi_id"] for roi in response.json()["items"]] == ["SUB001.A0002.R001"]
 
 
 @pytest.mark.asyncio
@@ -240,6 +240,8 @@ async def test_list_by_lineage(async_client: AsyncClient, test_section):
     ]
     elsewhere = {"block_id": "OTHER_BLOCK"}
 
-    listed = [(await async_client.get("/api/v2/rois", params=params)).json() for params in [*filters, elsewhere]]
+    listed = [
+        (await async_client.get("/api/v2/rois", params=params)).json()["items"] for params in [*filters, elsewhere]
+    ]
 
     assert [[item["roi_id"] for item in rois] for rois in listed] == [[roi["roi_id"]]] * 3 + [[]]

@@ -14,10 +14,16 @@ from .base import BaseResource, accepts_keywords
 class SpecimenResource(BaseResource):
     """Resource class for interacting with Specimen endpoints."""
 
-    async def list(self, skip: int | None = None, limit: int | None = None, **kwargs: Any) -> list[SpecimenResponse]:
+    async def list(
+        self,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
+    ) -> list[SpecimenResponse]:
         """List specimens with optional pagination."""
         params = dict(kwargs)
-        return await self._list("specimens", SpecimenResponse, params, skip=skip, limit=limit)
+        return await self._list("specimens", SpecimenResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(SpecimenCreate)
     async def create(self, specimen_data: SpecimenCreate) -> SpecimenResponse:
@@ -42,8 +48,8 @@ class SpecimenResource(BaseResource):
         await self._delete(f"specimens/{specimen_id}")
 
     async def list_blocks(
-        self, specimen_id: str, skip: int | None = None, limit: int | None = None
+        self, specimen_id: str, cursor: str | None = None, offset: int | None = None, limit: int | None = None
     ) -> builtins.list[BlockResponse]:
         """List blocks associated with a specific specimen."""
         endpoint = f"specimens/{specimen_id}/blocks"
-        return await self._list(endpoint, BlockResponse, {}, skip=skip, limit=limit)
+        return await self._list(endpoint, BlockResponse, {}, cursor=cursor, offset=offset, limit=limit)

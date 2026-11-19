@@ -11,7 +11,7 @@ async def test_list_specimens(async_client: AsyncClient):
     """Test retrieving a list of specimens."""
     response = await async_client.get("/api/v2/specimens")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json()["items"], list)
 
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ async def test_specimen_extra_fields_round_trip(async_client: AsyncClient):
 
     list_response = await async_client.get(f"/api/v2/specimens?search={specimen_id_hr}")
     assert list_response.status_code == 200
-    listed = next(spec for spec in list_response.json() if spec["specimen_id"] == specimen_id_hr)
+    listed = next(spec for spec in list_response.json()["items"] if spec["specimen_id"] == specimen_id_hr)
     assert listed["extra"]["unknown_create_key"] == {"source": "create"}
     assert listed["extra"]["unknown_patch_key"] == ["from", "patch"]
 
@@ -159,7 +159,7 @@ async def test_get_specimen_blocks(async_client: AsyncClient, test_specimen, tes
     """Test retrieving blocks associated with a specific specimen."""
     response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks")
     assert response.status_code == 200
-    response_data = response.json()
+    response_data = response.json()["items"]
     assert isinstance(response_data, list)
     assert len(response_data) > 0
     assert response_data[0]["specimen_id"] == test_specimen.specimen_id
@@ -174,11 +174,11 @@ async def test_list_specimens_ordered(async_client: AsyncClient):
         await async_client.post("/api/v2/specimens", json={"specimen_id": specimen_id})
 
     response = await async_client.get("/api/v2/specimens")
-    assert [specimen["specimen_id"] for specimen in response.json()] == sorted(ids)
+    assert [specimen["specimen_id"] for specimen in response.json()["items"]] == sorted(ids)
 
 
 @pytest.mark.asyncio
 async def test_get_specimen_blocks_past_last_page(async_client: AsyncClient, test_specimen, test_block):
-    response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks", params={"skip": 1})
+    response = await async_client.get(f"/api/v2/specimens/{test_specimen.specimen_id}/blocks", params={"offset": 1})
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json()["items"] == []

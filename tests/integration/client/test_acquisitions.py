@@ -33,18 +33,18 @@ async def test_acquisition_list(client, records):
     dataset = await records.dataset()
     await client.acquisition.create(acquisition_payload("A2", roi.roi_id, microscope.microscope_id, dataset.dataset_id))
     page = await client.acquisition.list()
-    assert {a.acquisition_id for a in page.acquisitions} == {"A1", "A2"}
+    assert {a.acquisition_id for a in page} == {"A1", "A2"}
     page = await client.acquisition.list(limit=1)
-    assert len(page.acquisitions) == 1
+    assert len(page.items) == 1
     await client.acquisition.update("A2", AcquisitionUpdate(montage_set_name="set-2"))
     page = await client.acquisition.list(montage_set_name="set-2")
-    assert [a.acquisition_id for a in page.acquisitions] == ["A2"]
+    assert [a.acquisition_id for a in page] == ["A2"]
 
 
 async def test_acquisition_list_with_full_metadata(client, records):
     await records.acquisition()
     result = await client.acquisition.list_with_full_metadata()
-    assert [row["acquisition"]["acquisition_id"] for row in result["acquisitions"]] == ["A1"]
+    assert [row["acquisition"]["acquisition_id"] for row in result] == ["A1"]
 
 
 async def test_acquisition_get_with_full_metadata(client, records):
@@ -96,9 +96,9 @@ async def test_acquisition_get_tile(client, records):
 async def test_acquisition_get_tiles(client, records):
     await records.tiles()
     first = await client.acquisition.get_tiles("A1", limit=4)
-    second = await client.acquisition.get_tiles("A1", cursor=first.metadata["next_cursor"], limit=4)
-    assert [t.raster_index for t in first.tiles] == [0, 1, 2, 3]
-    assert [t.raster_index for t in second.tiles] == [4, 5, 6, 7]
+    second = await client.acquisition.get_tiles("A1", cursor=first.next_cursor, limit=4)
+    assert [t.raster_index for t in first.items] == [0, 1, 2, 3]
+    assert [t.raster_index for t in second.items] == [4, 5, 6, 7]
 
 
 async def test_acquisition_get_all_tiles(client, records):
@@ -176,16 +176,16 @@ async def test_complete_metadata_returns_the_acquisition_hierarchy(client, trans
 async def test_list_with_full_metadata_reads_the_aggregated_route(client, transport, records):
     await records.acquisition()
     result = await client.acquisition.list_with_full_metadata()
-    assert [row["acquisition"]["acquisition_id"] for row in result["acquisitions"]] == ["A1"]
-    assert (await client.acquisition.list_with_full_metadata(roi_id="ROI-NONE"))["acquisitions"] == []
+    assert [row["acquisition"]["acquisition_id"] for row in result] == ["A1"]
+    assert (await client.acquisition.list_with_full_metadata(roi_id="ROI-NONE")) == []
     assert ("GET", "/api/v2/aggregated/acquisitions") in transport.requests
 
 
 async def test_get_tiles_with_fields_returns_projected_tiles(client, records):
     await records.tiles()
     page = await client.acquisition.get_tiles("A1", fields=["raster_index"])
-    assert [tile["raster_index"] for tile in page["tiles"]] == list(range(10))
-    assert "image_path" not in page["tiles"][0]
+    assert [tile["raster_index"] for tile in page] == list(range(10))
+    assert "image_path" not in page[0]
 
 
 async def test_get_all_tiles_with_fields_follows_every_page(client, records):
@@ -197,7 +197,7 @@ async def test_get_all_tiles_with_fields_follows_every_page(client, records):
 async def test_list_with_fields_returns_projected_acquisitions(client, records):
     await records.acquisition()
     page = await client.acquisition.list(fields=["acquisition_id"])
-    assert [row["acquisition_id"] for row in page["acquisitions"]] == ["A1"]
+    assert [row["acquisition_id"] for row in page] == ["A1"]
 
 
 async def test_list_with_full_metadata_rejects_filters_the_route_does_not_read(client, records):
@@ -209,8 +209,8 @@ async def test_list_with_full_metadata_rejects_filters_the_route_does_not_read(c
 async def test_list_with_full_metadata_filters_by_substrate(client, records):
     await records.acquisition()
     matching = await client.acquisition.list_with_full_metadata(substrate_media_id="M1")
-    assert [row["acquisition"]["acquisition_id"] for row in matching["acquisitions"]] == ["A1"]
-    assert (await client.acquisition.list_with_full_metadata(substrate_media_id="M-NONE"))["acquisitions"] == []
+    assert [row["acquisition"]["acquisition_id"] for row in matching] == ["A1"]
+    assert (await client.acquisition.list_with_full_metadata(substrate_media_id="M-NONE")) == []
 
 
 async def test_get_all_tiles_requests_each_page_once(client, transport, records):

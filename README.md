@@ -86,20 +86,25 @@ before any request is sent.
 
 #### Listing
 
-A list method returns **every** matching record, fetching it from the server page by page. Pass `limit` (and `skip`)
-to get a single page instead; it is a list with a `has_more` flag that says whether more records follow.
+A list method returns every matching record. Pass `limit`, `cursor` or `offset` to get one `Page`: a list of that
+page's records with `next_cursor` (`None` on the last page) and `total` (`None` on pages fetched by `cursor`).
 
 ```python
-sections = await client.section.list_by_media("1008")                # every section on the substrate
-page = await client.section.list_by_media("1008", limit=100)         # one page
-page.has_more                                                         # True if more follow
+sections = await client.section.list_by_media("1008")                     # every record
+page = await client.section.list_by_media("1008", offset=400, limit=100)  # fifth page
 ```
 
-Acquisition and tile listings page by cursor instead (`acquisition.list`, `get_tiles`); `get_all_tiles` returns every
-tile.
+Step through pages with `cursor`; records added meanwhile don't shift them:
 
-For a listing too long to hold in memory, `client.iterate` hands out one record at a time and fetches the next page
-only when it is needed. It works with any list method that takes `skip` or `cursor`:
+```python
+page = await client.section.list_by_media("1008", limit=100)
+while page.next_cursor:  # page holds this page's sections
+    page = await client.section.list_by_media("1008", cursor=page.next_cursor, limit=100)
+```
+
+`offset` can shift by one if records are added or deleted before it.
+
+`client.iterate` yields records one at a time, fetching each page as needed:
 
 ```python
 async for tile in client.iterate(client.acquisition.get_tiles, acquisition_id, page_size=1000):
@@ -288,9 +293,19 @@ different case: **409** `FOREIGN_KEY_VIOLATION`.
 
 ### Paged lists
 
-List routes take `skip` and `limit`, return rows in a stable order and set the response header `X-Has-More: true|false`. Browsers can read the header
-(it is listed in CORS `expose_headers`). Acquisition and tile listings page by `cursor` instead and report `has_more`
-and `next_cursor` in their `metadata`.
+List routes return `{"items": [...], "next_cursor": ..., "total": ...}`. `next_cursor` is `null` on the last page.
+`total` counts every row that matches the filters; it is `null` on pages fetched by `cursor`.
+
+```text
+GET /api/v2/sections?media_id=1008&limit=100                        first page
+GET /api/v2/sections?media_id=1008&limit=100&cursor=<next_cursor>   next page
+GET /api/v2/sections?media_id=1008&limit=100&offset=400             fifth page
+```
+
+Step through pages with `cursor`; rows added meanwhile don't shift them. `offset` can shift by one if rows are added or
+deleted before it. Sending both, or a cursor from another listing or sort order, is a 422.
+
+The tile image routes take `cursor` only and return `next_cursor` beside `urls` or `deleted_images`.
 
 ### Extra fields
 

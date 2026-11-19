@@ -1,18 +1,19 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temdb.models import (
+    Page,
     SubstrateLayoutCreate,
     SubstrateLayoutResponse,
     SubstrateLayoutUpdate,
     SubstrateResponse,
     SubstrateType,
 )
-from temdb.server.api.v2.paging import page
+from temdb.server.api.v2.paging import Position, page
 from temdb.server.dependencies import get_async_session
 from temdb.server.sqlmodels import SubstrateLayoutSQLModel, SubstrateSQLModel
 
@@ -24,13 +25,12 @@ substrate_layout_api = APIRouter(
 )
 
 
-@substrate_layout_api.get("/layouts", response_model=list[SubstrateLayoutResponse])
+@substrate_layout_api.get("/layouts", response_model=Page[SubstrateLayoutResponse])
 async def list_layouts(
-    response: Response,
     media_type: SubstrateType | None = Query(
         None, description="Filter by substrate media type (e.g., 'wafer', 'tape')"
     ),
-    skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -38,9 +38,8 @@ async def list_layouts(
     statement = select(SubstrateLayoutSQLModel)
     if media_type:
         statement = statement.where(SubstrateLayoutSQLModel.media_type == media_type)
-    return await page(
-        session, statement.order_by(SubstrateLayoutSQLModel.layout_id), skip=skip, limit=limit, response=response
-    )
+    key = [SubstrateLayoutSQLModel.layout_id]
+    return await page(session, statement, key=key, at=at, limit=limit)
 
 
 @substrate_layout_api.post("/layouts", status_code=status.HTTP_201_CREATED, response_model=SubstrateLayoutResponse)
@@ -140,11 +139,10 @@ async def delete_layout(layout_id: str, session: AsyncSession = Depends(get_asyn
     return None
 
 
-@substrate_layout_api.get("/layouts/{layout_id}/substrates", response_model=list[SubstrateResponse])
+@substrate_layout_api.get("/layouts/{layout_id}/substrates", response_model=Page[SubstrateResponse])
 async def get_layout_substrates(
-    response: Response,
     layout_id: str,
-    skip: int = Query(0, ge=0),
+    at: Position = Depends(Position),
     limit: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -158,9 +156,6 @@ async def get_layout_substrates(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Substrate layout with layout_id '{layout_id}' not found",
         )
-    statement = (
-        select(SubstrateSQLModel)
-        .where(SubstrateSQLModel.substrate_layout_id == layout_id)
-        .order_by(SubstrateSQLModel.media_id, SubstrateSQLModel.id)
-    )
-    return await page(session, statement, skip=skip, limit=limit, response=response)
+    statement = select(SubstrateSQLModel).where(SubstrateSQLModel.substrate_layout_id == layout_id)
+    key = [SubstrateSQLModel.media_id, SubstrateSQLModel.id]
+    return await page(session, statement, key=key, at=at, limit=limit)

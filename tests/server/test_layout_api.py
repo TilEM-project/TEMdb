@@ -55,7 +55,7 @@ async def test_layout_create_get_list_update_delete(async_client: AsyncClient):
 
     list_response = await async_client.get("/api/v2/layouts?media_type=wafer")
     assert list_response.status_code == 200
-    assert any(layout["layout_id"] == layout_id for layout in list_response.json())
+    assert any(layout["layout_id"] == layout_id for layout in list_response.json()["items"])
 
     update_response = await async_client.patch(
         f"/api/v2/layouts/{layout_id}",

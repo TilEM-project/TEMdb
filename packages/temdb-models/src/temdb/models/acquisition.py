@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, FiniteFloat, model_validator
 
 from temdb.models.base import TEMDBModel, TEMDBRecord
 from temdb.models.enums import AcquisitionStatus, QCState, TaskKind, TransferState
@@ -24,14 +24,31 @@ class LensCorrectionModel(TEMDBModel):
     )
 
 
+class StageNmToPxMatrix(TEMDBModel):
+    x_per_x: FiniteFloat = Field(..., description="Mosaic x px per nm of stage x")
+    x_per_y: FiniteFloat = Field(..., description="Mosaic x px per nm of stage y")
+    y_per_x: FiniteFloat = Field(..., description="Mosaic y px per nm of stage x")
+    y_per_y: FiniteFloat = Field(..., description="Mosaic y px per nm of stage y")
+
+    @model_validator(mode="after")
+    def determinant_not_zero(self):
+        """The matrix, refused when two stage positions would land on the same mosaic position."""
+        if self.x_per_x * self.y_per_y == self.x_per_y * self.y_per_x:
+            raise ValueError("the matrix puts two stage positions on the same mosaic position")
+        return self
+
+
 class Calibration(TEMDBModel):
     pixel_size: float = Field(..., description="Pixel size in nm")
-    rotation_angle: float = Field(..., description="Rotation angle in degrees")
+    rotation_angle: float = Field(..., description="Rotation angle in radians")
     flip_x: bool | None = Field(None, description="Whether the tile grid is mirrored in stage x")
     flip_y: bool | None = Field(None, description="Whether the tile grid is mirrored in stage y")
     stage_position_unit: Literal["nm"] | None = Field(None, description="Unit of the tiles' stage positions")
     lens_model: LensCorrectionModel | None = Field(None, description="Lens correction model")
     aperture_centroid: list[float] | None = Field(None, description="Aperture centroid in stage coordinates in nm")
+    stage_nm_to_px_matrix: StageNmToPxMatrix | None = Field(
+        None, description="A tile's mosaic position in px (x right, y down) = this matrix @ its stage position in nm"
+    )
 
 
 class HardwareParams(TEMDBModel):
@@ -47,6 +64,8 @@ class AcquisitionParams(TEMDBModel):
     exposure_time: int = Field(..., description="Exposure time of camera in ms")
     tile_size: list[int] = Field(..., description="Shape of the image tile in pixels")
     tile_overlap: float = Field(..., description="Pixel overlap to neighboring tiles")
+    tile_overlap_x: float | None = Field(None, description="Pixel overlap to the neighboring tile along image x")
+    tile_overlap_y: float | None = Field(None, description="Pixel overlap to the neighboring tile along image y")
     saved_bit_depth: int = Field(..., description="Bit depth of saved image")
 
 
@@ -76,7 +95,6 @@ class AcquisitionCreate(AcquisitionBase):
 
 
 class AcquisitionUpdate(AcquisitionBase):
-    calibration_info: dict[str, Any] | None = Field(None, description="Calibration information of acquisition")
     status: AcquisitionStatus = Field(None, description="Terminal run status (write-once)")
     end_time: datetime | None = Field(None, description="End time of acquisition (set with terminal status)")
     error_message: str | None = Field(None, description="Failure detail for terminal status")

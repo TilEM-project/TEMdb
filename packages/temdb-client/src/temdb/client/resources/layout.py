@@ -17,13 +17,14 @@ class SubstrateLayoutResource(BaseResource):
     async def list(
         self,
         media_type: str | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[SubstrateLayoutResponse]:
         """List substrate layouts with optional filtering and pagination."""
         params = without_none(media_type=media_type, **kwargs)
-        return await self._list("layouts", SubstrateLayoutResponse, params, skip=skip, limit=limit)
+        return await self._list("layouts", SubstrateLayoutResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(SubstrateLayoutCreate)
     async def create(self, layout_data: SubstrateLayoutCreate) -> SubstrateLayoutResponse:
@@ -48,8 +49,8 @@ class SubstrateLayoutResource(BaseResource):
         await self._delete(f"layouts/{layout_id}")
 
     async def list_related_substrates(
-        self, layout_id: str, skip: int | None = None, limit: int | None = None
+        self, layout_id: str, cursor: str | None = None, offset: int | None = None, limit: int | None = None
     ) -> builtins.list[SubstrateResponse]:
         """List substrates of a given layout."""
         endpoint = f"layouts/{layout_id}/substrates"
-        return await self._list(endpoint, SubstrateResponse, {}, skip=skip, limit=limit)
+        return await self._list(endpoint, SubstrateResponse, {}, cursor=cursor, offset=offset, limit=limit)

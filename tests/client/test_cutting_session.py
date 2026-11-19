@@ -62,11 +62,15 @@ async def test_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_list_by_block_uses_nested_path():
     res, request = _resource()
-    request.return_value = ([_session_payload(), _session_payload(cutting_session_id="CUT002")], {})
+    request.return_value = {
+        "items": [_session_payload(), _session_payload(cutting_session_id="CUT002")],
+        "next_cursor": None,
+        "total": 2,
+    }
     out = await res.list_by_block("SPEC001", "BLOCK001", limit=2)
     assert request.await_args.args[:2] == ("GET", "cutting-sessions/specimens/SPEC001/blocks/BLOCK001/sessions")
-    assert request.await_args.kwargs["params"] == {"skip": 0, "limit": 2}
-    assert [s.cutting_session_id for s in out] == ["CUT001", "CUT002"]
+    assert request.await_args.kwargs["params"] == {"limit": 2}
+    assert [s.cutting_session_id for s in out.items] == ["CUT001", "CUT002"]
 
 
 @pytest.mark.asyncio

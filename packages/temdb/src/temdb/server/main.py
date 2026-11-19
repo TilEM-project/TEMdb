@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.engine import make_url
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from temdb.models import HAS_MORE_HEADER, Contract
+from temdb.models import Contract
 from temdb.server.api.v2.acquisition import acquisition_api
 from temdb.server.api.v2.block import block_api
 from temdb.server.api.v2.cutting_session import cutting_session_api
@@ -152,7 +152,6 @@ def create_app():
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=[HAS_MORE_HEADER],
     )
 
     register_exception_handlers(app)

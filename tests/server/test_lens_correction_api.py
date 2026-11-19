@@ -105,7 +105,7 @@ async def test_microscope_list_and_patch(async_client: AsyncClient):
 
     listed = await async_client.get("/api/v2/microscopes")
     assert listed.status_code == 200
-    assert scope["microscope_id"] in [m["microscope_id"] for m in listed.json()]
+    assert scope["microscope_id"] in [m["microscope_id"] for m in listed.json()["items"]]
 
     patched = await async_client.patch(
         f"/api/v2/microscopes/{scope['microscope_id']}",
@@ -160,7 +160,7 @@ async def test_lc_list_filters_and_get_and_patch(async_client: AsyncClient):
     listed = await async_client.get("/api/v2/lens-corrections", params=base)
     assert listed.status_code == 200
     # newest-first by started_at
-    assert [lc["lc_id"] for lc in listed.json()] == [second["lc_id"], first["lc_id"]]
+    assert [lc["lc_id"] for lc in listed.json()["items"]] == [second["lc_id"], first["lc_id"]]
 
     fetched = await async_client.get(f"/api/v2/lens-corrections/{first['lc_id']}")
     assert fetched.status_code == 200
@@ -248,7 +248,7 @@ async def test_lens_correction_extra_fields_round_trip(async_client: AsyncClient
         params={"microscope_id": scope["microscope_id"], "magnification": 12000},
     )
     assert list_response.status_code == 200
-    listed = next(lc for lc in list_response.json() if lc["lc_id"] == created["lc_id"])
+    listed = next(lc for lc in list_response.json()["items"] if lc["lc_id"] == created["lc_id"])
     assert listed["extra"]["unknown_create_key"] == {"create": "ok"}
     assert listed["extra"]["unknown_patch_key"] == "patch-ok"
 

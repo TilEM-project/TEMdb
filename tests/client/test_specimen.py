@@ -51,11 +51,15 @@ async def test_create_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_list_returns_models():
     res, request = _resource()
-    request.return_value = ([_specimen_payload(), _specimen_payload(specimen_id="SPEC002")], {})
+    request.return_value = {
+        "items": [_specimen_payload(), _specimen_payload(specimen_id="SPEC002")],
+        "next_cursor": None,
+        "total": 2,
+    }
     out = await res.list(limit=2)
     assert request.await_args.args[:2] == ("GET", "specimens")
-    assert request.await_args.kwargs["params"] == {"skip": 0, "limit": 2}
-    assert [specimen.specimen_id for specimen in out] == ["SPEC001", "SPEC002"]
+    assert request.await_args.kwargs["params"] == {"limit": 2}
+    assert [specimen.specimen_id for specimen in out.items] == ["SPEC001", "SPEC002"]
 
 
 @pytest.mark.asyncio
@@ -78,8 +82,12 @@ async def test_update_rejects_model_plus_kwargs():
 @pytest.mark.asyncio
 async def test_list_blocks_returns_models():
     res, request = _resource()
-    request.return_value = ([_block_payload(), _block_payload(block_id="BLOCK002")], {})
-    out = await res.list_blocks("SPEC001", skip=5, limit=10)
+    request.return_value = {
+        "items": [_block_payload(), _block_payload(block_id="BLOCK002")],
+        "next_cursor": None,
+        "total": 2,
+    }
+    out = await res.list_blocks("SPEC001", offset=5, limit=10)
     assert request.await_args.args[:2] == ("GET", "specimens/SPEC001/blocks")
-    assert request.await_args.kwargs["params"] == {"skip": 5, "limit": 10}
-    assert [block.block_id for block in out] == ["BLOCK001", "BLOCK002"]
+    assert request.await_args.kwargs["params"] == {"offset": 5, "limit": 10}
+    assert [block.block_id for block in out.items] == ["BLOCK001", "BLOCK002"]

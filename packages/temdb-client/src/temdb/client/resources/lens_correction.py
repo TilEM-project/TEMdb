@@ -29,12 +29,15 @@ class LensCorrectionResource(BaseResource):
         self,
         microscope_id: str | None = None,
         magnification: int | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
     ) -> list[LensCorrectionResponse]:
         """List lens corrections, newest-first, optionally filtered."""
         params = without_none(microscope_id=microscope_id, magnification=magnification)
-        return await self._list("lens-corrections", LensCorrectionResponse, params, skip=skip, limit=limit)
+        return await self._list(
+            "lens-corrections", LensCorrectionResponse, params, cursor=cursor, offset=offset, limit=limit
+        )
 
     @accepts_keywords(LensCorrectionUpdate)
     async def update(self, lc_id: str, data: LensCorrectionUpdate) -> LensCorrectionResponse:

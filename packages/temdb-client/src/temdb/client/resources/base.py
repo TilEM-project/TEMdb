@@ -5,7 +5,7 @@ from functools import wraps
 from itertools import takewhile
 from typing import Any, TypeVar
 
-from temdb.models import HAS_MORE_HEADER
+from temdb.models import Page as PageBody
 
 from ..exceptions import TEMdbClientError
 
@@ -13,9 +13,16 @@ T = TypeVar("T")
 
 
 class Page(list):
-    def __init__(self, items=(), has_more: bool = False):
+    """One page of records: a list that also carries the next page's cursor and the number of matching records."""
+
+    def __init__(self, items=(), next_cursor: str | None = None, total: int | None = None):
         super().__init__(items)
-        self.has_more = has_more
+        self.next_cursor = next_cursor
+        self.total = total
+
+    @property
+    def items(self) -> list:
+        return self
 
 
 class BaseResource:
@@ -39,77 +46,52 @@ class BaseResource:
         return await self._request("DELETE", endpoint, **kwargs)
 
     async def _pages(
-        self,
-        fetch: Callable[[Any], Awaitable[Any]],
-        next_position: Callable[[Any, Any], Any],
-        start: Any = None,
-        *,
-        max_pages: int = 10_000,
+        self, fetch: Callable[[str | None], Awaitable[Any]], *, max_pages: int = 10_000
     ) -> AsyncIterator[Any]:
-        """Yield fetch(position) page by page; next_position(page, position) is where the next page starts, or None."""
-        position = start
+        """Yield fetch(cursor) page by page, following each page's next_cursor until it is None."""
+        cursor = None
         for _ in range(max_pages):
-            page = await fetch(position)
+            page = await fetch(cursor)
             yield page
-            following = next_position(page, position)
-            if following is None:
+            if page.next_cursor is None:
                 return
-            if following == position:
+            if page.next_cursor == cursor:
                 raise TEMdbClientError("the server returned the same page again")
-            position = following
+            cursor = page.next_cursor
         raise TEMdbClientError(f"more pages remain after {max_pages} pages")
 
-    def _cursor_pages(self, fetch: Callable[[str | None], Awaitable[Any]]) -> AsyncIterator[Any]:
-        return self._pages(fetch, _next_cursor)
+    async def _page(
+        self, endpoint: str, model: type[T] | None, params: dict[str, Any], *, cursor, offset, limit
+    ) -> Page:
+        query = {**params, **without_none(cursor=cursor, offset=offset, limit=limit)}
+        body = PageBody[model or dict[str, Any]].model_validate(await self._get(endpoint, params=query))
+        return Page(body.items, body.next_cursor, body.total)
 
     async def _list(
         self,
         endpoint: str,
-        model: type[T],
+        model: type[T] | None,
         params: dict[str, Any],
         *,
-        skip: int | None,
+        cursor: str | None,
+        offset: int | None,
         limit: int | None,
         page_size: int = 100,
         max_pages: int = 10_000,
     ) -> list[T] | Page:
-        if skip is not None or limit is not None:
-            records, has_more = await self._page(endpoint, params, skip or 0, limit or page_size)
-            return Page([model.model_validate(record) for record in records], has_more=has_more)
-        everything: list[dict[str, Any]] = []
-        previous_first = None
+        """One page when cursor, offset or limit is given, otherwise every row."""
+        if cursor is not None or offset is not None or limit is not None:
+            return await self._page(endpoint, model, params, cursor=cursor, offset=offset, limit=limit or page_size)
         pages = self._pages(
-            lambda skip: self._page(endpoint, params, skip, page_size),
-            lambda page, skip: skip + len(page[0]) if page[1] and page[0] else None,
-            0,
+            lambda cursor: self._page(endpoint, model, params, cursor=cursor, offset=None, limit=page_size),
             max_pages=max_pages,
         )
-        async for records, _ in pages:
-            if everything and records and records[0] == previous_first:
-                raise TEMdbClientError(f"{endpoint}: the server ignored skip and returned the same page again")
-            previous_first = records[0] if records else None
-            everything += records
-        return [model.model_validate(record) for record in everything]
-
-    async def _page(
-        self, endpoint: str, params: dict[str, Any], skip: int, limit: int
-    ) -> tuple[list[dict[str, Any]], bool]:
-        data, headers = await self._get(endpoint, params={**params, "skip": skip, "limit": limit}, with_headers=True)
-        records = data if isinstance(data, list) else []
-        flag = headers.get(HAS_MORE_HEADER)
-        return records, (flag == "true") if flag is not None else len(records) == limit
+        return [item async for page in pages for item in page.items]
 
 
 def without_none(**values: Any) -> dict[str, Any]:
     """The keyword arguments whose value is not None, for building query parameters."""
     return {key: value for key, value in values.items() if value is not None}
-
-
-def _next_cursor(page: Any, cursor: str | None) -> str | None:
-    metadata = page["metadata"] if isinstance(page, dict) else page.metadata
-    if isinstance(metadata, dict):
-        return metadata.get("next_cursor") if metadata.get("has_more") else None
-    return metadata.next_cursor if metadata.has_more else None
 
 
 def accepts_keywords(model):

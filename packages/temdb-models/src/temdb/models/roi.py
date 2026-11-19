@@ -39,7 +39,9 @@ class ROIPayload(TEMDBModel):
 
 class ROICreatePayload(ROIPayload):
     vertices: list[tuple[float, float]] = Field(
-        ..., min_length=3, description="Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid"
+        ...,
+        min_length=3,
+        description="ROI polygon vertices as [x, y] in nm from the aperture centroid, on the substrate layout's axes",
     )
     rotation_angle: float = Field(0.0, description="Rotation of the ROI polygon in radians")
     buffer_size: float = Field(0.0, description="Dilation of the ROI polygon when imaging, in nanometers")
@@ -47,7 +49,9 @@ class ROICreatePayload(ROIPayload):
 
 class ROIUpdatePayload(ROIPayload):
     vertices: list[tuple[float, float]] = Field(
-        None, min_length=3, description="Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid"
+        None,
+        min_length=3,
+        description="ROI polygon vertices as [x, y] in nm from the aperture centroid, on the substrate layout's axes",
     )
     rotation_angle: float = Field(None, description="Rotation of the ROI polygon in radians")
     buffer_size: float = Field(None, description="Dilation of the ROI polygon when imaging, in nanometers")

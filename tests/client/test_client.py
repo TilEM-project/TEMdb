@@ -220,7 +220,7 @@ async def test_client_uses_provided_transport():
         if request.url.path == "/api/v2/contract":
             return httpx.Response(200, json={"api": "v2", "server_version": "x", "models_version": models_version()})
         assert request.url.path == "/api/v2/specimens"
-        return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"items": [], "next_cursor": None, "total": 0})
 
     async with TEMdbClient("http://test", transport=httpx.MockTransport(handler)) as client:
         assert await client.specimen.list() == []

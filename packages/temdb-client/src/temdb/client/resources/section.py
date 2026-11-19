@@ -26,12 +26,17 @@ class SectionResource(BaseResource):
         super().__init__(*args, **kwargs)
 
     async def list_by_session(
-        self, cutting_session_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
+        self,
+        cutting_session_id: str,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
     ) -> list[SectionResponse]:
         """List sections associated with a specific cutting session."""
         endpoint = f"sections/sessions/{cutting_session_id}"
         params = dict(kwargs)
-        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     async def list_all(
         self,
@@ -40,7 +45,8 @@ class SectionResource(BaseResource):
         cutting_session_id: str | None = None,
         media_id: str | None = None,
         quality: SectionQuality | None = None,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         **kwargs: Any,
     ) -> list[SectionResponse]:
@@ -54,7 +60,7 @@ class SectionResource(BaseResource):
             quality=(quality.value if quality else None),
             **kwargs,
         )
-        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     @accepts_keywords(SectionCreate)
     async def create(self, section_data: SectionCreate) -> SectionResponse:
@@ -204,25 +210,36 @@ class SectionResource(BaseResource):
         await self._delete(f"sections/{section_id}")
 
     async def list_by_block(
-        self, block_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
+        self,
+        block_id: str,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
     ) -> list[SectionResponse]:
         """List sections associated with a specific block."""
         endpoint = f"sections/blocks/{block_id}"
         params = dict(kwargs)
-        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     async def list_by_specimen(
-        self, specimen_id: str, skip: int | None = None, limit: int | None = None, **kwargs: Any
+        self,
+        specimen_id: str,
+        cursor: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
     ) -> list[SectionResponse]:
         """List sections associated with a specific specimen."""
         endpoint = f"sections/specimens/{specimen_id}"
         params = dict(kwargs)
-        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, params, cursor=cursor, offset=offset, limit=limit)
 
     async def list_by_media(
         self,
         media_id: str,
-        skip: int | None = None,
+        cursor: str | None = None,
+        offset: int | None = None,
         limit: int | None = None,
         relative_position: int | None = None,
         **kwargs: Any,
@@ -230,4 +247,4 @@ class SectionResource(BaseResource):
         """List sections by media ID."""
         endpoint = f"sections/media/{media_id}"
         params = without_none(relative_position=relative_position, **kwargs)
-        return await self._list(endpoint, SectionResponse, params, skip=skip, limit=limit)
+        return await self._list(endpoint, SectionResponse, params, cursor=cursor, offset=offset, limit=limit)

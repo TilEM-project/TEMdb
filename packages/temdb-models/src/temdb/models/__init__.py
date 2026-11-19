@@ -8,6 +8,7 @@ from temdb.models.acquisition import (
     Calibration,
     HardwareParams,
     LensCorrectionModel,
+    StageNmToPxMatrix,
 )
 from temdb.models.block import (
     BlockBase,
@@ -75,7 +76,7 @@ from temdb.models.microscope import (
     MicroscopeResponse,
     MicroscopeUpdate,
 )
-from temdb.models.paging import HAS_MORE_HEADER
+from temdb.models.paging import Page
 from temdb.models.quality_control import (
     AcquisitionFocusScoresResponse,
     BadFocusTileInfo,
@@ -169,6 +170,7 @@ __all__ = [
     "AcquisitionParams",
     "Calibration",
     "LensCorrectionModel",
+    "StageNmToPxMatrix",
     # Specimen
     "SpecimenBase",
     "SpecimenCreate",
@@ -246,7 +248,7 @@ __all__ = [
     "BadFocusTilesResponse",
     # File Storage
     "FileObject",
-    "HAS_MORE_HEADER",
+    "Page",
     "FileObjectRequest",
     "FileObjectResponse",
     "StorageDefault",
