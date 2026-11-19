@@ -444,6 +444,30 @@
               "title": "Tile Overlap",
               "type": "number"
             },
+            "tile_overlap_x": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pixel overlap to the neighboring tile along image x",
+              "title": "Tile Overlap X"
+            },
+            "tile_overlap_y": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pixel overlap to the neighboring tile along image y",
+              "title": "Tile Overlap Y"
+            },
             "tile_size": {
               "description": "Shape of the image tile in pixels",
               "items": {
@@ -1274,15 +1298,12 @@
             "calibration_info": {
               "anyOf": [
                 {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/Calibration"
                 },
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Calibration information of acquisition",
-              "title": "Calibration Info"
+              ]
             },
             "end_time": {
               "anyOf": [
@@ -1856,9 +1877,20 @@
               "type": "number"
             },
             "rotation_angle": {
-              "description": "Rotation angle in degrees",
+              "description": "Rotation angle in radians",
               "title": "Rotation Angle",
               "type": "number"
+            },
+            "stage_nm_to_px_matrix": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/StageNmToPxMatrix"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A tile's mosaic position in px (x right, y down) = this matrix @ its stage position in nm"
             },
             "stage_position_unit": {
               "anyOf": [
@@ -3479,9 +3511,16 @@
               "type": "number"
             },
             "match_quality": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "Quality of the match",
-              "title": "Match Quality",
-              "type": "number"
+              "title": "Match Quality"
             },
             "pX": {
               "description": "X position of the points in the template tile",
@@ -3539,7 +3578,6 @@
             "dYsd",
             "distance",
             "rotation",
-            "match_quality",
             "position",
             "pX",
             "pY",
@@ -3807,6 +3845,553 @@
             }
           },
           "title": "MicroscopeUpdate",
+          "type": "object"
+        },
+        "Page_AcquisitionResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/AcquisitionResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[AcquisitionResponse]",
+          "type": "object"
+        },
+        "Page_AcquisitionTaskResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/AcquisitionTaskResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[AcquisitionTaskResponse]",
+          "type": "object"
+        },
+        "Page_BlockResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/BlockResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[BlockResponse]",
+          "type": "object"
+        },
+        "Page_CuttingSessionResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/CuttingSessionResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[CuttingSessionResponse]",
+          "type": "object"
+        },
+        "Page_DatasetResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/DatasetResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[DatasetResponse]",
+          "type": "object"
+        },
+        "Page_LensCorrectionResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/LensCorrectionResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[LensCorrectionResponse]",
+          "type": "object"
+        },
+        "Page_MicroscopeResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/MicroscopeResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[MicroscopeResponse]",
+          "type": "object"
+        },
+        "Page_ROIResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/ROIResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[ROIResponse]",
+          "type": "object"
+        },
+        "Page_SectionResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/SectionResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[SectionResponse]",
+          "type": "object"
+        },
+        "Page_SpecimenResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/SpecimenResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[SpecimenResponse]",
+          "type": "object"
+        },
+        "Page_SubstrateLayoutResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/SubstrateLayoutResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[SubstrateLayoutResponse]",
+          "type": "object"
+        },
+        "Page_SubstrateResponse_": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "$ref": "#/components/schemas/SubstrateResponse"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[SubstrateResponse]",
+          "type": "object"
+        },
+        "Page_dict_str__Any__": {
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "description": "The rows of this page",
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pass as cursor to get the next page; null on the last page",
+              "title": "Next Cursor"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rows matching the filters, over all pages; null on pages fetched by cursor",
+              "title": "Total"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "Page[dict[str, Any]]",
           "type": "object"
         },
         "PolygonParams": {
@@ -4086,7 +4671,7 @@
               "title": "Scale Y"
             },
             "vertices": {
-              "description": "Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid",
+              "description": "ROI polygon vertices as [x, y] in nm from the aperture centroid, on the substrate layout's axes",
               "items": {
                 "maxItems": 2,
                 "minItems": 2,
@@ -4654,7 +5239,7 @@
               "title": "Scale Y"
             },
             "vertices": {
-              "description": "Vertices of the ROI polygon as [x, y] in nm, relative to the aperture centroid",
+              "description": "ROI polygon vertices as [x, y] in nm from the aperture centroid, on the substrate layout's axes",
               "items": {
                 "maxItems": 2,
                 "minItems": 2,
@@ -4973,10 +5558,16 @@
               "title": "Message"
             },
             "pass_status": {
-              "default": true,
-              "description": "Should be True if the section is of good quality by this metric.",
-              "title": "Pass Status",
-              "type": "boolean"
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "True if the section passes by this metric; null when the metric has no pass/fail",
+              "title": "Pass Status"
             }
           },
           "title": "SectionMetric",
@@ -5828,6 +6419,39 @@
             }
           },
           "title": "SpecimenUpdate",
+          "type": "object"
+        },
+        "StageNmToPxMatrix": {
+          "additionalProperties": false,
+          "properties": {
+            "x_per_x": {
+              "description": "Mosaic x px per nm of stage x",
+              "title": "X Per X",
+              "type": "number"
+            },
+            "x_per_y": {
+              "description": "Mosaic x px per nm of stage y",
+              "title": "X Per Y",
+              "type": "number"
+            },
+            "y_per_x": {
+              "description": "Mosaic y px per nm of stage x",
+              "title": "Y Per X",
+              "type": "number"
+            },
+            "y_per_y": {
+              "description": "Mosaic y px per nm of stage y",
+              "title": "Y Per Y",
+              "type": "number"
+            }
+          },
+          "required": [
+            "x_per_x",
+            "x_per_y",
+            "y_per_x",
+            "y_per_y"
+          ],
+          "title": "StageNmToPxMatrix",
           "type": "object"
         },
         "StagePosition": {
@@ -7073,7 +7697,7 @@
     },
     "info": {
       "title": "TEMDB",
-      "version": "4.0.0rc3"
+      "version": "4.0.0"
     },
     "openapi": "3.1.0",
     "paths": {
@@ -7098,17 +7722,6 @@
           "description": "List acquisition tasks.",
           "operationId": "list_tasks_api_v2_acquisition_tasks_get",
           "parameters": [
-            {
-              "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
             {
               "in": "query",
               "name": "limit",
@@ -7298,6 +7911,43 @@
                 "description": "Substrates physically loaded in the scope; restricts imageable montage tasks",
                 "title": "Loaded Media Id"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -7305,11 +7955,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/AcquisitionTaskResponse"
-                    },
-                    "title": "Response List Tasks Api V2 Acquisition Tasks Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_AcquisitionTaskResponse_"
                   }
                 }
               },
@@ -7738,17 +8384,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -7758,6 +8393,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -7765,11 +8437,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/AcquisitionResponse"
-                    },
-                    "title": "Response Get Task Acquisitions Api V2 Acquisition Tasks  Task Id  Acquisitions Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_AcquisitionResponse_"
                   }
                 }
               },
@@ -7910,24 +8578,6 @@
           "description": "Retrieve a list of acquisitions with filtering, sorting, and pagination.\n\nRollup filters (avg_focus_score) read columns written by ingest/QC services \u2014 out of repo.",
           "operationId": "list_acquisitions_api_v2_acquisitions_get",
           "parameters": [
-            {
-              "description": "next_cursor of the previous page",
-              "in": "query",
-              "name": "cursor",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "next_cursor of the previous page",
-                "title": "Cursor"
-              }
-            },
             {
               "in": "query",
               "name": "limit",
@@ -8235,6 +8885,43 @@
                 "description": "Fields to return (e.g., ['acquisition_id', 'status'])",
                 "title": "Fields"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -8242,9 +8929,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "additionalProperties": true,
-                    "title": "Response List Acquisitions Api V2 Acquisitions Get",
-                    "type": "object"
+                    "$ref": "#/components/schemas/Page_dict_str__Any__"
                   }
                 }
               },
@@ -8750,24 +9435,6 @@
               }
             },
             {
-              "description": "next_cursor of the previous page, as 'row,col,retake'",
-              "in": "query",
-              "name": "cursor",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "next_cursor of the previous page, as 'row,col,retake'",
-                "title": "Cursor"
-              }
-            },
-            {
               "in": "query",
               "name": "limit",
               "required": false,
@@ -8869,6 +9536,43 @@
                 "description": "The max Y axis stage coordinate value in nanometers",
                 "title": "Y Max"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -8876,9 +9580,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "additionalProperties": true,
-                    "title": "Response Get Tiles From Acquisition Api V2 Acquisitions  Acquisition Id  Tiles Get",
-                    "type": "object"
+                    "$ref": "#/components/schemas/Page_dict_str__Any__"
                   }
                 }
               },
@@ -9367,7 +10069,7 @@
               }
             },
             {
-              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "description": "next_cursor of the previous page",
               "in": "query",
               "name": "cursor",
               "required": false,
@@ -9380,7 +10082,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "next_cursor of the previous page, as 'row,col,retake'",
+                "description": "next_cursor of the previous page",
                 "title": "Cursor"
               }
             },
@@ -9509,7 +10211,7 @@
               }
             },
             {
-              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "description": "next_cursor of the previous page",
               "in": "query",
               "name": "cursor",
               "required": false,
@@ -9522,7 +10224,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "next_cursor of the previous page, as 'row,col,retake'",
+                "description": "next_cursor of the previous page",
                 "title": "Cursor"
               }
             },
@@ -9631,7 +10333,7 @@
               }
             },
             {
-              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "description": "next_cursor of the previous page",
               "in": "query",
               "name": "cursor",
               "required": false,
@@ -9644,7 +10346,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "next_cursor of the previous page, as 'row,col,retake'",
+                "description": "next_cursor of the previous page",
                 "title": "Cursor"
               }
             },
@@ -9770,7 +10472,7 @@
               }
             },
             {
-              "description": "next_cursor of the previous page, as 'row,col,retake'",
+              "description": "next_cursor of the previous page",
               "in": "query",
               "name": "cursor",
               "required": false,
@@ -9783,7 +10485,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "next_cursor of the previous page, as 'row,col,retake'",
+                "description": "next_cursor of the previous page",
                 "title": "Cursor"
               }
             },
@@ -10391,24 +11093,6 @@
           "operationId": "list_acquisitions_with_hierarchy_api_v2_aggregated_acquisitions_get",
           "parameters": [
             {
-              "description": "next_cursor of the previous page",
-              "in": "query",
-              "name": "cursor",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "next_cursor of the previous page",
-                "title": "Cursor"
-              }
-            },
-            {
               "in": "query",
               "name": "limit",
               "required": false,
@@ -10537,6 +11221,43 @@
                 "description": "Terminal status (complete, aborted, failed) or the literal 'in_flight'",
                 "title": "Status"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -10544,9 +11265,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "additionalProperties": true,
-                    "title": "Response List Acquisitions With Hierarchy Api V2 Aggregated Acquisitions Get",
-                    "type": "object"
+                    "$ref": "#/components/schemas/Page_dict_str__Any__"
                   }
                 }
               },
@@ -10624,17 +11343,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -10644,6 +11352,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -10651,11 +11396,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/BlockResponse"
-                    },
-                    "title": "Response List Blocks Api V2 Blocks Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_BlockResponse_"
                   }
                 }
               },
@@ -10794,17 +11535,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -10814,6 +11544,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -10821,11 +11588,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/BlockResponse"
-                    },
-                    "title": "Response List Specimen Blocks Api V2 Blocks Specimens  Specimen Id  Blocks Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_BlockResponse_"
                   }
                 }
               },
@@ -11148,17 +11911,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -11168,6 +11920,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -11175,11 +11964,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/CuttingSessionResponse"
-                    },
-                    "title": "Response Get Block Cut Sessions Api V2 Blocks Specimens  Specimen Id  Blocks  Block Id  Cut Sessions Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_CuttingSessionResponse_"
                   }
                 }
               },
@@ -11311,17 +12096,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -11331,6 +12105,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -11338,11 +12149,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/CuttingSessionResponse"
-                    },
-                    "title": "Response List Cutting Sessions Api V2 Cutting Sessions Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_CuttingSessionResponse_"
                   }
                 }
               },
@@ -11490,17 +12297,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -11510,6 +12306,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -11517,11 +12350,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/CuttingSessionResponse"
-                    },
-                    "title": "Response List Block Cutting Sessions Api V2 Cutting Sessions Specimens  Specimen Id  Blocks  Block Id  Sessions Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_CuttingSessionResponse_"
                   }
                 }
               },
@@ -11699,17 +12528,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -11719,6 +12537,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -11726,11 +12581,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response Get Cutting Session Sections Api V2 Cutting Sessions Specimens  Specimen Id  Blocks  Block Id  Sessions  Cutting Session Id  Sections Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -11985,17 +12836,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -12005,6 +12845,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -12012,11 +12889,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/DatasetResponse"
-                    },
-                    "title": "Response List Datasets Api V2 Datasets Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_DatasetResponse_"
                   }
                 }
               },
@@ -12462,19 +13335,6 @@
               }
             },
             {
-              "description": "Number of records to skip for pagination",
-              "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "description": "Number of records to skip for pagination",
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
               "description": "Maximum number of records to return",
               "in": "query",
               "name": "limit",
@@ -12487,6 +13347,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -12494,11 +13391,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SubstrateLayoutResponse"
-                    },
-                    "title": "Response List Layouts Api V2 Layouts Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SubstrateLayoutResponse_"
                   }
                 }
               },
@@ -12855,17 +13748,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -12875,6 +13757,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -12882,11 +13801,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SubstrateResponse"
-                    },
-                    "title": "Response Get Layout Substrates Api V2 Layouts  Layout Id  Substrates Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SubstrateResponse_"
                   }
                 }
               },
@@ -12977,17 +13892,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -12997,6 +13901,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -13004,11 +13945,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/LensCorrectionResponse"
-                    },
-                    "title": "Response List Lens Corrections Api V2 Lens Corrections Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_LensCorrectionResponse_"
                   }
                 }
               },
@@ -13369,17 +14306,6 @@
           "parameters": [
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -13389,6 +14315,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -13396,11 +14359,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/MicroscopeResponse"
-                    },
-                    "title": "Response List Microscopes Api V2 Microscopes Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_MicroscopeResponse_"
                   }
                 }
               },
@@ -14262,17 +15221,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -14282,6 +15230,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -14289,11 +15274,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/ROIResponse"
-                    },
-                    "title": "Response List Rois Api V2 Rois Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_ROIResponse_"
                   }
                 }
               },
@@ -14750,17 +15731,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -14770,6 +15740,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -14777,11 +15784,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/ROIResponse"
-                    },
-                    "title": "Response Get Child Rois Api V2 Rois  Roi Id  Children Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_ROIResponse_"
                   }
                 }
               },
@@ -15006,17 +16009,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -15026,6 +16018,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -15033,11 +16062,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response List Sections Api V2 Sections Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -15276,17 +16301,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -15296,6 +16310,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -15303,11 +16354,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response List Block Sections Api V2 Sections Blocks  Block Id  Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -15530,17 +16577,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -15566,6 +16602,43 @@
                 ],
                 "title": "Relative Position"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -15573,11 +16646,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response List Sections By Media Api V2 Sections Media  Media Id  Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -15646,17 +16715,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -15666,6 +16724,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -15673,11 +16768,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response List Cutting Session Sections Api V2 Sections Sessions  Cutting Session Id  Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -15746,17 +16837,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -15766,6 +16846,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -15773,11 +16890,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response List Specimen Sections Api V2 Sections Specimens  Specimen Id  Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -16319,17 +17432,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -16339,6 +17441,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -16346,11 +17485,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/ROIResponse"
-                    },
-                    "title": "Response List Section Rois Api V2 Sections  Section Id  Rois Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_ROIResponse_"
                   }
                 }
               },
@@ -16427,17 +17562,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -16447,6 +17571,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -16454,11 +17615,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SpecimenResponse"
-                    },
-                    "title": "Response List Specimens Api V2 Specimens Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SpecimenResponse_"
                   }
                 }
               },
@@ -16895,17 +18052,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -16915,6 +18061,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -16922,11 +18105,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/BlockResponse"
-                    },
-                    "title": "Response Get Specimen Blocks Api V2 Specimens  Specimen Id  Blocks Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_BlockResponse_"
                   }
                 }
               },
@@ -17039,19 +18218,6 @@
               }
             },
             {
-              "description": "Number of records to skip for pagination",
-              "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "description": "Number of records to skip for pagination",
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
               "description": "Maximum number of records to return",
               "in": "query",
               "name": "limit",
@@ -17064,6 +18230,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -17071,11 +18274,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SubstrateResponse"
-                    },
-                    "title": "Response List Substrates Api V2 Substrates Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SubstrateResponse_"
                   }
                 }
               },
@@ -17505,17 +18704,6 @@
             },
             {
               "in": "query",
-              "name": "skip",
-              "required": false,
-              "schema": {
-                "default": 0,
-                "minimum": 0,
-                "title": "Skip",
-                "type": "integer"
-              }
-            },
-            {
-              "in": "query",
               "name": "limit",
               "required": false,
               "schema": {
@@ -17525,6 +18713,43 @@
                 "title": "Limit",
                 "type": "integer"
               }
+            },
+            {
+              "description": "next_cursor of the previous page",
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "next_cursor of the previous page",
+                "title": "Cursor"
+              }
+            },
+            {
+              "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Rows to skip, for jumping to a page; pages can shift by a row if rows are added or deleted between requests. Continue with next_cursor to avoid that.",
+                "title": "Offset"
+              }
             }
           ],
           "responses": {
@@ -17532,11 +18757,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/SectionResponse"
-                    },
-                    "title": "Response Get Substrate Sections Api V2 Substrates  Media Id  Sections Get",
-                    "type": "array"
+                    "$ref": "#/components/schemas/Page_SectionResponse_"
                   }
                 }
               },
@@ -17611,5 +18832,5 @@
       }
     }
   },
-  "version": "4.0.0rc3"
+  "version": "4.0.0"
 }
