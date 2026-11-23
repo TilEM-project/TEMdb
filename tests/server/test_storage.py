@@ -1,7 +1,14 @@
+import base64
+import hashlib
+import io
+import os
 from unittest.mock import ANY, Mock
 from urllib.parse import parse_qs, urlsplit
 
+import boto3
 import pytest
+import requests
+from botocore.config import Config
 from botocore.exceptions import ClientError, InvalidRegionError
 from fastapi import HTTPException
 
@@ -181,6 +188,56 @@ async def test_get_url_rejects_missing_checksum(storage_client_manager, s3, loca
     assert refused.value.status_code == 409
 
 
+@pytest.mark.parametrize("multipart", [False, True], ids=["no-sha256", "multipart"])
+async def test_get_url_for_external_s3_object(storage_client_manager, minio_s3, multipart):
+    contents = b"a" * (5 * 1024 * 1024) + b"last part" if multipart else b"external image"
+    bucket = minio_s3["bucket"]
+    key = "external-image.tif"
+    location = FileObject(protocol="s3", server=minio_s3["server"], bucket=bucket, key=key)
+    expected_hash = base64.b64encode(hashlib.sha256(contents).digest()).decode("ascii")
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=minio_s3["server"],
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        region_name=os.environ["AWS_DEFAULT_REGION"],
+        config=Config(signature_version="s3v4"),
+    )
+    try:
+        if multipart:
+            upload_id = s3.create_multipart_upload(Bucket=bucket, Key=key, ChecksumAlgorithm="SHA256")["UploadId"]
+            parts = []
+            for number, data in enumerate((contents[: 5 * 1024 * 1024], contents[5 * 1024 * 1024 :]), 1):
+                part = s3.upload_part(
+                    Bucket=bucket,
+                    Key=key,
+                    UploadId=upload_id,
+                    PartNumber=number,
+                    Body=data,
+                    ChecksumSHA256=base64.b64encode(hashlib.sha256(data).digest()).decode("ascii"),
+                )
+                parts.append({"PartNumber": number, "ETag": part["ETag"], "ChecksumSHA256": part["ChecksumSHA256"]})
+            s3.complete_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id, MultipartUpload={"Parts": parts})
+        else:
+            minio_s3["client"].put_object(bucket, key, io.BytesIO(contents), len(contents))
+        metadata = s3.head_object(Bucket=bucket, Key=key, ChecksumMode="ENABLED")
+        if multipart:
+            assert metadata["ETag"].strip('"').endswith("-2")
+            assert metadata["ChecksumSHA256"] != expected_hash
+        else:
+            assert not metadata.get("ChecksumSHA256")
+    finally:
+        s3.close()
+
+    result = await storage_client_manager.get_url(location, expiration=300)
+
+    assert result.hash == expected_hash
+    response = requests.get(result.url, timeout=30)
+    assert response.status_code == 200
+    assert response.content == contents
+
+
 @pytest.mark.parametrize("code", ["404", "NoSuchKey"])
 async def test_get_url_absent_object_is_not_found(storage_client_manager, s3, location, code):
     """An image whose object is not in storage is a 404, not a server error."""
@@ -192,8 +249,10 @@ async def test_get_url_absent_object_is_not_found(storage_client_manager, s3, lo
 
 async def test_get_url_handles_checksum_lookup_failure(storage_client_manager, s3, location):
     s3[0].head_object.side_effect = ClientError({"Error": {"Code": "AccessDenied"}}, "HeadObject")
-    with pytest.raises(HTTPException, match="Failed to retrieve object hash"):
+    with pytest.raises(HTTPException, match="Failed to retrieve object hash") as error:
         await storage_client_manager.get_url(location)
+    assert error.value.status_code == 500
+    s3[0].copy_object.assert_not_called()
 
 
 @pytest.mark.parametrize("as_dict", [False, True])
