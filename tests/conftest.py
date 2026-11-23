@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+import boto3
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
@@ -68,6 +69,7 @@ def minio_s3(minio_container: MinioContainer, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", config["secret_key"])
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.setattr(boto3, "DEFAULT_SESSION", None)
 
     bucket = f"temdb-test-{uuid4().hex[:12]}"
     client = minio_container.get_client()

@@ -45,23 +45,29 @@ class S3StorageClient(StorageClient):
     def close(self) -> None:
         self._client.close()
 
-    def get_url(self, storage_location: FileObject, expiration: int | None = None) -> FileObjectResponse:
-        expiration = expiration or 3600
+    def _fix_hash(self, storage_location: FileObject) -> None:
+        logger.info("Attempting to add SHA256 hash for %s/%s", storage_location.bucket, storage_location.key)
         try:
-            presigned_url = self._client.generate_presigned_url(
-                "get_object",
-                Params={
-                    "Bucket": storage_location.bucket,
-                    "Key": storage_location.key,
-                },
-                ExpiresIn=expiration,
-            )
+            head = self._client.head_object(Bucket=storage_location.bucket, Key=storage_location.key)
         except (ClientError, BotoCoreError) as e:
-            logger.error("Failed to generate presigned URL for GET: %s", e)
+            logger.error("Failed to retrieve object metadata from S3: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail="Failed to generate presigned URL for GET",
+                detail="Failed to retrieve object metadata from S3",
             )
+        try:
+            self._client.copy_object(
+                Bucket=storage_location.bucket,
+                Key=storage_location.key,
+                CopySource={"Bucket": storage_location.bucket, "Key": storage_location.key},
+                ChecksumAlgorithm="SHA256",
+                MetadataDirective="REPLACE",
+                Metadata=head.get("Metadata", {}),
+            )
+        except (ClientError, BotoCoreError) as e:
+            logger.error("Failed to fix object hash in S3: %s", e)
+
+    def _get_hash(self, storage_location: FileObject, try_fix_hash=True) -> str:
         try:
             metadata = self._client.head_object(
                 Bucket=storage_location.bucket, Key=storage_location.key, ChecksumMode="ENABLED"
@@ -82,9 +88,45 @@ class S3StorageClient(StorageClient):
                 storage_location.bucket,
                 storage_location.key,
             )
+            if try_fix_hash:
+                self._fix_hash(storage_location)
+                return self._get_hash(storage_location, try_fix_hash=False)
             raise HTTPException(
                 status_code=409,
                 detail="The stored image has no SHA-256 checksum; it was not uploaded through TEMdb",
+            )
+        if "-" in hash:
+            logger.warning(
+                "SHA256 checksum for %s/%s is a multipart checksum",
+                storage_location.bucket,
+                storage_location.key,
+            )
+            if try_fix_hash:
+                self._fix_hash(storage_location)
+                return self._get_hash(storage_location, try_fix_hash=False)
+            raise HTTPException(
+                status_code=409,
+                detail="The stored image has a multipart SHA-256 checksum; it was not uploaded through TEMdb",
+            )
+        return hash
+
+    def get_url(self, storage_location: FileObject, expiration: int | None = None) -> FileObjectResponse:
+        expiration = expiration or 3600
+        hash = self._get_hash(storage_location)
+        try:
+            presigned_url = self._client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": storage_location.bucket,
+                    "Key": storage_location.key,
+                },
+                ExpiresIn=expiration,
+            )
+        except (ClientError, BotoCoreError) as e:
+            logger.error("Failed to generate presigned URL for GET: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate presigned URL for GET",
             )
         return FileObjectResponse(
             url=presigned_url,
